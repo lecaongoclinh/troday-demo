@@ -85,6 +85,7 @@ const seed = {
       { id: "m8", senderId: "mai", roomId: "r3", text: "Anh Quân ơi, em muốn cập nhật thông tin bạn ở cùng.", time: "08:22" }
     ] }
   ],
+  viewingProposals: [],
   viewings: [
     { id: "v1", roomId: "r1", tenantId: "lan", ownerId: "quan", conversationId: "c1", date: "2026-10-25", time: "17:00", status: "SCHEDULED", decision: "WAITING" },
     { id: "v2", roomId: "r2", tenantId: "lan", ownerId: "quan", conversationId: "c1", date: "2026-10-22", time: "18:00", status: "COMPLETED", decision: "WAITING" },
@@ -124,6 +125,7 @@ try { state = JSON.parse(localStorage.getItem(storageKey)) || structuredClone(se
 catch { state = structuredClone(seed); }
 state.chatDrafts ||= {};
 state.chatContexts ||= {};
+state.viewingProposals ||= [];
 // Update bundled photos in saved demos without resetting the visitor's changes.
 for (const item of state.rooms) {
   const oldPhoto = /^(?:\.?\/)?assets\/(r[1-6])\.png$/i.exec(item.photo || "");
@@ -178,6 +180,7 @@ function renderShell() {
 function render() {
   state.contracts.forEach((c) => ensureRepresentativeHistory(c));
   expireJoinHolds();
+  expireViewingProposals();
   state.rooms.forEach((r) => syncRoomStatus(r.id));
   renderShell();
   const view = state.view;
@@ -236,7 +239,7 @@ function renderDetail() {
   const backView = state.role === "admin" ? "moderation" : state.role === "landlord" ? "listings" : "discover";
   const returnChat = visibleConversations().find((c) => c.id === state.sharedPostReturn && c.type === "ROOMMATE");
   return head(r.title, `${r.code} · ${h.address}`, `${returnChat ? button(`${icon("arrow-left")} Quay lại tin nhắn`, "return-shared-chat", returnChat.id) : button(`${icon("arrow-left")} Danh sách`, "navigate", backView)}${state.role === "tenant" ? button(`${icon("heart")} ${saved ? "Bỏ lưu" : "Lưu tin"}`, "favorite", r.id) : ""}`) +
-    `<div class="detail-layout"><div><img class="detail-image" src="${esc(r.photo)}" alt="${esc(r.title)}"><div class="detail-info"><div><span class="muted tiny">Diện tích</span><strong>${r.area} m²</strong></div><div><span class="muted tiny">Sức chứa</span><strong>${r.capacity} người</strong></div><div><span class="muted tiny">Khoảng cách</span><strong>${r.distance} km</strong></div></div><div class="section-bar"><h2>Về phòng này</h2></div><p class="muted" style="font-size:13px;line-height:1.6">${esc(r.description)}</p><div class="section-bar"><h2>Tiện ích</h2></div><div class="amenity-list">${r.amenities.map((x) => `<span>${esc(x)}</span>`).join("")}</div><div class="section-bar"><h2>Dịch vụ áp dụng</h2></div><div class="stack tight">${services.length ? services.map((x) => `<div class="list-row"><strong>${esc(x)}</strong></div>`).join("") : `<span class="muted tiny">Chủ trọ chưa cập nhật dịch vụ.</span>`}</div></div><aside class="detail-sidebar"><div class="price">${shortMoney(r.price)} <small>/tháng</small></div><p class="muted tiny">Cọc ${money(r.deposit)} · ${chip(r.status === "AVAILABLE" ? "Còn phòng" : "Đã giữ chỗ", r.status === "AVAILABLE" ? "green" : "yellow")}</p><div class="list-row"><div>${avatar(h.ownerId)}</div><div style="flex:1"><strong>${esc(owner.name)}</strong><small>Chủ trọ · ${esc(h.name)}</small></div></div>${state.role === "tenant" ? `<div class="stack" style="margin-top:16px">${button(`${icon("message-circle")} Nhắn tin về phòng này`, "chat-room", r.id, "primary")}${r.postStatus === "APPROVED" ? button(`${icon("share-2")} Chia sẻ cho bạn ghép`, "share-post", r.id) : ""}${button(`${icon("flag")} Báo cáo tin`, "report-post", r.id)}</div>` : ""}</aside></div>`;
+    `<div class="detail-layout"><div><img class="detail-image" src="${esc(r.photo)}" alt="${esc(r.title)}"><div class="detail-info"><div><span class="muted tiny">Diện tích</span><strong>${r.area} m²</strong></div><div><span class="muted tiny">Sức chứa</span><strong>${r.capacity} người</strong></div><div><span class="muted tiny">Khoảng cách</span><strong>${r.distance} km</strong></div></div><div class="section-bar"><h2>Về phòng này</h2></div><p class="muted" style="font-size:13px;line-height:1.6">${esc(r.description)}</p><div class="section-bar"><h2>Tiện ích</h2></div><div class="amenity-list">${r.amenities.map((x) => `<span>${esc(x)}</span>`).join("")}</div><div class="section-bar"><h2>Dịch vụ áp dụng</h2></div><div class="stack tight">${services.length ? services.map((x) => `<div class="list-row"><strong>${esc(x)}</strong></div>`).join("") : `<span class="muted tiny">Chủ trọ chưa cập nhật dịch vụ.</span>`}</div></div><aside class="detail-sidebar"><div class="price">${shortMoney(r.price)} <small>/tháng</small></div><p class="muted tiny">Cọc ${money(r.deposit)} · ${chip(r.status === "AVAILABLE" ? "Còn phòng" : "Đã giữ chỗ", r.status === "AVAILABLE" ? "green" : "yellow")}</p><div class="list-row"><div>${avatar(h.ownerId)}</div><div style="flex:1"><strong>${esc(owner.name)}</strong><small>Chủ trọ · ${esc(h.name)}</small></div></div>${state.role === "tenant" ? `<div class="stack" style="margin-top:16px">${button(`${icon("message-circle")} Nhắn tin về phòng này`, "chat-room", r.id, "primary")}${r.postStatus === "APPROVED" ? button(`${icon("calendar-plus")} Đề nghị lịch xem`, "open-viewing-request", r.id, "", r.status !== "AVAILABLE" || hasLiveRoomContract(r.id) || roomLoad(r.id) ? 'disabled title="Phòng hiện chưa thể hẹn xem"' : "") : ""}${r.postStatus === "APPROVED" ? button(`${icon("share-2")} Chia sẻ cho bạn ghép`, "share-post", r.id) : ""}${button(`${icon("flag")} Báo cáo tin`, "report-post", r.id)}</div>` : ""}</aside></div>`;
 }
 
 function visibleConversations() { return state.conversations.filter((c) => c.users.includes(userId())); }
@@ -343,9 +346,9 @@ function renderChats() {
         <div class="chat-pane-head">
           <button type="button" class="icon-button mobile-back" data-action="back-chats" aria-label="Danh sách hội thoại">${icon("arrow-left")}</button>
           ${avatar(peer)}<div class="head-copy"><div class="chat-person-name"><h2>${esc(person(peer).name)}</h2>${chatPeerTag(current)}</div><small>${isRoommate ? "Đã kết nối · Trao đổi ở ghép" : `${choices.length} phòng đã trao đổi`}</small></div>
-          ${isRoommate ? button("Xem hồ sơ", "roommate-profile", peer, "small") : button(`${icon("calendar-plus")} Hẹn xem`, "open-appointment", "", "small", state.role !== "landlord" ? "disabled title=\"Chủ trọ tạo lịch hẹn\"" : "")}
+          ${isRoommate ? button("Xem hồ sơ", "roommate-profile", peer, "small") : state.role === "landlord" ? button(`${icon("calendar-plus")} Hẹn xem`, "open-appointment", "", "small") : button("Đề nghị lịch xem", "open-viewing-request", "", "small")}
         </div>
-        <div class="chat-pane-body" role="log" aria-label="Nội dung hội thoại">${isRoommate ? '<p class="connection-note">Hai bạn đã kết nối để trao đổi. Việc thuê chung cần được thỏa thuận và xác nhận riêng.</p>' : '<div class="message-date">Hội thoại gần đây</div>'}${messages || (isRoommate ? '<p class="muted tiny">Gửi lời chào để bắt đầu cuộc trò chuyện.</p>' : "")}${chatViewingCards(current)}</div>
+        <div class="chat-pane-body" role="log" aria-label="Nội dung hội thoại">${isRoommate ? '<p class="connection-note">Hai bạn đã kết nối để trao đổi. Việc thuê chung cần được thỏa thuận và xác nhận riêng.</p>' : '<div class="message-date">Hội thoại gần đây</div>'}${messages || (isRoommate ? '<p class="muted tiny">Gửi lời chào để bắt đầu cuộc trò chuyện.</p>' : "")}${renderViewingProposals(current)}${chatViewingCards(current)}</div>
         <form class="chat-composer" data-form="chat-message" aria-label="Soạn tin nhắn">
           ${isRoommate ? `<div class="chat-share-toolbar">${button(`${icon("share-2")} Chia sẻ phòng`, "share-post", "", "small")}</div>` : ""}
           ${!isRoommate ? `<div class="chat-room-picker">
@@ -388,11 +391,11 @@ function viewingActions(v) {
   return "";
 }
 function renderViewings() {
-  const my = state.viewings.filter((v) => state.role === "tenant" ? v.tenantId === "lan" : v.ownerId === "quan");
+  const my = state.viewings.filter((v) => state.role === "tenant" ? v.tenantId === userId() : v.ownerId === userId());
   const tabs = [["all", "Tất cả"], ["SCHEDULED", "Lịch đã hẹn"], ["COMPLETED", "Đã xem"], ["CANCELLED", "Đã hủy"], ["NO_SHOW", "Không đến"]];
   const visible = my.filter((v) => state.tab === "all" || v.status === state.tab);
-  return head("Lịch xem phòng", `${my.length} lịch hẹn`, state.role === "landlord" ? button(`${icon("calendar-plus")} Tạo lịch hẹn`, "open-appointment", "", "primary") : "") +
-    `<p class="muted tiny">Thời gian hiển thị theo giờ Việt Nam (UTC+7).</p><div class="tabs">${tabs.map(([id, label]) => `<button type="button" class="tab-button ${state.tab === id ? "active" : ""}" data-action="tab" data-id="${id}">${label}</button>`).join("")}</div><div class="table-surface table-scroll">${visible.length ? `<table><thead><tr><th>Phòng</th><th>Người thuê</th><th>Thời gian</th><th>Lịch xem</th><th>Quyết định</th><th></th></tr></thead><tbody>${visible.map((v) => { const r = room(v.roomId); return `<tr><td><div class="room-row"><img src="${esc(r.photo)}" alt=""><div><span class="cell-title">${esc(r.code)}</span><span class="cell-sub">${esc(house(r.houseId).name)}</span></div></div></td><td>${esc(person(v.tenantId).name)}</td><td>${dateLabel(v.date)}<span class="cell-sub">${viewingTimeLabel(v)}</span>${v.cancellationReason ? `<span class="cell-sub">${esc(v.cancellationReason)}</span>` : ""}</td><td>${chip(...VIEWING_LABEL[v.status])}</td><td>${chip(...DECISION_LABEL[v.decision])}</td><td class="actions-cell"><div class="table-actions">${viewingActions(v)}</div></td></tr>`; }).join("")}</tbody></table>` : empty("Không có lịch hẹn", "Các lịch xem phòng sẽ xuất hiện ở đây.")}</div>`;
+  return head("Lịch xem phòng", `${my.length} lịch hẹn`, state.role === "landlord" ? button(`${icon("calendar-plus")} Tạo lịch hẹn`, "open-appointment", "", "primary") : button("Đề nghị lịch xem", "open-viewing-request", "", "primary")) +
+    renderViewingProposals() + `<p class="muted tiny">Thời gian hiển thị theo giờ Việt Nam (UTC+7).</p><div class="tabs">${tabs.map(([id, label]) => `<button type="button" class="tab-button ${state.tab === id ? "active" : ""}" data-action="tab" data-id="${id}">${label}</button>`).join("")}</div><div class="table-surface table-scroll">${visible.length ? `<table><thead><tr><th>Phòng</th><th>Người thuê</th><th>Thời gian</th><th>Lịch xem</th><th>Quyết định</th><th></th></tr></thead><tbody>${visible.map((v) => { const r = room(v.roomId); return `<tr><td><div class="room-row"><img src="${esc(r.photo)}" alt=""><div><span class="cell-title">${esc(r.code)}</span><span class="cell-sub">${esc(house(r.houseId).name)}</span></div></div></td><td>${esc(person(v.tenantId).name)}</td><td>${dateLabel(v.date)}<span class="cell-sub">${viewingTimeLabel(v)}</span>${v.cancellationReason ? `<span class="cell-sub">${esc(v.cancellationReason)}</span>` : ""}</td><td>${chip(...VIEWING_LABEL[v.status])}</td><td>${chip(...DECISION_LABEL[v.decision])}</td><td class="actions-cell"><div class="table-actions">${viewingActions(v)}</div></td></tr>`; }).join("")}</tbody></table>` : empty("Không có lịch hẹn", "Các lịch xem phòng sẽ xuất hiện ở đây.")}</div>`;
 }
 
 const CONTRACT_LABEL = { DRAFT: ["Bản nháp", "gray"], PENDING_CONFIRMATION: ["Chờ xác nhận", "yellow"], CONFIRMED: ["Đã xác nhận", "purple"], ACTIVE: ["Đang ở", "green"], TERMINATED: ["Đã kết thúc", "gray"], EXPIRED: ["Hết hạn", "gray"], CANCELLED: ["Đã hủy", "red"] };
@@ -676,13 +679,87 @@ function closeStays(c, date, reason) {
   c.closedAt = new Date().toISOString(); c.closureReason = reason;
 }
 
-function openAppointment() {
-  if (state.role !== "landlord") return;
-  const c = state.conversations.find((item) => item.id === state.selectedConversation && item.users.includes("quan")) || byId(state.conversations, "c1");
-  const relatedRooms = [...new Set(c.messages.map((m) => m.roomId))].filter((id) => room(id)?.status === "AVAILABLE" && house(room(id).houseId).ownerId === "quan");
-  if (!relatedRooms.length) { flash("Hội thoại này chưa có phòng còn trống để đặt lịch."); return; }
+function viewingConversationValid(c, r, tenantId, ownerId) {
+  return c && c.type !== "ROOMMATE" && c.users.length === 2 && tenantId !== ownerId && c.users.includes(tenantId) && c.users.includes(ownerId)
+    && r?.postStatus === "APPROVED" && house(r.houseId)?.ownerId === ownerId && chatRoomChoices(c).includes(r.id)
+    && ![tenantId, ownerId].some((id) => (state.lockedUsers || []).includes(id));
+}
+function tenantExchangedAboutRoom(c, roomId, tenantId) {
+  return c.messages.some((m) => m.roomId === roomId && m.senderId === tenantId && (!m.messageType || ["TEXT", "IMAGE"].includes(m.messageType)) && m.text?.trim());
+}
+function viewingIntervalError(r, start, end) {
+  if (!r || r.status !== "AVAILABLE" || hasLiveRoomContract(r.id) || roomLoad(r.id)) return "Phòng không còn trống để tạo lịch xem.";
+  if (!Number.isFinite(start) || start <= Date.now() || ![30,60,90,120].includes((end - start) / 60000)) return "Giờ xem phải ở tương lai theo giờ Việt Nam, thời lượng 30/60/90/120 phút.";
+  if (state.viewings.some((v) => v.roomId === r.id && v.status === "SCHEDULED" && start < viewingEnd(v) && end > viewingStart(v))) return "Phòng đã có lịch xem trùng giờ.";
+  return "";
+}
+function proposalRequestKey() {
+  return globalThis.crypto?.randomUUID?.() || "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => { const n = Math.floor(Math.random()*16); return (char === "x" ? n : (n & 3) | 8).toString(16); });
+}
+function expireViewingProposals() {
+  for (const p of state.viewingProposals) if (p.status === "PENDING" && viewingStart(p) <= Date.now()) Object.assign(p, { status: "EXPIRED", expiredAt: new Date().toISOString() });
+}
+function notifyViewingProposal(p, user, text) {
+  const id = `np-${p.id}-${p.status}`;
+  if (!state.notifications.some((n) => n.id === id)) state.notifications.push({ id, userId: user, proposalId: p.id, text, read: false });
+}
+function scheduledViewing(c, r, tenantId, ownerId, date, time, start, end, notes, sourceProposalId = null) {
+  const viewingId = `v${Date.now()}-${state.viewings.length}`;
+  const v = { id: viewingId, roomId: r.id, tenantId, ownerId, createdBy: ownerId, conversationId: c.id, date, time, startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(), status: "SCHEDULED", decision: "WAITING", notes, sourceProposalId };
+  state.viewings.push(v); return v;
+}
+function acceptViewingProposal(id) {
+  expireViewingProposals();
+  const p = byId(state.viewingProposals, id);
+  if (state.role !== "landlord" || !p || p.ownerId !== userId() || (state.lockedUsers || []).includes(userId())) return;
+  if (p.status === "ACCEPTED") { flash("Đề nghị này đã được chấp nhận; lịch cũ được giữ nguyên."); return; }
+  if (p.status !== "PENDING") { flash("Đề nghị không còn chờ duyệt."); return; }
+  const c = byId(state.conversations, p.conversationId), r = room(p.roomId);
+  if (!viewingConversationValid(c, r, p.tenantId, p.ownerId)) { flash("Phòng hoặc người tham gia hội thoại không còn hợp lệ."); return; }
+  const error = viewingIntervalError(r, viewingStart(p), viewingEnd(p));
+  if (error) { flash(error); return; }
+  const v = scheduledViewing(c, r, p.tenantId, p.ownerId, p.date, p.time, viewingStart(p), viewingEnd(p), p.notes, p.id);
+  Object.assign(p, { status: "ACCEPTED", reviewedBy: userId(), reviewedAt: new Date().toISOString(), scheduledViewingId: v.id });
+  notifyViewingProposal(p, p.tenantId, `Chủ trọ đã chấp nhận đề nghị xem ${r.code} và tạo lịch hẹn.`);
+  finish("Đã chấp nhận và tạo lịch xem. Phòng chưa được giữ chỗ thuê.");
+}
+const PROPOSAL_LABEL = { PENDING: ["Chờ chủ trọ duyệt", "yellow"], ACCEPTED: ["Đã chấp nhận", "green"], REJECTED: ["Bị từ chối", "red"], WITHDRAWN: ["Đã rút", "gray"], EXPIRED: ["Hết hạn", "gray"] };
+function renderViewingProposals(conversation = null) {
+  if (conversation?.type === "ROOMMATE") return "";
+  const mine = state.viewingProposals.filter((p) => (state.role === "landlord" ? p.ownerId === userId() : state.role === "tenant" && p.tenantId === userId()) && room(p.roomId)
+    && (!conversation || p.conversationId === conversation.id && conversation.users.includes(p.ownerId) && conversation.users.includes(p.tenantId)));
+  if (!mine.length) return "";
+  return `<section class="chat-viewings" aria-label="Đề nghị lịch xem"><h3>Đề nghị lịch xem · ${mine.filter((p) => p.status === "PENDING").length} chờ duyệt</h3>${mine.map((p) => {
+    const actions = p.status !== "PENDING" ? "" : state.role === "landlord" ? button("Chấp nhận lịch", "accept-viewing-proposal", p.id, "small primary") + button("Từ chối", "reject-viewing-proposal", p.id, "small") : button("Rút đề nghị", "withdraw-viewing-proposal", p.id, "small");
+    return `<article class="chat-viewing-card" data-proposal-id="${esc(p.id)}"><div class="chat-viewing-heading"><strong>Đề nghị xem ${esc(room(p.roomId).code)}</strong>${chip(...PROPOSAL_LABEL[p.status])}</div><p class="chat-viewing-time">${dateLabel(p.date)} · ${viewingTimeLabel(p)} (UTC+7)</p><p class="muted tiny">${esc(person(p.tenantId).name)} → ${esc(person(p.ownerId).name)}</p>${p.notes ? `<p class="chat-viewing-note">${esc(p.notes)}</p>` : ""}${p.rejectionReason ? `<p class="chat-viewing-note">Lý do: ${esc(p.rejectionReason)}</p>` : ""}<p class="muted tiny">${p.status === "ACCEPTED" ? "Đã tạo lịch chính thức; kết quả và thao tác hủy ở lịch tương ứng." : "Đề nghị chưa giữ khung giờ hoặc giữ chỗ thuê."}</p><div class="chat-viewing-actions">${actions}</div></article>`;
+  }).join("")}</section>`;
+}
+function openAppointment(mode = "DIRECT", roomId = "") {
+  const request = mode === "REQUEST";
+  if (request ? state.role !== "tenant" : state.role !== "landlord") return;
+  let c;
+  if (request && roomId) {
+    const r = room(roomId);
+    if (!r || r.postStatus !== "APPROVED" || r.status !== "AVAILABLE" || hasLiveRoomContract(r.id) || roomLoad(r.id)) { flash("Phòng hiện không thể đề nghị xem."); return; }
+    const owner = house(r.houseId).ownerId;
+    c = visibleConversations().find((x) => x.type !== "ROOMMATE" && x.users.includes(owner) && x.users.length === 2);
+    if (!c) { c = { id: `c-inquiry-${Date.now()}-${state.conversations.length}`, type: "ROOM_INQUIRY", users: [userId(), owner], messages: [] }; state.conversations.push(c); }
+    c.roomIds = [...new Set([...(c.roomIds || []), roomId])];
+    state.selectedConversation = c.id;
+  } else {
+    c = visibleConversations().find((x) => x.id === state.selectedConversation && x.type !== "ROOMMATE");
+    if (!c && state.view !== "chats") c = visibleConversations().find((x) => x.type !== "ROOMMATE");
+  }
+  if (!c) { flash("Hãy mở phòng trên Khám phá hoặc chat đúng chủ trọ trước khi hẹn xem."); return; }
+  const ownerId = request ? otherUser(c) : userId(), tenantId = request ? userId() : otherUser(c);
+  const relatedRooms = chatRoomChoices(c).filter((id) => {
+    const r = room(id);
+    return viewingConversationValid(c, r, tenantId, ownerId) && r.status === "AVAILABLE" && !hasLiveRoomContract(id) && !roomLoad(id) && (request || tenantExchangedAboutRoom(c, id, tenantId));
+  });
+  if (!relatedRooms.length) { flash("Hãy trao đổi về phòng còn trống trong đúng hội thoại trước khi tạo lịch."); return; }
   const suggested = Math.ceil((Date.now() + 15 * 60 * 1000) / (30 * 60 * 1000)) * 30 * 60 * 1000;
-  modal("Tạo lịch xem phòng", `<form data-form="appointment"><input type="hidden" name="conversationId" value="${c.id}"><p class="muted tiny">Giờ Việt Nam (UTC+7). Lịch hẹn phải bắt đầu trong tương lai.</p><div class="form-grid"><label class="field">Người thuê<input value="${esc(person(c.users.find((x) => x !== "quan")).name)}" disabled></label><label class="field">Phòng<select name="roomId" required>${relatedRooms.map((id) => `<option value="${id}">${esc(roomName(id))}</option>`).join("")}</select></label><label class="field">Ngày xem<input type="date" name="date" value="${todayISO(suggested)}" min="${todayISO()}" required></label><label class="field">Giờ bắt đầu<input type="time" name="time" value="${vietnamTime(suggested)}" required></label><label class="field">Thời lượng<select name="duration">${[30, 60, 90, 120].map((n) => `<option value="${n}" ${n === 60 ? "selected" : ""}>${n} phút</option>`).join("")}</select></label><label class="field full">Ghi chú<textarea name="notes" placeholder="Địa điểm gặp, số điện thoại liên hệ..."></textarea></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button type="submit" class="button primary">${icon("calendar-check")} Lưu lịch hẹn</button></div></form>`);
+  const selected = roomId || (relatedRooms.includes(state.chatContext) ? state.chatContext : relatedRooms[0]);
+  modal(request ? "Đề nghị lịch xem phòng" : "Tạo lịch xem phòng", `<form data-form="${request ? "viewing-request" : "appointment"}"><input type="hidden" name="conversationId" value="${esc(c.id)}">${request ? `<input type="hidden" name="clientRequestKey" value="${proposalRequestKey()}">` : ""}<p class="muted tiny">Giờ Việt Nam (UTC+7). ${request ? "Chờ chủ trọ chấp nhận mới có lịch hẹn, chưa giữ chỗ thuê." : "Tạo lịch đã chốt sau khi trao đổi với người thuê."}</p><div class="form-grid"><label class="field">${request ? "Chủ trọ" : "Người thuê"}<input value="${esc(person(request ? ownerId : tenantId).name)}" disabled></label><label class="field">Phòng<select name="roomId" required>${relatedRooms.map((id) => `<option value="${esc(id)}" ${id === selected ? "selected" : ""}>${esc(roomName(id))}</option>`).join("")}</select></label><label class="field">Ngày xem<input type="date" name="date" value="${todayISO(suggested)}" min="${todayISO()}" required></label><label class="field">Giờ bắt đầu<input type="time" name="time" value="${vietnamTime(suggested)}" required></label><label class="field">Thời lượng<select name="duration">${[30,60,90,120].map((n) => `<option value="${n}" ${n === 60 ? "selected" : ""}>${n} phút</option>`).join("")}</select></label><label class="field full">Ghi chú<textarea name="notes" maxlength="2000" placeholder="Địa điểm gặp, mong muốn về giờ xem..."></textarea></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button type="submit" class="button primary">${request ? "Gửi đề nghị" : "Lưu lịch hẹn"}</button></div></form>`);
 }
 
 function openContract(viewingId) {
@@ -838,6 +915,19 @@ function handleAction(action, id) {
     case "clear-context": selectChatContext(null); return;
     case "tab": state.tab = id; save(); render(); return;
     case "open-appointment": openAppointment(); return;
+    case "open-viewing-request": openAppointment("REQUEST", id); return;
+    case "accept-viewing-proposal": acceptViewingProposal(id); return;
+    case "reject-viewing-proposal": {
+      expireViewingProposals(); item = byId(state.viewingProposals, id);
+      if (state.role !== "landlord" || item?.ownerId !== userId() || item.status !== "PENDING" || (state.lockedUsers || []).includes(userId())) return;
+      modal("Từ chối đề nghị xem phòng", `<form data-form="reject-viewing-proposal"><input type="hidden" name="proposalId" value="${esc(id)}"><label class="field">Lý do từ chối<textarea name="reason" required maxlength="1000"></textarea></label><div class="form-actions">${button("Quay lại", "close-dialog")}<button type="submit" class="button danger">Từ chối</button></div></form>`); return;
+    }
+    case "withdraw-viewing-proposal": {
+      expireViewingProposals(); item = byId(state.viewingProposals, id);
+      if (state.role !== "tenant" || item?.tenantId !== userId() || item.status !== "PENDING" || (state.lockedUsers || []).includes(userId())) return;
+      Object.assign(item, { status: "WITHDRAWN", withdrawnBy: userId(), withdrawnAt: new Date().toISOString() });
+      notifyViewingProposal(item, item.ownerId, "Người thuê đã rút đề nghị xem phòng."); finish("Đã rút đề nghị."); return;
+    }
     case "confirm-attendance":
     case "no-show": {
       item = byId(state.viewings, id);
@@ -1093,25 +1183,51 @@ function handleForm(form) {
       $(".chat-pane-body .message-row:last-of-type")?.scrollIntoView?.({ block: "nearest" });
       $("#chat-message")?.focus({ preventScroll: true }); return;
     }
+    case "reject-viewing-proposal": {
+      expireViewingProposals();
+      const p = byId(state.viewingProposals, value("proposalId"));
+      if (state.role !== "landlord" || !p || p.ownerId !== userId() || p.status !== "PENDING" || !value("reason") || value("reason").length > 1000 || (state.lockedUsers || []).includes(userId())) return;
+      Object.assign(p, { status: "REJECTED", reviewedBy: userId(), reviewedAt: new Date().toISOString(), rejectionReason: value("reason") });
+      notifyViewingProposal(p, p.tenantId, `Chủ trọ từ chối đề nghị xem phòng: ${value("reason")}`); finish("Đã từ chối đề nghị."); return;
+    }
+    case "viewing-request":
     case "appointment": {
-      const c = byId(state.conversations, value("conversationId"));
-      const r = room(value("roomId"));
-      const date = value("date"), time = value("time");
-      if (state.role !== "landlord" || !c?.users.includes(userId()) || !r || house(r.houseId).ownerId !== userId() || !c.messages.some((m) => m.roomId === r.id)) { flash("Hãy chọn phòng đã được trao đổi trong hội thoại của chủ trọ."); return; }
-      if (r.status !== "AVAILABLE" || hasLiveRoomContract(r.id) || roomLoad(r.id)) { flash("Phòng không còn trống để tạo lịch xem."); return; }
-      const start = appointmentTimestamp(date, time);
-      const duration = Number(value("duration"));
-      if (!Number.isFinite(start) || start <= Date.now()) { flash("Giờ bắt đầu phải ở tương lai theo giờ Việt Nam (UTC+7)."); return; }
-      if (![30, 60, 90, 120].includes(duration)) { flash("Thời lượng lịch xem không hợp lệ."); return; }
-      const end = start + duration * 60 * 1000;
-      const overlaps = state.viewings.some((v) => v.roomId === r.id && v.status === "SCHEDULED" && start < viewingEnd(v) && end > viewingStart(v));
-      if (overlaps) { flash("Phòng đã có lịch xem trùng giờ."); return; }
-      const viewingId = `v${Date.now()}`;
-      state.viewings.push({ id: viewingId, roomId: r.id, tenantId: c.users.find((x) => x !== userId()), ownerId: userId(), conversationId: c.id, date, time, startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(), status: "SCHEDULED", decision: "WAITING", notes: value("notes") });
+      const request = name === "viewing-request";
+      if (request ? state.role !== "tenant" : state.role !== "landlord") return;
+      expireViewingProposals();
+      const c = byId(state.conversations, value("conversationId")), r = room(value("roomId"));
+      const tenantId = request ? userId() : c?.users.find((id) => id !== userId());
+      const ownerId = request ? house(r?.houseId)?.ownerId : userId();
+      if (!viewingConversationValid(c, r, tenantId, ownerId) || (!request && !tenantExchangedAboutRoom(c, r.id, tenantId))) { flash("Hãy chọn đúng phòng và người thuê trong hội thoại với chủ trọ."); return; }
+      const date = value("date"), time = value("time"), notes = value("notes");
+      const start = appointmentTimestamp(date, time), end = start + Number(value("duration")) * 60000;
+      if (notes.length > 2000) { flash("Ghi chú tối đa 2.000 ký tự."); return; }
+      if (request) {
+        const key = value("clientRequestKey");
+        if (!/^[0-9a-f-]{36}$/i.test(key)) { flash("Hãy mở lại form đề nghị để gửi."); return; }
+        const existing = state.viewingProposals.find((p) => p.tenantId === userId() && p.clientRequestKey === key);
+        if (existing) {
+          if (existing.roomId !== r.id || existing.conversationId !== c.id || viewingStart(existing) !== start || viewingEnd(existing) !== end || existing.notes !== notes) { flash("Mã gửi đã được dùng cho nội dung khác."); return; }
+          state.view = "chats"; state.selectedConversation = c.id; state.chatMobileOpen = true; finish("Đề nghị đã được gửi trước đó."); return;
+        }
+      }
+      const error = viewingIntervalError(r, start, end);
+      if (error) { flash(error); return; }
+      let focusId;
+      if (request) {
+        if (state.viewingProposals.some((p) => p.tenantId === tenantId && p.roomId === r.id && p.status === "PENDING")) { flash("Bạn đã có đề nghị chờ duyệt cho phòng này. Hãy rút đề nghị cũ trước khi gửi giờ khác."); return; }
+        const p = { id: `vp-${Date.now()}-${state.viewingProposals.length}`, roomId: r.id, tenantId, ownerId, conversationId: c.id, clientRequestKey: value("clientRequestKey"), date, time, startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(), notes, status: "PENDING", createdAt: new Date().toISOString() };
+        state.viewingProposals.push(p); notifyViewingProposal(p, ownerId, `Có đề nghị xem ${r.code} từ ${person(tenantId).name}.`);
+        focusId = `[data-proposal-id="${p.id}"]`; state.view = "chats";
+      } else {
+        const v = scheduledViewing(c, r, tenantId, ownerId, date, time, start, end, notes);
+        state.notifications.push({ id: `n-${v.id}`, userId: tenantId, viewingId: v.id, text: `Chủ trọ đã tạo lịch xem ${r.code} sau khi trao đổi qua tin nhắn.`, read: false });
+        focusId = `[data-viewing-id="${v.id}"]`;
+        if (state.view !== "chats") state.view = "viewings";
+      }
       if (state.view === "chats") { state.selectedConversation = c.id; state.chatMobileOpen = true; }
-      else state.view = "viewings";
-      finish("Đã lưu lịch xem phòng.");
-      if (state.view === "chats") $(`[data-viewing-id="${viewingId}"]`)?.scrollIntoView?.({ block: "nearest" });
+      finish(request ? "Đã gửi đề nghị, chờ chủ trọ duyệt." : "Đã lưu lịch xem phòng.");
+      if (state.view === "chats") $(focusId)?.scrollIntoView?.({ block: "nearest" });
       return;
     }
     case "create-contract": {

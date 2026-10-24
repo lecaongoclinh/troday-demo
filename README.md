@@ -7,9 +7,10 @@ Dữ liệu mẫu lưu trong `localStorage`; nhập `__troday.reset()` ở conso
 ## Bắt đầu đọc
 
 - [Quy tắc nghiệp vụ](docs/business-rules.md): toàn bộ logic đang có, thay đổi đã thực hiện, ràng buộc CSDL và cách tích hợp API.
-- [SQL tạo mới](database/schema.sql): CSDL v5 hiện tại, 40 bảng.
+- [SQL tạo mới](database/schema.sql): CSDL v5 hiện tại, 41 bảng.
 - [Nâng cấp nghiệp vụ](database/migrations/20261024_v5_workflows.sql): chuyển v5 gốc 39 bảng sang bản có lịch sử đại diện.
 - [Nâng cấp chia sẻ tin phòng](database/migrations/20261025_chat_post_sharing.sql): thêm tin nhắn tham chiếu bài đăng, chạy sau bản nâng cấp nghiệp vụ.
+- [Nâng cấp đề nghị lịch xem](database/migrations/20261025_viewing_proposals.sql): người thuê đề nghị, chủ trọ duyệt; vẫn giữ chủ trọ tự tạo lịch sau trao đổi.
 
 ## Cấu trúc thư mục
 
@@ -26,8 +27,10 @@ database/
   migrations/
     20261024_v5_workflows.sql   Nâng cấp một lần từ v5 gốc
     20261025_chat_post_sharing.sql  Thêm chia sẻ tin phòng trong chat
+    20261025_viewing_proposals.sql  Thêm đề nghị và duyệt lịch xem
   source/
     workflows.sql              Nguồn chung của view, trigger và procedure
+    viewing-proposals.sql      Nguồn đề nghị lịch và tạo lịch trực tiếp
 scripts/
   build-database.cjs            Đồng bộ nguồn nghiệp vụ vào SQL triển khai
 tests/
@@ -46,19 +49,19 @@ SQL triển khai nằm trong `database/`. Hai SQL trong `tests/fixtures/` cần 
 Chọn **một** cách phù hợp:
 
 - **Tạo mới:** chạy `database/schema.sql`. File tự tạo và chọn CSDL `room_rental_v5_20261023`; nếu tên này đã tồn tại thì dừng. Tên CSDL được giữ nguyên để tương thích v5.
-- **Nâng cấp v5 gốc:** sao lưu, dừng các thao tác ghi rồi chạy lần lượt `database/migrations/20261024_v5_workflows.sql` và `database/migrations/20261025_chat_post_sharing.sql`, mỗi file **một lần**. Script kiểm tra điều kiện trước DDL. Nếu có lỗi thì dừng và xử lý nguyên nhân; không dùng `--force` hoặc bỏ qua lỗi để chạy tiếp. MySQL DDL không rollback toàn bộ như giao dịch dữ liệu.
-- **Đã áp dụng nâng cấp nghiệp vụ ngày 24/10:** chỉ chạy `database/migrations/20261025_chat_post_sharing.sql` để bổ sung chia sẻ tin phòng; không chạy lại migration cũ.
+- **Nâng cấp v5 gốc:** sao lưu, dừng các thao tác ghi rồi chạy lần lượt `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` trong `database/migrations/`, mỗi file **một lần**. Script kiểm tra điều kiện trước DDL. Nếu có lỗi thì dừng và xử lý nguyên nhân; không dùng `--force` hoặc bỏ qua lỗi để chạy tiếp. MySQL DDL không rollback toàn bộ như giao dịch dữ liệu.
+- **Đã nâng cấp một phần:** chỉ chạy các migration còn thiếu theo đúng thứ tự trên. Nếu đã có nghiệp vụ và chia sẻ tin phòng thì chỉ chạy `20261025_viewing_proposals.sql`; không chạy lại migration cũ.
 
 Không chạy migration ngay sau bản tạo mới trên cùng CSDL. Chưa áp dụng các script này lên CSDL hiện có của người dùng.
 
-Khi sửa view, trigger hoặc procedure, sửa `database/source/workflows.sql` rồi chạy:
+Nguồn nghiệp vụ ban đầu là `database/source/workflows.sql`; phần đề nghị lịch và phiên bản mới của `sp_schedule_viewing` nằm ở `database/source/viewing-proposals.sql`. Khi sửa phần lịch mới, sửa nguồn tương ứng rồi chạy:
 
 ```sh
 npm run db:build
 npm run db:check
 ```
 
-Commit cả nguồn chung và hai SQL đã đồng bộ. Script build chỉ cập nhật file, không kết nối CSDL. Chi tiết cột mới, tham số procedure và cách gọi từ API nằm trong mục 4–5 của tài liệu nghiệp vụ.
+Commit nguồn chung và SQL đã đồng bộ. Build ghép nguồn lịch mới vào schema đầy đủ và migration lịch; migration nghiệp vụ cũ giữ nguyên. Script chỉ cập nhật file, không kết nối CSDL. Chi tiết cột mới, tham số procedure và cách gọi từ API nằm trong mục 4–5 của tài liệu nghiệp vụ.
 
 ## Kiểm thử
 
@@ -81,6 +84,8 @@ Wireframe có tìm phòng, tin đăng, chat, lịch xem, hợp đồng, bàn gia
 
 Ở phần ở ghép, có thể xem hồ sơ người gửi trước khi phản hồi lời mời. Chấp nhận kết nối sẽ mở cuộc chat giữa hai người, không tự tạo yêu cầu thuê chung hay giữ chỗ. CSDL v5 đã hỗ trợ hội thoại `ROOMMATE`; không cần thêm bảng cho luồng này.
 
-Tin nhắn có nhãn “Chủ trọ”, “Bạn ghép” hoặc “Người thuê” cạnh tên theo quan hệ hội thoại. Hai người đã kết nối có thể chia sẻ tin phòng từ chat hoặc trang chi tiết; bấm thẻ để xem phòng và quay lại đúng cuộc trò chuyện. CSDL dùng `chat_messages.message_type = 'POST_SHARE'` và `shared_post_id` tham chiếu bài đăng; số bảng vẫn là 40.
+Tin nhắn có nhãn “Chủ trọ”, “Bạn ghép” hoặc “Người thuê” cạnh tên theo quan hệ hội thoại. Hai người đã kết nối có thể chia sẻ tin phòng từ chat hoặc trang chi tiết; bấm thẻ để xem phòng và quay lại đúng cuộc trò chuyện. CSDL dùng `chat_messages.message_type = 'POST_SHARE'` và `shared_post_id` tham chiếu bài đăng; phần chia sẻ không thêm bảng.
+
+Lịch xem có hai cách tạo: người thuê bấm “Đề nghị lịch xem” từ chi tiết phòng hoặc chat, chờ chủ trọ chấp nhận; hoặc chủ trọ bấm “Hẹn xem” để tạo lịch đã chốt sau khi có trao đổi từ người thuê về phòng đó. Đề nghị lưu riêng trong `room_viewing_proposals`, chưa giữ giờ/chỗ thuê; khi duyệt mới tạo `room_viewing_requests` trong cùng giao dịch. Chat và Lịch xem có chấp nhận/từ chối/rút đề nghị, sau đó dùng chung các thao tác hủy, đã xem, không đến và quyết định thuê. Thử bằng cách đổi giữa vai trò Người thuê và Chủ trọ.
 
 Chat nhiều bài đăng trong cùng một dòng thời gian là đề xuất giao diện: v5 hiện gắn mỗi `conversation` với một `post_id`/`room_id`. API cần nhóm các conversation theo cặp người, hoặc thiết kế thêm ngữ cảnh con và điều chỉnh liên kết lịch xem nếu muốn lưu thành một hội thoại chung. Không dùng dữ liệu chat của prototype làm migration v5.

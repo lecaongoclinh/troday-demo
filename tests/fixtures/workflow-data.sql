@@ -47,5 +47,7 @@ UPDATE invoices SET status='UNPAID' WHERE id=500;
 INSERT INTO posts(id,landlord_id,house_id,room_id,title) VALUES(1,1,1,4,'New rental fixture'),(2,1,1,5,'Viewing fixture');
 INSERT INTO conversations(id,type,room_id,post_id) VALUES(1,'ROOM_INQUIRY',4,1),(2,'ROOM_INQUIRY',5,2);
 INSERT INTO conversation_participants(conversation_id,user_id,joined_at) VALUES(1,1,UTC_TIMESTAMP(6)),(1,5,UTC_TIMESTAMP(6)),(2,1,UTC_TIMESTAMP(6)),(2,6,UTC_TIMESTAMP(6));
+UPDATE posts SET status='APPROVED';
+INSERT INTO chat_messages(conversation_id,sender_id,client_message_key,message_type,content,sent_at) VALUES(1,5,UUID(),'TEXT','Can I view this room?',UTC_TIMESTAMP(6)),(1,1,UUID(),'TEXT','Let us arrange a time.',UTC_TIMESTAMP(6)),(2,6,UUID(),'TEXT','I would like to view this room.',UTC_TIMESTAMP(6)),(2,1,UUID(),'TEXT','What time suits you?',UTC_TIMESTAMP(6));
 INSERT INTO room_viewing_requests(id,room_id,house_id,conversation_id,tenant_id,created_by_id,starts_at,ends_at,status,attendance_confirmed_by_id,attendance_confirmed_at,rental_decision,rental_decided_by_id,rental_decided_at)
   VALUES(400,4,1,1,5,1,UTC_TIMESTAMP(6)-INTERVAL 2 DAY,UTC_TIMESTAMP(6)-INTERVAL 2 DAY+INTERVAL 1 HOUR,'COMPLETED',1,UTC_TIMESTAMP(6)-INTERVAL 2 DAY,'AGREED',5,UTC_TIMESTAMP(6)-INTERVAL 1 DAY);

@@ -4,15 +4,17 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const schemaPath = path.join(root, "database", "schema.sql");
 const migrationPath = path.join(root, "database", "migrations", "20261024_v5_workflows.sql");
+const viewingMigrationPath = path.join(root, "database", "migrations", "20261025_viewing_proposals.sql");
 const marker = "-- BEGIN V5 WORKFLOW OBJECTS 20261024";
 function build() {
   let schema = fs.readFileSync(schemaPath, "utf8").replaceAll("\r\n", "\n");
   const objects = fs.readFileSync(path.join(root, "database", "source", "workflows.sql"), "utf8").replaceAll("\r\n", "\n").trimEnd() + "\n";
+  const proposals = fs.readFileSync(path.join(root, "database", "source", "viewing-proposals.sql"), "utf8").replaceAll("\r\n", "\n").trimEnd() + "\n";
   schema = schema.split(marker)[0].trimEnd() + "\n";
   for (const name of ["trg_viewings_before_update", "trg_contracts_before_insert", "trg_contracts_before_update"]) {
     schema = schema.replace(new RegExp("CREATE TRIGGER `" + name + "`[\\s\\S]*?END\\$\\$\\s*", "g"), "");
   }
-  schema = schema.trimEnd() + "\n\n" + objects;
+  schema = schema.trimEnd() + "\n\n" + objects + "\n" + proposals;
   const historyDDL = /CREATE TABLE `contract_representative_history` \([\s\S]*?\) ENGINE=[^\n]+;/.exec(schema)?.[0];
   if (!historyDDL) throw new Error("History table definition is missing");
   const foreignKeys = schema.split("\n").filter((line) => line.startsWith("ALTER TABLE `contract_representative_history`") || line.includes("`fk_changes_cancelled_by`") || line.includes("`fk_join_cancelled_by`")).join("\n");
@@ -79,15 +81,36 @@ SELECT c.id,rt.id,rt.tenant_id,rt.full_name,'LEGACY_BASELINE',c.current_revision
 FROM contracts c JOIN room_tenants rt ON rt.id=c.representative_room_tenant_id AND rt.contract_id=c.id;
 
 ${objects}`;
-  return { schema, upgrade };
+  const viewingUpgrade = `-- Run once after workflow and chat-sharing migrations. Back up and stop writers first.
+-- Do not use --force. Existing confirmed viewings and contract links are preserved.
+USE room_rental_v5_20261023;
+SET time_zone = '+00:00';
+DELIMITER $$
+DROP PROCEDURE IF EXISTS _v5_preflight_viewing_proposals$$
+CREATE PROCEDURE _v5_preflight_viewing_proposals()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='contract_representative_history')
+    OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='chat_messages' AND column_name='shared_post_id') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Apply workflow and chat sharing migrations before viewing proposals';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='room_viewing_proposals') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Viewing proposals migration already applied or incomplete; do not rerun blindly';
+  END IF;
+END$$
+CALL _v5_preflight_viewing_proposals()$$
+DROP PROCEDURE _v5_preflight_viewing_proposals$$
+DELIMITER ;
+
+${proposals}`;
+  return { schema, upgrade, viewingUpgrade };
 }
 if (require.main === module) {
-  const { schema, upgrade } = build();
+  const { schema, upgrade, viewingUpgrade } = build();
   if (process.argv.includes("--print-fresh")) process.stdout.write(schema);
   else if (process.argv.includes("--print-upgrade")) process.stdout.write(upgrade);
   else if (process.argv.includes("--check")) {
-    if (fs.readFileSync(schemaPath, "utf8").replaceAll("\r\n", "\n") !== schema || fs.readFileSync(migrationPath, "utf8").replaceAll("\r\n", "\n") !== upgrade) throw new Error("SQL bundles differ from shared workflow source; rebuild them");
+    if (fs.readFileSync(schemaPath, "utf8").replaceAll("\r\n", "\n") !== schema || fs.readFileSync(migrationPath, "utf8").replaceAll("\r\n", "\n") !== upgrade || fs.readFileSync(viewingMigrationPath, "utf8").replaceAll("\r\n", "\n") !== viewingUpgrade) throw new Error("SQL bundles differ from shared workflow source; rebuild them");
     console.log("Fresh schema and migration match the shared workflow definitions.");
-  } else { fs.writeFileSync(schemaPath, schema); fs.writeFileSync(migrationPath, upgrade); }
+  } else { fs.writeFileSync(schemaPath, schema); fs.writeFileSync(migrationPath, upgrade); fs.writeFileSync(viewingMigrationPath, viewingUpgrade); }
 }
 module.exports = { build };

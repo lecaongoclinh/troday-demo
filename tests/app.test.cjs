@@ -587,3 +587,116 @@ test("listing images accept HTTP links but reject unsupported image URLs before 
   d.submit("listing", { ...values, photo: "https://example.com/room.jpg" });
   assert.equal(r.photo, "https://example.com/room.jpg"); assert.equal(r.postStatus, "PENDING_REVIEW");
 });
+
+const proposalValues = (extra = {}) => ({ conversationId: "c1", roomId: "r1", date: "2026-10-24", time: "10:30", duration: "60", notes: "Gặp tại cổng", clientRequestKey: "00000000-0000-4000-8000-000000000001", ...extra });
+function requestViewing(d, extra) { d.state.role = "tenant"; d.submit("viewing-request", proposalValues(extra)); return d.state.viewingProposals.at(-1); }
+
+test("a tenant can propose from a listing without prior messages, without scheduling or reserving the room", () => {
+  const d = demo(); d.state.role = "tenant"; d.state.conversations = [];
+  const before = JSON.stringify({ rooms: d.state.rooms, contracts: d.state.contracts, viewings: d.state.viewings });
+  d.action("open-viewing-request", "r1");
+  assert.match(d.node("#dialog-body").innerHTML, /data-form="viewing-request"/);
+  const c = d.state.conversations.at(-1); assert.equal(c.messages.length, 0);
+  const p = requestViewing(d, { conversationId: c.id });
+  assert.equal(p.status, "PENDING"); assert.equal(p.startsAt, "2026-10-24T03:30:00.000Z");
+  assert.equal(JSON.stringify({ rooms: d.state.rooms, contracts: d.state.contracts, viewings: d.state.viewings }), before);
+  assert.equal(d.state.selectedConversation, c.id); assert.equal(d.state.view, "chats");
+  assert.match(d.node("#app-main").innerHTML, /Rút đề nghị/);
+});
+
+test("proposal retries are idempotent and one pending proposal per tenant and room is enforced", () => {
+  const d = demo(); requestViewing(d); const notifications = d.state.notifications.length;
+  d.submit("viewing-request", proposalValues());
+  d.submit("viewing-request", proposalValues({ notes: "Changed payload" }));
+  d.submit("viewing-request", proposalValues({ clientRequestKey: "00000000-0000-4000-8000-000000000002", time: "12:00" }));
+  assert.equal(d.state.viewingProposals.length, 1); assert.equal(d.state.notifications.length, notifications);
+  assert.equal(d.state.viewingProposals[0].notes, "Gặp tại cổng");
+});
+
+test("only the landlord approves a proposal and approval creates one linked, reusable official schedule", () => {
+  const d = demo(); const p = requestViewing(d); const count = d.state.viewings.length;
+  d.action("accept-viewing-proposal", p.id); assert.equal(p.status, "PENDING");
+  d.state.role = "landlord"; d.action("accept-viewing-proposal", p.id);
+  assert.equal(p.status, "ACCEPTED"); assert.equal(d.state.viewings.length, count + 1);
+  const v = byId(d.state.viewings, p.scheduledViewingId);
+  assert.equal(v.createdBy, "quan"); assert.equal(v.sourceProposalId, p.id); assert.equal(v.tenantId, "lan");
+  v.status = "CANCELLED";
+  d.action("accept-viewing-proposal", p.id); assert.equal(d.state.viewings.length, count + 1);
+  assert.equal(v.status, "CANCELLED");
+  const reloaded = demo(d.state); assert.equal(reloaded.state.viewingProposals[0].scheduledViewingId, v.id);
+});
+
+test("pending proposals do not hold time slots and approval rechecks overlapping official viewings", () => {
+  const d = demo(); const p = requestViewing(d); const count = d.state.viewings.length;
+  d.state.role = "landlord";
+  d.submit("appointment", proposalValues()); assert.equal(d.state.viewings.length, count + 1);
+  d.action("accept-viewing-proposal", p.id);
+  assert.equal(p.status, "PENDING"); assert.equal(d.state.viewings.length, count + 1);
+  d.state.viewings.at(-1).status = "CANCELLED";
+  d.action("accept-viewing-proposal", p.id); assert.equal(p.status, "ACCEPTED");
+});
+
+test("approval rechecks publication, room occupancy, participants and account status atomically", () => {
+  const changes = [
+    (d) => { byId(d.state.rooms, "r1").postStatus = "HIDDEN"; },
+    (d) => { byId(d.state.rooms, "r1").status = "MAINTENANCE"; },
+    (d) => { byId(d.state.conversations, "c1").users = ["quan", "bao"]; },
+    (d) => { d.state.lockedUsers = ["lan"]; },
+    (d) => { byId(d.state.viewingProposals, d.state.viewingProposals[0].id).ownerId = "other-owner"; }
+  ];
+  for (const mutate of changes) {
+    const d = demo(); const p = requestViewing(d); const before = d.state.viewings.length;
+    mutate(d); d.state.role = "landlord"; d.action("accept-viewing-proposal", p.id);
+    assert.equal(p.status, "PENDING"); assert.equal(d.state.viewings.length, before);
+  }
+});
+
+test("rejection requires the owner and a reason; rejected proposals remain visible and immutable", () => {
+  const d = demo(); const p = requestViewing(d);
+  d.submit("reject-viewing-proposal", { proposalId: p.id, reason: "Busy" }); assert.equal(p.status, "PENDING");
+  d.state.role = "landlord";
+  d.submit("reject-viewing-proposal", { proposalId: p.id, reason: " " }); assert.equal(p.status, "PENDING");
+  d.submit("reject-viewing-proposal", { proposalId: p.id, reason: "Chủ trọ bận, vui lòng chọn giờ khác" });
+  assert.equal(p.status, "REJECTED"); assert.equal(p.reviewedBy, "quan");
+  d.action("accept-viewing-proposal", p.id); assert.equal(p.status, "REJECTED");
+  d.state.role = "tenant"; d.state.view = "viewings"; d.api.render();
+  assert.match(d.node("#app-main").innerHTML, /Chủ trọ bận/);
+});
+
+test("withdrawal belongs to the requester, releases the pending constraint and survives reload", () => {
+  const d = demo(); const p = requestViewing(d);
+  d.state.role = "landlord"; d.action("withdraw-viewing-proposal", p.id); assert.equal(p.status, "PENDING");
+  d.state.role = "tenant"; d.action("withdraw-viewing-proposal", p.id);
+  assert.equal(p.status, "WITHDRAWN"); assert.equal(p.withdrawnBy, "lan");
+  d.submit("viewing-request", proposalValues({ clientRequestKey: "00000000-0000-4000-8000-000000000002", time: "12:00" }));
+  assert.equal(d.state.viewingProposals.length, 2);
+  assert.equal(demo(d.state).state.viewingProposals[0].status, "WITHDRAWN");
+});
+
+test("expired proposals cannot be accepted or withdrawn, even before the next render", () => {
+  const d = demo(); const p = requestViewing(d); const count = d.state.viewings.length;
+  d.now("2026-10-24T03:30:00Z"); d.state.role = "landlord"; d.action("accept-viewing-proposal", p.id);
+  assert.equal(p.status, "EXPIRED"); assert.ok(p.expiredAt); assert.equal(d.state.viewings.length, count);
+  d.state.role = "tenant"; d.action("withdraw-viewing-proposal", p.id); assert.equal(p.status, "EXPIRED");
+});
+
+test("owner scheduling needs a real tenant message about the selected room and cannot use a roommate chat", () => {
+  const d = demo(); const c = byId(d.state.conversations, "c1"); const count = d.state.viewings.length;
+  c.messages = [{ senderId: "quan", roomId: "r1", text: "Owner only" }];
+  d.submit("appointment", proposalValues()); assert.equal(d.state.viewings.length, count);
+  c.messages.push({ senderId: "lan", roomId: "r2", text: "Other room" });
+  d.submit("appointment", proposalValues()); assert.equal(d.state.viewings.length, count);
+  c.messages.push({ senderId: "lan", roomId: "r1", text: "Hẹn xem phòng này nhé" });
+  d.submit("appointment", proposalValues()); assert.equal(d.state.viewings.length, count + 1);
+  c.type = "ROOMMATE";
+  d.submit("appointment", proposalValues({ time: "13:00" })); assert.equal(d.state.viewings.length, count + 1);
+});
+
+test("proposals never leak into roommate chats or permit rental contracts before viewing", () => {
+  const d = demo(); const p = requestViewing(d); const contracts = d.state.contracts.length;
+  d.state.role = "landlord"; d.action("open-contract", p.id);
+  assert.equal(d.node("#app-dialog").open, false); assert.equal(d.state.contracts.length, contracts);
+  d.state.role = "tenant"; d.action("accept-roommate", "rm1"); d.api.render();
+  assert.doesNotMatch(d.node("#app-main").innerHTML, new RegExp(`data-proposal-id="${p.id}"`));
+  assert.doesNotMatch(d.node("#app-main").innerHTML, /data-action="open-viewing-request"/);
+});

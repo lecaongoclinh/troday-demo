@@ -217,8 +217,37 @@ async function main() {
     assert.equal(await evaluate(`Array.from(document.querySelector('[name="roomId"]').options).every(o => ['r1','r2'].includes(o.value)) && document.documentElement.scrollWidth <= window.innerWidth`), true);
     await evaluate(`document.querySelector('form[data-form="listing"]').requestSubmit()`);
     assert.equal(await evaluate(`!document.querySelector('#app-dialog').open && __troday.getState().rooms.find(r => r.id === 'r2').postStatus === 'PENDING_REVIEW' && __troday.getState().rooms.filter(r => r.houseId === 'h1').length === 5`), true);
+    // Tenant requests and owner-created appointments coexist, using actual mobile forms.
+    await evaluate(`__troday.reset(); __troday.action('open-viewing-request', 'r1')`);
+    assert.equal(await evaluate(`document.querySelector('form[data-form="viewing-request"]').checkValidity() && document.querySelector('[name="time"]').value === '10:30'`), true);
+    await evaluate(`document.querySelector('[name="notes"]').value = 'Đề nghị gặp ở cổng'; document.querySelector('form[data-form="viewing-request"]').requestSubmit()`);
+    const proposalId = await evaluate(`__troday.getState().viewingProposals.at(-1).id`);
+    const proposalSelector = `[data-proposal-id="${proposalId}"]`;
+    assert.equal(await evaluate(`__troday.getState().viewings.length === 4 && __troday.getState().viewingProposals.at(-1).status === 'PENDING' && __troday.getState().view === 'chats'`), true);
+    assert.equal(await evaluate(`Boolean(document.querySelector(${JSON.stringify(proposalSelector)}).querySelector('[data-action="withdraw-viewing-proposal"]')) && document.documentElement.scrollWidth <= window.innerWidth`), true);
+    await evaluate(`__troday.action('switch-role', 'landlord'); __troday.action('navigate', 'viewings')`);
+    assert.equal(await evaluate(`Boolean(document.querySelector(${JSON.stringify(proposalSelector)}).querySelector('[data-action="accept-viewing-proposal"]'))`), true);
+    await evaluate(`document.querySelector(${JSON.stringify(proposalSelector)}).querySelector('[data-action="accept-viewing-proposal"]').click()`);
+    const approvedViewing = await evaluate(`__troday.getState().viewingProposals.at(-1).scheduledViewingId`);
+    assert.equal(await evaluate(`__troday.getState().viewings.length === 5 && __troday.getState().viewings.at(-1).sourceProposalId === ${JSON.stringify(proposalId)}`), true);
+    await evaluate(`__troday.action('switch-role', 'tenant'); __troday.action('navigate', 'chats'); __troday.action('select-chat', 'c1')`);
+    assert.equal(await evaluate(`document.querySelector(${JSON.stringify(proposalSelector)}).textContent.includes('Đã chấp nhận') && document.querySelector('[data-viewing-id="${approvedViewing}"]').textContent.includes('10:30–11:30')`), true);
+    assert.equal(await evaluate(`document.documentElement.scrollWidth <= window.innerWidth && document.querySelector('.chat-composer').getBoundingClientRect().bottom <= window.innerHeight`), true);
+
+    await evaluate(`document.querySelector('[data-action="open-viewing-request"]').click(); document.querySelector('[name="roomId"]').value = 'r2'; document.querySelector('[name="time"]').value = '13:00'; document.querySelector('form[data-form="viewing-request"]').requestSubmit(); __troday.action('switch-role', 'landlord'); __troday.action('navigate', 'viewings')`);
+    const rejectedProposal = await evaluate(`__troday.getState().viewingProposals.at(-1).id`);
+    await evaluate(`document.querySelector('[data-action="reject-viewing-proposal"][data-id="${rejectedProposal}"]').click(); document.querySelector('[name="reason"]').value = 'Vui lòng chọn buổi chiều'; document.querySelector('form[data-form="reject-viewing-proposal"]').requestSubmit()`);
+    assert.equal(await evaluate(`__troday.getState().viewingProposals.at(-1).status === 'REJECTED' && __troday.getState().viewings.length === 5`), true);
+    await evaluate(`__troday.action('switch-role', 'tenant'); __troday.action('open-viewing-request', 'r2'); document.querySelector('[name="time"]').value = '14:00'; document.querySelector('form[data-form="viewing-request"]').requestSubmit()`);
+    const withdrawnProposal = await evaluate(`__troday.getState().viewingProposals.at(-1).id`);
+    await evaluate(`document.querySelector('[data-action="withdraw-viewing-proposal"][data-id="${withdrawnProposal}"]').click()`);
+    assert.equal(await evaluate(`__troday.getState().viewingProposals.at(-1).status === 'WITHDRAWN' && __troday.getState().viewings.length === 5`), true);
+
+    // The direct owner path still creates a confirmed schedule after exchanging messages.
+    await evaluate(`__troday.action('switch-role', 'landlord'); __troday.action('navigate', 'chats'); __troday.action('select-chat', 'c1'); document.querySelector('[data-action="open-appointment"]').click(); document.querySelector('[name="roomId"]').value = 'r2'; document.querySelector('[name="time"]').value = '15:00'; document.querySelector('form[data-form="appointment"]').requestSubmit()`);
+    assert.equal(await evaluate(`__troday.getState().viewings.length === 6 && __troday.getState().viewings.at(-1).createdBy === 'quan' && __troday.getState().viewings.at(-1).sourceProposalId === null && __troday.getState().viewingProposals.length === 3`), true);
     assert.deepEqual(errors, []);
-    console.log("Browser smoke passed: rental workflows, chat and post sharing, existing-room listing selection, listing edits and resubmission, bundled images, persistence and mobile layout; no runtime exceptions.");
+    console.log("Browser smoke passed: rental workflows, post sharing, existing-room listings, tenant viewing request/accept/reject/withdraw, direct owner scheduling, persistence and mobile layout; no runtime exceptions.");
     await call("Browser.close");
   } finally {
     socket?.close(); chrome?.kill();
