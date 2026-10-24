@@ -701,8 +701,25 @@ test("room details enforce access and show an empty related list for a new priva
   d.state.role="landlord"; byId(d.state.posts,"p-r4").status="HIDDEN"; d.action("room-detail","r4"); assert.equal(d.state.selectedRoom,"empty-room");
 });
 
+test("room detail renders one tab at a time and retains the selected tab in saved demos", () => {
+  const d = demo(); delete d.state.roomDetailTab; d.action("room-detail", "r3");
+  assert.match(d.node("#app-main").innerHTML, /data-related-post-id="p-r3"/);
+  assert.equal(roomDetailSection(d, "residents"), ""); assert.equal(roomDetailSection(d, "services"), "");
+  d.action("room-detail-tab", "residents");
+  assert.match(roomDetailSection(d, "residents"), /Đỗ Bích Ngọc/);
+  assert.equal(roomDetailSection(d, "services"), ""); assert.doesNotMatch(d.node("#app-main").innerHTML, /data-related-post-id/);
+  d.action("room-detail-tab", "services");
+  assert.match(roomDetailSection(d, "services"), /Gửi xe/); assert.equal(roomDetailSection(d, "residents"), "");
+  d.action("room-detail-tab", "invalid"); assert.equal(d.state.roomDetailTab, "services");
+  const reloaded = demo(d.state); reloaded.action("room-detail", "r3");
+  assert.match(roomDetailSection(reloaded, "services"), /Gửi xe/);
+  assert.equal(roomDetailSection(reloaded, "residents"), "");
+  reloaded.action("room-detail-tab", "posts"); reloaded.action("room-post-detail", "p-r3"); reloaded.action("room-detail", "r3");
+  assert.match(reloaded.node("#app-main").innerHTML, /data-related-post-id="p-r3"/);
+});
+
 test("room detail lists actual residents and updates the representative after a handover", () => {
-  const d = demo(); d.action("room-detail", "r3");
+  const d = demo(); d.action("room-detail", "r3"); d.action("room-detail-tab", "residents");
   const html = roomDetailSection(d, "residents");
   assert.match(html, /Người đang ở · 2\/3/);
   assert.match(html, /Phạm Thu Mai[\s\S]*Đại diện hợp đồng/); assert.match(html, /Đỗ Bích Ngọc/);
@@ -715,7 +732,7 @@ test("room detail lists actual residents and updates the representative after a 
 });
 
 test("resident identities in room detail are restricted to its owner and administrators", () => {
-  const d = demo(); d.state.role = "tenant"; d.action("room-detail", "r3");
+  const d = demo(); d.state.role = "tenant"; d.action("room-detail", "r3"); d.action("room-detail-tab", "residents");
   assert.match(roomDetailSection(d, "residents"), /Phòng hiện có 2 người đang ở/);
   assert.doesNotMatch(d.node("#app-main").innerHTML, /Phạm Thu Mai|Đỗ Bích Ngọc|data-room-resident-id|001202|001204/);
   d.state.role = "admin"; d.api.render(); assert.match(roomDetailSection(d, "residents"), /Phạm Thu Mai/);
@@ -728,7 +745,7 @@ test("resident identities in room detail are restricted to its owner and adminis
 test("room detail keeps active stays on closed contracts and excludes planned, left and cancelled stays", () => {
   const d = demo(); k2(d).status = "TERMINATED";
   for (const status of ["PLANNED", "LEFT", "CANCELLED"]) k2(d).members.push({ id: status, name: `Excluded ${status}`, status });
-  d.action("room-detail", "r3");
+  d.action("room-detail", "r3"); d.action("room-detail-tab", "residents");
   assert.match(roomDetailSection(d, "residents"), /Người đang ở · 2\/3/);
   assert.match(roomDetailSection(d, "residents"), /Đỗ Bích Ngọc/);
   assert.match(roomDetailSection(d, "residents"), /Cần đối soát trạng thái hợp đồng/);
@@ -738,7 +755,7 @@ test("room detail keeps active stays on closed contracts and excludes planned, l
 });
 
 test("room detail shows only applied active services with effective room prices, including zero", () => {
-  const d = demo(); d.action("room-detail", "r2");
+  const d = demo(); d.action("room-detail", "r2"); d.action("room-detail-tab", "services");
   assert.match(roomDetailSection(d, "services"), /90\.000 đ\/phòng/);
   assert.match(roomDetailSection(d, "services"), /Giá riêng của phòng/);
   assert.match(roomDetailSection(d, "services"), /3\.800 đ\/kWh/);

@@ -40,7 +40,7 @@ const NAV = {
 };
 
 const seed = {
-  role: "tenant", view: "discover", selectedRoom: null, selectedConversation: "c1",
+  role: "tenant", view: "discover", selectedRoom: null, roomDetailTab: "posts", selectedConversation: "c1",
   chatContext: "r2", chatMobileOpen: false, chatDrafts: {}, chatContexts: {}, houseSelection: "h1", roomSelection: "r1",
   tab: "all", filters: { query: "", area: "all", maxPrice: "", minArea: "", amenity: "", distance: "" },
   favorites: ["r2"],
@@ -480,6 +480,7 @@ function ownsListingRoom(r) { return state.role === "landlord" && r && house(r.h
 const MAX_PENDING_POSTS = 3;
 function pendingPostCount(roomId, exceptPostId = "") { return state.posts.filter((p) => p.roomId === roomId && p.status === "PENDING_REVIEW" && p.id !== exceptPostId).length; }
 function canReadRoom(r) { return !!r && (ownsListingRoom(r) || state.role === "admin" || !!publishedPost(r.id)); }
+const ROOM_DETAIL_TABS = [["posts", "Bài đăng"], ["residents", "Người ở"], ["services", "Dịch vụ"]];
 function listingQuotaMessage(r, p = null) {
   const count = pendingPostCount(r.id), blocked = p?.status !== "PENDING_REVIEW" && count >= MAX_PENDING_POSTS;
   return `${roomName(r.id)}: ${count}/${MAX_PENDING_POSTS} bài chờ duyệt. ${blocked ? "Đã đủ 3 bài chờ; cần duyệt hoặc từ chối một bài trước khi gửi thêm." : p?.status === "PENDING_REVIEW" ? "Sửa bài đang chờ không chiếm thêm lượt." : "Có thể gửi bài mới."} Tổng số bài đăng của phòng không giới hạn.`;
@@ -502,19 +503,24 @@ function renderRoomServices(r) {
   const heading = `<div class="section-bar"><h2>Dịch vụ của phòng · ${services.length}</h2></div>`;
   return `<section data-room-services>${heading}${services.length ? `<div class="table-surface table-scroll"><table><thead><tr><th>Dịch vụ</th><th>Đơn giá áp dụng</th><th>Cách tính</th></tr></thead><tbody>${services.map(({ assignment, service }) => `<tr data-room-service-id="${esc(service.id)}"><td class="cell-title">${esc(service.name)}</td><td>${money(assignment.override ?? service.price)}/${esc(service.unit)}<span class="cell-sub">${assignment.override != null ? "Giá riêng của phòng" : "Giá theo nhà"}</span></td><td>${esc(({ METERED: "Theo đồng hồ", PER_PERSON: "Theo người", PER_ROOM: "Theo phòng" })[service.method] || service.method)}</td></tr>`).join("")}</tbody></table></div>` : empty("Chưa có dịch vụ áp dụng", "Phòng chưa được bật dịch vụ nào đang hoạt động.")}</section>`;
 }
+function renderRoomPosts(r, internal) {
+  const own = ownsListingRoom(r), related = state.posts.filter((p) => p.roomId === r.id && canReadPost(p));
+  return `<div class="section-bar"><h2>Bài đăng liên quan · ${related.length}</h2>${own ? button("Tạo bài cho phòng này", "create-room-post", r.id, "primary", pendingPostCount(r.id) >= MAX_PENDING_POSTS ? 'disabled title="Đã đủ 3 bài chờ duyệt"' : "") : ""}</div>` +
+    (internal ? `<p class="muted tiny" data-room-quota>${esc(listingQuotaMessage(r))}</p>` : "") +
+    (related.length ? `<div class="stack">${related.map((p) => `<article class="list-row" data-related-post-id="${esc(p.id)}"><div><strong>${esc(p.title)}</strong><small>${esc(p.id)} · ${chip(...POST_LABEL[p.status])}</small>${internal && p.rejectionReason ? `<small>${esc(p.rejectionReason)}</small>` : ""}</div><div class="table-actions">${button("Xem bài", "room-post-detail", p.id, "small")}${own ? button("Sửa bài", "edit-listing", p.id, "small") : ""}</div></article>`).join("")}</div>` : empty("Chưa có bài đăng liên quan", own ? "Tạo bài mới cho phòng này." : "Chưa có bài đăng công khai."));
+}
 function renderRoomDetail() {
   const r = room(state.selectedRoom);
   if (!canReadRoom(r)) return head("Chi tiết phòng") + empty("Không thể xem phòng", "Phòng không tồn tại hoặc bạn không có quyền xem.");
   const own = ownsListingRoom(r), internal = own || state.role === "admin", h = house(r.houseId);
-  const related = state.posts.filter((p) => p.roomId === r.id && canReadPost(p));
+  const tab = ROOM_DETAIL_TABS.some(([id]) => id === state.roomDetailTab) ? state.roomDetailTab : "posts";
+  const content = tab === "residents" ? renderRoomResidents(r, internal) : tab === "services" ? renderRoomServices(r) : renderRoomPosts(r, internal);
   const status = { AVAILABLE: ["Còn phòng", "green"], RESERVED: ["Đã giữ chỗ", "yellow"], OCCUPIED: ["Đang ở", "gray"], MAINTENANCE: ["Bảo trì", "red"] };
   const backView = state.role === "landlord" ? "properties" : state.role === "admin" ? "moderation" : "discover";
   return head(`Phòng ${esc(r.code)}`, `${esc(h.name)} · ${esc(h.address)}`, button("Quay lại danh sách", "navigate", backView) + (own ? button("Sửa phòng", "edit-room", r.id) : "")) +
     `<div class="split-grid"><section><img class="detail-image" src="${esc(r.photo)}" alt="Phòng ${esc(r.code)}"><div class="detail-info"><div><span class="muted tiny">Diện tích</span><strong>${r.area} m²</strong></div><div><span class="muted tiny">Sức chứa</span><strong>${r.capacity} người</strong></div><div><span class="muted tiny">Tình trạng</span><strong>${chip(...(status[r.status] || [r.status, "gray"]))}</strong></div></div></section><section class="flat-surface"><h2>Thông tin phòng</h2><p>Giá thuê: <strong>${money(r.price)}/tháng</strong></p><p>Tiền cọc: ${money(r.deposit)}</p><p>Chủ trọ: ${esc(person(h.ownerId).name)}</p><div class="amenity-list">${r.amenities.map((x) => `<span>${esc(x)}</span>`).join("")}</div><p class="muted tiny">Các bài đăng dùng chung tình trạng phòng, sức chứa, lịch xem và hợp đồng.</p></section></div>` +
-    renderRoomResidents(r, internal) + renderRoomServices(r) +
-    `<div class="section-bar"><h2>Bài đăng liên quan · ${related.length}</h2>${own ? button("Tạo bài cho phòng này", "create-room-post", r.id, "primary", pendingPostCount(r.id) >= MAX_PENDING_POSTS ? 'disabled title="Đã đủ 3 bài chờ duyệt"' : "") : ""}</div>` +
-    (internal ? `<p class="muted tiny" data-room-quota>${esc(listingQuotaMessage(r))}</p>` : "") +
-    (related.length ? `<div class="stack">${related.map((p) => `<article class="list-row" data-related-post-id="${esc(p.id)}"><div><strong>${esc(p.title)}</strong><small>${esc(p.id)} · ${chip(...POST_LABEL[p.status])}</small>${internal && p.rejectionReason ? `<small>${esc(p.rejectionReason)}</small>` : ""}</div><div class="table-actions">${button("Xem bài", "room-post-detail", p.id, "small")}${own ? button("Sửa bài", "edit-listing", p.id, "small") : ""}</div></article>`).join("")}</div>` : empty("Chưa có bài đăng liên quan", own ? "Tạo bài mới cho phòng này." : "Chưa có bài đăng công khai."));
+    `<div class="segmented room-detail-tabs" role="tablist" aria-label="Thông tin chi tiết phòng">${ROOM_DETAIL_TABS.map(([id, label]) => button(label, "room-detail-tab", id, id === tab ? "active" : "", `id="room-detail-tab-${id}" role="tab" aria-selected="${id === tab}" aria-controls="room-detail-panel-${id}" tabindex="${id === tab ? 0 : -1}"`)).join("")}</div>` +
+    ROOM_DETAIL_TABS.map(([id]) => `<div id="room-detail-panel-${id}" role="tabpanel" aria-labelledby="room-detail-tab-${id}" ${id === tab ? 'tabindex="0"' : "hidden"}>${id === tab ? content : ""}</div>`).join("");
 }
 function renderListings() {
   const own = state.posts.filter(ownsPost);
@@ -983,6 +989,7 @@ function handleAction(action, id) {
     case "room-post-detail":
     case "post-detail": if (!canReadPost(post(id))) { flash("Tin phòng không còn hiển thị."); return; } state.postReturnRoom = action === "room-post-detail" ? post(id).roomId : null; state.sharedPostReturn = null; state.selectedPost = id; state.selectedRoom = post(id).roomId; state.view = "detail"; save(); render(); window.scrollTo(0, 0); return;
     case "room-detail": if (!canReadRoom(room(id))) { flash("Phòng không tồn tại hoặc bạn không có quyền xem."); return; } state.sharedPostReturn = null; state.selectedPost = null; state.selectedRoom = id; state.view = "room-detail"; save(); render(); window.scrollTo(0, 0); return;
+    case "room-detail-tab": if (state.view !== "room-detail" || !canReadRoom(room(state.selectedRoom)) || !ROOM_DETAIL_TABS.some(([tab]) => tab === id)) return; state.roomDetailTab = id; save(); render(); $(`#room-detail-tab-${id}`)?.focus({ preventScroll: true }); return;
     case "share-post": openSharePost(id); return;
     case "shared-post-detail": {
       const c = visibleConversations().find((x) => x.type === "ROOMMATE" && x.messages.some((m) => m.id === id && m.messageType === "POST_SHARE"));
@@ -1581,6 +1588,13 @@ document.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  const tab = event.target.closest('[data-action="room-detail-tab"]');
+  if (tab && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    const index = ROOM_DETAIL_TABS.findIndex(([id]) => id === tab.dataset.id);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? ROOM_DETAIL_TABS.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + ROOM_DETAIL_TABS.length) % ROOM_DETAIL_TABS.length;
+    handleAction("room-detail-tab", ROOM_DETAIL_TABS[next][0]); return;
+  }
   const input = event.target;
   if (!(input instanceof HTMLTextAreaElement) || input.form?.dataset.form !== "chat-message") return;
   if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || event.isComposing || event.keyCode === 229) return;

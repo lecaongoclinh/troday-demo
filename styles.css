@@ -125,6 +125,9 @@ td.actions-cell { text-align: right; }
 .segmented { display: inline-flex; background: #eaf0ef; border-radius: 5px; padding: 3px; flex-wrap: wrap; gap: 2px; }
 .segmented button { border: 0; background: transparent; border-radius: 3px; color: #607477; padding: 7px 10px; font-size: 11px; font-weight: 750; }
 .segmented button.active { background: #fff; color: var(--teal); box-shadow: 0 1px 4px #203a3a17; }
+.room-detail-tabs { display: flex; width: fit-content; max-width: 100%; margin-top: 24px; }
+.room-detail-tabs button { min-height: 40px; padding: 9px 16px; font-size: 12px; }
+.room-detail-tabs button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 .property-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .property-card { background: #fff; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
 .property-media { width: 100%; aspect-ratio: 1.78; position: relative; background: #d8e4e2; overflow: hidden; }
