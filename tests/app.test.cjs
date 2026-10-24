@@ -523,3 +523,67 @@ test("sharing from a room detail can select a different accepted roommate", () =
   assert.equal(byId(d.state.conversations, maiChat).messages.length, 0);
   assert.equal(byId(d.state.conversations, d.state.selectedConversation).roommateRequestId, "rm1");
 });
+
+test("listing creation explains that all five existing rooms already have live posts", () => {
+  const d = demo(); const before = JSON.stringify(d.state.rooms);
+  d.action("open-listing", "");
+  const html = d.node("#dialog-body").innerHTML;
+  assert.match(html, /5 phòng/); assert.match(html, /Các phòng đã có tin đăng/);
+  assert.equal(html.split('data-action="edit-listing"').length - 1, 5);
+  assert.doesNotMatch(html, /Hãy thêm một phòng mới|Chưa có phòng để đăng tin/);
+  assert.equal(JSON.stringify(d.state.rooms), before);
+});
+
+test("a landlord with no rooms gets an accurate empty state", () => {
+  const d = demo(); d.state.rooms = d.state.rooms.filter((r) => r.houseId !== "h1");
+  d.action("open-listing", "");
+  assert.match(d.node("#dialog-body").innerHTML, /Chưa có phòng để đăng tin/);
+  assert.doesNotMatch(d.node("#dialog-body").innerHTML, /đều đã có tin/);
+});
+
+test("existing unlisted, draft, rejected and hidden rooms can submit without creating another room", () => {
+  for (const status of [undefined, "DRAFT", "REJECTED", "HIDDEN"]) {
+    const d = demo(); const r = byId(d.state.rooms, "r1"); r.postStatus = status;
+    const count = d.state.rooms.length; d.action("open-listing", "");
+    assert.match(d.node("#dialog-body").innerHTML, /data-form="listing"/);
+    assert.match(d.node("#dialog-body").innerHTML, /option value="r1"/);
+    assert.doesNotMatch(d.node("#dialog-body").innerHTML, /option value="r2"|option value="r4"/);
+    d.submit("listing", { listingMode: "CREATE", roomId: "r1", originalPostStatus: status || "NONE", title: "Tin của phòng đang có", description: "Thông tin phòng hiện có", photo: "assets/r1.webp" });
+    assert.equal(r.postStatus, "PENDING_REVIEW"); assert.equal(r.title, "Tin của phòng đang có");
+    assert.equal(d.state.rooms.length, count); assert.equal(d.state.view, "listings");
+  }
+});
+
+test("editing an approved listing keeps the room fixed and accepts its bundled photo", () => {
+  const d = demo(); const r = byId(d.state.rooms, "r1"); const count = d.state.rooms.length;
+  d.action("edit-listing", "r1");
+  assert.match(d.node("#dialog-body").innerHTML, /name="editingRoomId" value="r1"/);
+  assert.doesNotMatch(d.node("#dialog-body").innerHTML, /<select name="roomId"|type="url"/);
+  d.submit("listing", { listingMode: "EDIT", editingRoomId: "r1", roomId: "r1", originalPostStatus: "APPROVED", title: "Thông tin được cập nhật", description: r.description, photo: r.photo });
+  assert.equal(r.postStatus, "PENDING_REVIEW"); assert.equal(r.title, "Thông tin được cập nhật");
+  assert.equal(d.state.rooms.length, count);
+});
+
+test("listing submit rejects duplicate live posts, foreign rooms, changed targets and stale status", () => {
+  for (const kind of ["duplicate", "foreign", "tenant", "changed-target", "stale"]) {
+    const d = demo(); const r = byId(d.state.rooms, kind === "foreign" ? "r4" : "r1");
+    const values = { listingMode: "EDIT", editingRoomId: r.id, roomId: r.id, originalPostStatus: "APPROVED", title: "Must not overwrite", description: "Content", photo: "https://example.com/photo.jpg" };
+    if (kind === "duplicate") values.listingMode = "CREATE";
+    if (kind === "tenant") d.state.role = "tenant";
+    if (kind === "changed-target") values.editingRoomId = "r2";
+    if (kind === "stale") values.originalPostStatus = "DRAFT";
+    const before = JSON.stringify(d.state.rooms); d.submit("listing", values);
+    assert.equal(JSON.stringify(d.state.rooms), before, kind);
+  }
+});
+
+test("listing images accept HTTP links but reject unsupported image URLs before writing", () => {
+  const d = demo(); const r = byId(d.state.rooms, "r1");
+  const values = { listingMode: "EDIT", editingRoomId: "r1", roomId: "r1", originalPostStatus: "APPROVED", title: "Updated title", description: "Updated content" };
+  for (const photo of ["javascript:alert(1)", "file:///private.jpg", "not-an-image-link", ""]) {
+    const before = JSON.stringify(r); d.submit("listing", { ...values, photo });
+    assert.equal(JSON.stringify(r), before);
+  }
+  d.submit("listing", { ...values, photo: "https://example.com/room.jpg" });
+  assert.equal(r.photo, "https://example.com/room.jpg"); assert.equal(r.postStatus, "PENDING_REVIEW");
+});

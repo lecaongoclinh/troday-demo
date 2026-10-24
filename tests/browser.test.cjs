@@ -199,8 +199,26 @@ async function main() {
     assert.equal(await evaluate(`document.querySelector('#app-main').textContent.includes('Lời mời đã gửi') && document.documentElement.scrollWidth <= window.innerWidth`), true);
     await evaluate(`document.querySelector('[data-action="edit-roommate-profile"]').click()`);
     assert.equal(await evaluate(`Boolean(document.querySelector('form[data-form="roommate-profile"]'))`), true);
+
+    // Existing rooms must not be mistaken for a missing-room prerequisite.
+    await evaluate(`document.querySelector('#dialog-body [data-action="close-dialog"]').click(); __troday.reset(); __troday.action('switch-role', 'landlord'); __troday.action('navigate', 'listings'); document.querySelector('[data-action="open-listing"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#app-dialog').open && document.querySelector('#dialog-body').textContent.includes('5 phòng') && document.querySelectorAll('#dialog-body [data-action="edit-listing"]').length === 5`), true);
+    assert.equal(await evaluate(`document.querySelector('#dialog-body').textContent.includes('Hãy thêm một phòng mới')`), false);
+    await evaluate(`document.querySelector('#dialog-body [data-action="edit-listing"][data-id="r1"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('[name="roomId"]').value === 'r1' && document.querySelector('form[data-form="listing"]').checkValidity()`), true);
+    await evaluate(`document.querySelector('[name="title"]').value = 'Tin cập nhật cho P101'; document.querySelector('form[data-form="listing"]').requestSubmit()`);
+    assert.equal(await evaluate(`!document.querySelector('#app-dialog').open && __troday.getState().rooms.find(r => r.id === 'r1').postStatus === 'PENDING_REVIEW' && __troday.getState().rooms.filter(r => r.houseId === 'h1').length === 5`), true);
+
+    // Rejected/hidden rooms can be resubmitted; choosing a room loads its own fields.
+    await evaluate(`__troday.getState().rooms.find(r => r.id === 'r1').postStatus = 'REJECTED'; __troday.getState().rooms.find(r => r.id === 'r2').postStatus = 'HIDDEN'; __troday.action('navigate', 'listings')`);
+    assert.equal(await evaluate(`document.querySelector('#app-main').textContent.includes('Bị từ chối') && document.querySelector('#app-main').textContent.includes('Đã ẩn')`), true);
+    await evaluate(`document.querySelector('[data-action="open-listing"]').click(); document.querySelector('[name="roomId"]').value = 'r2'; document.querySelector('[name="roomId"]').dispatchEvent(new Event('change', { bubbles: true }))`);
+    assert.equal(await evaluate(`document.querySelector('[name="title"]').value === __troday.getState().rooms.find(r => r.id === 'r2').title && document.querySelector('[name="photo"]').value === 'assets/r2.webp' && document.querySelector('[name="originalPostStatus"]').value === 'HIDDEN'`), true);
+    assert.equal(await evaluate(`Array.from(document.querySelector('[name="roomId"]').options).every(o => ['r1','r2'].includes(o.value)) && document.documentElement.scrollWidth <= window.innerWidth`), true);
+    await evaluate(`document.querySelector('form[data-form="listing"]').requestSubmit()`);
+    assert.equal(await evaluate(`!document.querySelector('#app-dialog').open && __troday.getState().rooms.find(r => r.id === 'r2').postStatus === 'PENDING_REVIEW' && __troday.getState().rooms.filter(r => r.houseId === 'h1').length === 5`), true);
     assert.deepEqual(errors, []);
-    console.log("Browser smoke passed: rental workflows, live viewing cards, roommate profiles, relationship tags, post sharing and return navigation, hidden listings, persistence and mobile layout; no runtime exceptions.");
+    console.log("Browser smoke passed: rental workflows, chat and post sharing, existing-room listing selection, listing edits and resubmission, bundled images, persistence and mobile layout; no runtime exceptions.");
     await call("Browser.close");
   } finally {
     socket?.close(); chrome?.kill();

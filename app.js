@@ -443,10 +443,13 @@ function renderServices() {
     `<div class="filter-bar"><label class="field" style="max-width:330px">Nhà trọ<select data-change="house">${ownHouses.map((h) => `<option value="${h.id}" ${selected.id === h.id ? "selected" : ""}>${esc(h.name)}</option>`).join("")}</select></label></div><div class="service-grid"><section><div class="section-bar" style="margin-top:0"><h2>Dịch vụ của ${esc(selected.name)}</h2></div><div class="table-surface table-scroll"><table><thead><tr><th>Dịch vụ</th><th>Giá mặc định</th><th>Cách tính</th><th>Trạng thái</th><th></th></tr></thead><tbody>${services.map((s) => `<tr><td class="cell-title">${esc(s.name)}</td><td>${money(s.price)}/${esc(s.unit)}</td><td>${s.method === "METERED" ? "Theo đồng hồ" : s.method === "PER_PERSON" ? "Theo người" : "Theo phòng"}</td><td>${chip(s.active ? "Đang dùng" : "Ngừng dùng", s.active ? "green" : "gray")}</td><td class="actions-cell"><div class="table-actions">${button("Sửa", "edit-service", s.id, "small")}${button(s.active ? "Ngừng" : "Bật", "toggle-service", s.id, "small")}</div></td></tr>`).join("")}</tbody></table></div></section><section><div class="section-bar" style="margin-top:0"><h2>Áp dụng cho phòng</h2></div><label class="field" style="margin-bottom:9px">Phòng<select data-change="room">${rooms.map((r) => `<option value="${r.id}" ${selectedRoom.id === r.id ? "selected" : ""}>${esc(r.code)} · ${esc(r.title)}</option>`).join("")}</select></label><div class="flat-surface" style="padding:5px 14px">${services.map((s) => { const applied = state.roomServices.find((x) => x.roomId === selectedRoom.id && x.serviceId === s.id); return `<div class="checkbox-row"><input type="checkbox" id="apply-${s.id}" data-change="room-service" data-id="${s.id}" ${applied?.active ? "checked" : ""} ${!s.active ? "disabled" : ""}><div><label for="apply-${s.id}"><strong>${esc(s.name)}</strong></label><small>${applied?.override != null ? `Giá riêng ${money(applied.override)}` : `Theo nhà ${money(s.price)}`} / ${esc(s.unit)}</small></div>${applied?.active ? button("Giá riêng", "override-service", s.id, "small") : ""}</div>`; }).join("")}</div></section></div>`;
 }
 
+const POST_LABEL = { NONE: ["Chưa đăng tin", "gray"], DRAFT: ["Bản nháp", "gray"], PENDING_REVIEW: ["Chờ duyệt", "yellow"], APPROVED: ["Đã duyệt", "green"], REJECTED: ["Bị từ chối", "red"], HIDDEN: ["Đã ẩn", "gray"] };
+function ownsListingRoom(r) { return state.role === "landlord" && r && house(r.houseId)?.ownerId === userId(); }
+function canSubmitNewListing(r) { return ownsListingRoom(r) && ["NONE", "DRAFT", "REJECTED", "HIDDEN"].includes(r.postStatus || "NONE"); }
 function renderListings() {
   const own = state.rooms.filter((r) => house(r.houseId).ownerId === "quan");
   return head("Tin đăng", "Tình trạng kiểm duyệt tách khỏi tình trạng còn phòng", button(`${icon("plus")} Tạo tin đăng`, "open-listing", "", "primary")) +
-    `<div class="table-surface table-scroll"><table><thead><tr><th>Bài đăng</th><th>Nhà trọ</th><th>Giá / tháng</th><th>Kiểm duyệt</th><th>Phòng</th><th></th></tr></thead><tbody>${own.map((r) => `<tr><td><div class="room-row"><img src="${esc(r.photo)}" alt=""><div><span class="cell-title">${esc(r.title)}</span><span class="cell-sub">${esc(r.code)} · ${r.area} m²</span></div></div></td><td>${esc(house(r.houseId).name)}</td><td>${money(r.price)}</td><td>${chip(r.postStatus === "APPROVED" ? "Đã duyệt" : r.postStatus === "PENDING_REVIEW" ? "Chờ duyệt" : "Bản nháp", r.postStatus === "APPROVED" ? "green" : "yellow")}</td><td>${chip(r.status === "AVAILABLE" ? "Còn phòng" : r.status === "OCCUPIED" ? "Đang ở" : "Đã giữ", r.status === "AVAILABLE" ? "green" : "gray")}</td><td class="actions-cell">${button("Sửa tin", "edit-listing", r.id, "small")}</td></tr>`).join("")}</tbody></table></div>`;
+    `<div class="table-surface table-scroll"><table><thead><tr><th>Bài đăng</th><th>Nhà trọ</th><th>Giá / tháng</th><th>Kiểm duyệt</th><th>Phòng</th><th></th></tr></thead><tbody>${own.map((r) => `<tr><td><div class="room-row"><img src="${esc(r.photo)}" alt=""><div><span class="cell-title">${esc(r.title)}</span><span class="cell-sub">${esc(r.code)} · ${r.area} m²</span></div></div></td><td>${esc(house(r.houseId).name)}</td><td>${money(r.price)}</td><td>${chip(...(POST_LABEL[r.postStatus || "NONE"] || ["Chưa rõ trạng thái", "gray"]))}</td><td>${chip(r.status === "AVAILABLE" ? "Còn phòng" : r.status === "OCCUPIED" ? "Đang ở" : "Đã giữ", r.status === "AVAILABLE" ? "green" : "gray")}</td><td class="actions-cell">${button("Sửa tin", "edit-listing", r.id, "small")}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 function renderResidents() {
@@ -732,10 +735,16 @@ function openRoom(id = "") {
   modal(r ? "Sửa phòng" : "Thêm phòng", `<form data-form="room"><input type="hidden" name="roomId" value="${esc(id)}"><div class="form-grid"><label class="field">Mã phòng<input name="code" value="${esc(r?.code || "")}" required></label><label class="field">Diện tích m²<input type="number" name="area" min="1" step="0.1" value="${r?.area || ""}" required></label><label class="field">Giá thuê<input type="number" name="price" min="0" value="${r?.price || ""}" required></label><label class="field">Tiền cọc<input type="number" name="deposit" min="0" value="${r?.deposit || ""}" required></label><label class="field">Tối đa người<input type="number" name="capacity" min="1" value="${r?.capacity || 2}" required></label><label class="field">Trạng thái<select name="status">${[["AVAILABLE", "Còn phòng"], ["RESERVED", "Đã giữ"], ["OCCUPIED", "Đang ở"], ["MAINTENANCE", "Bảo trì"]].map(([v, label]) => `<option value="${v}" ${r?.status === v ? "selected" : ""}>${label}</option>`).join("")}</select></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Lưu phòng</button></div></form>`);
 }
 function openListing(id = "") {
-  const available = state.rooms.filter((r) => house(r.houseId).ownerId === "quan" && (r.postStatus === "DRAFT" || r.id === id));
-  if (!available.length) { flash("Hãy thêm một phòng mới trước khi tạo tin."); return; }
-  const r = room(id) || available[0];
-  modal(id ? "Sửa tin đăng" : "Tạo tin đăng", `<form data-form="listing"><div class="form-grid"><label class="field full">Phòng<select name="roomId">${available.map((item) => `<option value="${item.id}" ${item.id === r.id ? "selected" : ""}>${esc(roomName(item.id))}</option>`).join("")}</select></label><label class="field full">Tiêu đề<input name="title" value="${esc(r.title)}" required maxlength="200"></label><label class="field full">Nội dung<textarea name="description" required>${esc(r.description)}</textarea></label><label class="field full">Ảnh phòng (URL)<input name="photo" type="url" value="${esc(r.photo)}" required></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Gửi duyệt tin</button></div></form>`);
+  if (state.role !== "landlord") return;
+  const own = state.rooms.filter(ownsListingRoom);
+  if (!own.length) { modal("Chưa có phòng để đăng tin", '<p>Bạn chưa có phòng nào trong nhà trọ của mình. Hãy thêm phòng ở mục Nhà &amp; phòng trước khi đăng tin.</p><div class="form-actions">' + button("Đóng", "close-dialog") + "</div>"); return; }
+  if (id && !ownsListingRoom(room(id))) { flash("Bạn chỉ được sửa tin của phòng thuộc nhà trọ mình quản lý."); return; }
+  const available = id ? [room(id)] : own.filter(canSubmitNewListing);
+  if (!available.length) {
+    modal("Các phòng đã có tin đăng", `<p>${own.length} phòng của bạn đều đã có tin đang chờ duyệt hoặc đã duyệt. Chọn tin hiện có để chỉnh sửa; không cần tạo thêm phòng.</p><div class="stack">${own.map((r) => `<div class="list-row"><div><strong>${esc(roomName(r.id))}</strong><small>${POST_LABEL[r.postStatus]?.[0] || "Đã có tin"}</small></div>${button("Sửa tin hiện có", "edit-listing", r.id, "small")}</div>`).join("")}</div><div class="form-actions">${button("Đóng", "close-dialog")}</div>`); return;
+  }
+  const r = available[0];
+  modal(id ? "Sửa tin đăng" : "Tạo hoặc gửi lại tin đăng", `<form data-form="listing"><input type="hidden" name="listingMode" value="${id ? "EDIT" : "CREATE"}"><input type="hidden" name="editingRoomId" value="${esc(id)}"><input type="hidden" name="originalPostStatus" value="${esc(r.postStatus || "NONE")}"><p class="muted tiny">Mỗi phòng có tối đa một tin đang chờ duyệt hoặc đã duyệt. Phòng đã có tin được chỉnh sửa từ danh sách tin hiện có.</p><div class="form-grid"><label class="field full">Phòng${id ? `<input type="hidden" name="roomId" value="${esc(r.id)}"><input value="${esc(roomName(r.id))}" disabled>` : `<select name="roomId" data-change="listing-room" required>${available.map((item) => `<option value="${esc(item.id)}">${esc(roomName(item.id))} · ${POST_LABEL[item.postStatus || "NONE"]?.[0] || "Chưa đăng tin"}</option>`).join("")}</select>`}</label><label class="field full">Tiêu đề<input name="title" value="${esc(r.title)}" required maxlength="200"></label><label class="field full">Nội dung<textarea name="description" required>${esc(r.description)}</textarea></label><label class="field full">Ảnh phòng<input name="photo" type="text" value="${esc(r.photo)}" placeholder="https://..." required maxlength="2000"><small class="muted tiny">Nhập URL ảnh HTTP/HTTPS hoặc giữ nguyên ảnh mẫu.</small></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Gửi duyệt tin</button></div></form>`);
 }
 
 function openInvoice(id = "") {
@@ -1219,9 +1228,18 @@ function handleForm(form) {
       finish("Đã lưu thông tin phòng."); return;
     }
     case "listing": {
-      const r = room(value("roomId")); if (!r) return;
-      r.title = value("title"); r.description = value("description"); r.photo = value("photo"); r.postStatus = "PENDING_REVIEW";
-      finish("Đã gửi tin đăng chờ quản trị duyệt."); return;
+      const r = room(value("roomId"));
+      if (!ownsListingRoom(r)) { flash("Bạn chỉ được đăng tin cho phòng thuộc nhà trọ mình quản lý."); return; }
+      const mode = value("listingMode");
+      if ((mode !== "CREATE" && mode !== "EDIT") || (mode === "EDIT" && value("editingRoomId") !== r.id)) { flash("Thông tin tin đăng không hợp lệ. Hãy mở lại form."); return; }
+      if (mode === "CREATE" && !canSubmitNewListing(r)) { flash("Phòng này đã có tin đang chờ duyệt hoặc đã duyệt. Hãy sửa tin hiện có."); return; }
+      if (value("originalPostStatus") !== (r.postStatus || "NONE")) { flash("Trạng thái tin đã thay đổi. Hãy mở lại form trước khi gửi."); return; }
+      const photo = value("photo");
+      let validPhoto = /^assets\/r[1-6]\.(png|webp)$/.test(photo);
+      try { validPhoto ||= ["http:", "https:"].includes(new URL(photo).protocol); } catch { /* Relative bundled images are checked above. */ }
+      if (!value("title") || value("title").length > 200 || !value("description") || !validPhoto) { flash("Cần nhập tiêu đề, nội dung và URL ảnh HTTP/HTTPS hợp lệ hoặc giữ ảnh mẫu."); return; }
+      r.title = value("title"); r.description = value("description"); r.photo = photo; r.postStatus = "PENDING_REVIEW";
+      state.view = "listings"; finish("Đã gửi tin đăng chờ quản trị duyệt."); return;
     }
     case "template": {
       state.templates ||= [];
@@ -1333,6 +1351,15 @@ document.addEventListener("keydown", (event) => {
 });
 document.addEventListener("change", (event) => {
   const target = event.target;
+  if (target.dataset.change === "listing-room") {
+    const selected = room(target.value);
+    if (!canSubmitNewListing(selected) || !target.form) return;
+    target.form.elements.title.value = selected.title || "";
+    target.form.elements.description.value = selected.description || "";
+    target.form.elements.photo.value = selected.photo || PHOTO.r6;
+    target.form.elements.originalPostStatus.value = selected.postStatus || "NONE";
+    return;
+  }
   if (target.dataset.change === "chat-context") { selectChatContext(target.value); $("#chat-room-context")?.focus({ preventScroll: true }); return; }
   if (target.dataset.change === "house") { state.houseSelection = target.value; state.roomSelection = state.rooms.find((r) => r.houseId === target.value)?.id || ""; save(); render(); }
   if (target.dataset.change === "room") { state.roomSelection = target.value; save(); render(); }
