@@ -301,8 +301,20 @@ async function main() {
     assert.equal(await evaluate(`document.querySelectorAll('[data-related-post-id]').length===1 && !document.querySelector('[data-room-quota]') && !document.querySelector('[data-action="create-room-post"]') && !document.querySelector('#app-main').textContent.includes('Bài chờ P101')`),true);
     await evaluate(`__troday.action('switch-role','admin'); __troday.action('approve-listing','${pendingPost}'); __troday.action('switch-role','landlord'); __troday.action('room-detail','r1')`);
     assert.equal(await evaluate(`document.querySelector('[data-room-quota]').textContent.includes('2/3') && !document.querySelector('[data-action="create-room-post"]').disabled`),true);
+    // Room details use live stays and services; public viewers see no resident identities.
+    await evaluate(`__troday.reset(); __troday.action('switch-role','landlord'); __troday.action('navigate','properties'); document.querySelector('[data-action="room-detail"][data-id="r3"]').click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('[data-room-resident-id]').length===2 && document.querySelector('[data-room-residents]').textContent.includes('Phạm Thu Mai') && document.querySelector('[data-room-residents]').textContent.includes('Đỗ Bích Ngọc') && document.querySelector('[data-room-resident-id="o2"]').textContent.includes('Đại diện hợp đồng')`),true);
+    assert.equal(await evaluate(`document.querySelectorAll('[data-room-service-id]').length===4 && document.querySelector('[data-room-services]').textContent.includes('Theo đồng hồ') && document.querySelector('[data-room-services]').textContent.includes('Theo người') && document.querySelector('[data-room-services]').textContent.includes('Theo phòng') && document.documentElement.scrollWidth<=window.innerWidth`),true);
+    await evaluate(`__troday.action('navigate','residents'); document.querySelector('[data-action="move-out"][data-id="k2:o2"]').click(); document.querySelector('[name="consent"]').checked=true; document.querySelector('form[data-form="representative-handover"]').requestSubmit(); __troday.action('room-detail','r3')`);
+    assert.equal(await evaluate(`document.querySelectorAll('[data-room-resident-id]').length===1 && document.querySelector('[data-room-resident-id="o3"]').textContent.includes('Đại diện hợp đồng') && !document.querySelector('[data-room-residents]').textContent.includes('Phạm Thu Mai')`),true);
+    await evaluate(`__troday.action('switch-role','tenant'); __troday.action('room-detail','r3')`);
+    assert.equal(await evaluate(`document.querySelector('[data-room-residents]').textContent.includes('Phòng hiện có 1 người đang ở') && !document.querySelector('[data-room-resident-id]') && !document.querySelector('#app-main').textContent.includes('Đỗ Bích Ngọc') && !document.querySelector('#app-main').textContent.includes('001204') && document.querySelectorAll('[data-room-service-id]').length===4`),true);
+    await evaluate(`__troday.action('switch-role','landlord'); __troday.action('room-detail','r2')`);
+    assert.equal(await evaluate(`document.querySelector('[data-room-service-id="s3"]').textContent.includes('90.000 đ/phòng') && document.querySelector('[data-room-service-id="s3"]').textContent.includes('Giá riêng của phòng') && !document.querySelector('[data-room-service-id="s4"]') && document.documentElement.scrollWidth<=window.innerWidth`),true);
+    await evaluate(`__troday.action('room-detail','r6')`);
+    assert.equal(await evaluate(`document.querySelector('[data-room-residents]').textContent.includes('Chưa có người đang ở') && document.querySelector('[data-room-services]').textContent.includes('Chưa có dịch vụ áp dụng')`),true);
     assert.deepEqual(errors, []);
-    console.log("Browser smoke passed: rental workflows, independent posts, room details with related posts, pending quota and role visibility, both viewing flows, contract cleanup, persistence and mobile layout; no runtime exceptions.");
+    console.log("Browser smoke passed: rental workflows, independent posts, room details with related posts, residents and service prices, pending quota and role visibility, both viewing flows, contract cleanup, persistence and mobile layout; no runtime exceptions.");
     await call("Browser.close");
   } finally {
     socket?.close(); chrome?.kill();

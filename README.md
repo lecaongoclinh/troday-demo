@@ -94,6 +94,8 @@ Mỗi phòng có tổng bài đăng và số bài đã duyệt không giới h�
 
 Từ **Nhà & phòng → Xem chi tiết**, chủ trọ xem thông tin vật lý và danh sách mọi bài liên quan, bộ đếm chờ `n/3`, tạo bài cho đúng phòng hoặc sửa bài. Mở bài có nút quay lại chi tiết phòng. Người thuê chỉ thấy bài đã duyệt trong chi tiết phòng; bài nháp/chờ/từ chối/ẩn chỉ dành cho chủ trọ liên quan và quản trị. Phần danh sách liên quan dùng `posts.room_id` hiện có, không cần thêm bảng.
 
+Chi tiết phòng có thêm **Người đang ở** (tên, đại diện hợp đồng, ngày vào ở) và **Dịch vụ của phòng** (đơn giá, đơn vị, cách tính). Chỉ chủ trọ sở hữu phòng và quản trị thấy danh sách người ở; người xem công khai chỉ thấy số lượng. Chỉ tính lượt cư trú `ACTIVE`, kể cả dữ liệu cũ còn người ở trên hợp đồng đã đóng. Dịch vụ phải đang bật ở cả nhà và phòng; dùng giá riêng của phòng nếu có, kể cả giá 0, nếu không thì theo giá nhà. Các danh sách này dùng `room_tenants`, `room_services`, `house_services` hiện có, không cần sửa CSDL hoặc thêm migration.
+
 Ở phần ở ghép, có thể xem hồ sơ người gửi trước khi phản hồi lời mời. Chấp nhận kết nối sẽ mở cuộc chat giữa hai người, không tự tạo yêu cầu thuê chung hay giữ chỗ. CSDL v5 đã hỗ trợ hội thoại `ROOMMATE`; không cần thêm bảng cho luồng này.
 
 Tin nhắn có nhãn “Chủ trọ”, “Bạn ghép” hoặc “Người thuê” cạnh tên theo quan hệ hội thoại. Hai người đã kết nối có thể chia sẻ tin phòng từ chat hoặc trang chi tiết; bấm thẻ để xem phòng và quay lại đúng cuộc trò chuyện. CSDL dùng `chat_messages.message_type = 'POST_SHARE'` và `shared_post_id` tham chiếu bài đăng; phần chia sẻ không thêm bảng.

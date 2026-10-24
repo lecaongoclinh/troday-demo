@@ -38,6 +38,7 @@ Ký hiệu: **Có** = đang được mô phỏng bằng code; **Sửa** = đã c
 | PH-07 | Không cho chủ trọ đặt tay phòng đang có lượt ở thành “Còn phòng”. | Sửa |
 | PH-08 | Danh sách Nhà & phòng có “Xem chi tiết”: diện tích, giá, cọc, sức chứa, tình trạng, tiện ích và bài đăng liên quan theo đúng phòng. Chủ trọ/quản trị thấy cả bài chưa công khai; người thuê chỉ thấy bài đã duyệt. | Mới |
 | PH-09 | Trong chi tiết phòng, chủ trọ xem bộ đếm bài chờ `n/3`, tạo bài với phòng đã chọn sẵn hoặc sửa bài; tạo/sửa xong trở về danh sách liên quan của phòng. Mở một bài có thể quay lại chi tiết phòng. | Mới |
+| PH-10 | Chi tiết phòng có số người đang ở/sức chứa và danh sách lượt cư trú `ACTIVE` đúng phòng: tên, đại diện hợp đồng, ngày vào ở. Chủ trọ sở hữu phòng/quản trị thấy danh sách; người xem khác chỉ thấy số lượng. Không đưa người dự kiến/đã rời/đã hủy vào danh sách. Lượt ở còn mở trên hợp đồng đã đóng vẫn hiện kèm nhắc đối soát. | Mới |
 
 ### 1.3. Tin đăng, tìm kiếm và lưu tin
 
@@ -157,6 +158,7 @@ Hiển thị lịch trong chat dùng liên kết `room_viewing_requests.conversa
 | DV-01 | Dịch vụ theo nhà có tên, đơn vị, giá và cách tính `METERED/PER_PERSON/PER_ROOM`; tên không trùng trong một nhà. | Có |
 | DV-02 | Phòng có giá riêng; để trống thì kế thừa giá nhà. Chỉ dịch vụ bật ở cả nhà và phòng được áp dụng cho kỳ mới. | Có |
 | DV-03 | Ngừng dịch vụ không sửa các dòng tiền đã lưu trên hóa đơn cũ. | Có |
+| DV-04 | Chi tiết phòng liệt kê dịch vụ đang áp dụng cho đúng phòng/nhà: tên, đơn giá thực tế, đơn vị và cách tính. Giá riêng có giá trị 0 vẫn được áp dụng; chỉ khi giá riêng NULL/missing mới kế thừa giá nhà. Dịch vụ chưa gán, ngừng ở nhà hoặc ngừng tại phòng không hiển thị. Có trạng thái trống nếu chưa có dịch vụ. | Mới |
 | TT-01 | Lập hóa đơn cho hợp đồng `ACTIVE`; một kỳ của hợp đồng không có hai hóa đơn chưa hủy. Hóa đơn mới bắt đầu `DRAFT`. | Có |
 | TT-02 | Hóa đơn gồm tiền thuê, điện/nước/dịch vụ, khoản khác và giảm trừ; dịch vụ theo người dùng số người `ACTIVE` tại lúc lập. | Có |
 | TT-03 | Điện/nước lấy chỉ số cuối trừ đầu, không cho chỉ số cuối nhỏ hơn đầu. Theo phòng tính một đơn vị; theo người tính số người đang ở. | Có |
@@ -472,6 +474,15 @@ Migration `20261025_post_review_quota.sql` chạy sau `20261025_multiple_room_po
 
 **Chi tiết phòng:** từ Nhà & phòng bấm “Xem chi tiết” để mở màn hình phòng riêng, gồm diện tích, giá/cọc, sức chứa, tình trạng, chủ trọ, tiện ích và bài liên quan theo đúng `room_id`. Chủ trọ sở hữu phòng và quản trị thấy tất cả trạng thái; người thuê hoặc người xem công khai chỉ thấy bài `APPROVED`, không lộ tiêu đề/lý do từ chối/số bài chưa công khai. Phòng không có bài công khai chỉ chủ trọ của phòng hoặc quản trị được xem. Chủ trọ tạo bài với phòng chọn sẵn, sửa bài, mở bài rồi quay lại phòng. Tạo/sửa từ chi tiết phòng thành công quay lại danh sách liên quan của phòng; hết lượt thì không thêm bài hoặc ghi đè bài khác. Chi tiết bài đăng và chi tiết phòng dùng hai màn hình khác nhau. Các hành vi phòng, lịch và hợp đồng vẫn dùng chung như mục 4.10–4.11.
 
+### 4.13. Người đang ở và dịch vụ trong chi tiết phòng
+
+Từ **Nhà & phòng → Xem chi tiết**, bên dưới thông tin vật lý có hai danh sách chỉ đọc, trước các bài đăng liên quan:
+
+- **Người đang ở:** hiển thị số lượt cư trú `ACTIVE` trên sức chứa phòng. Chủ trọ sở hữu phòng và quản trị xem tên, nhãn đại diện hợp đồng, ngày vào ở và trạng thái đang ở; không hiển thị CCCD hoặc ngày sinh tại đây. Người xem khác chỉ thấy số lượng, không nhận tên/ngày vào ở/ID lượt cư trú trong phần HTML của màn hình. Không có người đang ở thì hiện thông báo trống. `PLANNED`, `LEFT`, `CANCELLED` không được tính. Dữ liệu cũ còn lượt `ACTIVE` trên hợp đồng đã đóng vẫn được giữ và đánh dấu cần đối soát. Sau bàn giao đại diện/rời phòng, danh sách phản ánh người thực tế còn ở và đại diện hiện tại.
+- **Dịch vụ của phòng:** lấy dịch vụ đã gán cho đúng phòng, thuộc đúng nhà và đang bật cả ở nhà lẫn phòng. Hiển thị tên, đơn giá áp dụng/đơn vị, giá riêng hoặc giá theo nhà và cách tính theo đồng hồ/người/phòng. Giá riêng khác NULL được dùng kể cả bằng 0; để trống thì kế thừa giá hiện tại của nhà. Đây là đơn giá cấu hình hiện tại, không thay snapshot hoặc tính lại hóa đơn cũ. Chưa có dịch vụ đang áp dụng thì hiện thông báo trống. Người xem phòng công khai cũng xem được bảng đơn giá này.
+
+**Không cần sửa CSDL cho hai danh sách này:** `room_tenants.room_id` và `status` đã xác định người đang ở; đại diện lấy từ `contracts.representative_room_tenant_id`. `room_services` đã liên kết phòng với `house_services`, có trạng thái bật/tắt và giá/phương pháp riêng; NULL kế thừa cấu hình nhà. Wireframe hiện cấu hình giá riêng, cách tính lấy từ dịch vụ nhà; backend khi triển khai phải dùng thêm `calculation_method_override` nếu đã cấu hình trong SQL. Không thêm bảng/cột/migration và không thay quy trình vào ở, rời phòng, bàn giao đại diện hay tính phí. API cần kiểm tra quyền trên máy chủ và lọc trường người ở trước khi trả dữ liệu; quyền ẩn/hiện trong prototype chỉ mô phỏng ở trình duyệt.
+
 ## 5. Backend cần làm thêm cho các luồng còn lại
 
 Các CHECK/FK, trigger và thủ tục mới hỗ trợ các luồng vừa sửa, nhưng chưa phải một backend/API hoàn chỉnh. Những kiểm tra tổng hợp và giao dịch phải được thực hiện qua thủ tục tương ứng; không thay bằng các lệnh ghi rời rạc từ client. Backend cần xác thực tài khoản, lấy actor ID từ phiên đăng nhập và cấp quyền DB theo phạm vi công việc, không tin actor ID do trình duyệt tùy ý gửi lên.
@@ -498,7 +509,7 @@ Sửa các lỗi trên không đồng nghĩa wireframe đã thay thế backend h
 
 Chạy `npm test` trong thư mục wireframe. Bộ kiểm thử gọi các handler thực tế với đồng hồ cố định, bao phủ sức chứa, giữ chỗ, trạng thái hợp đồng, vào ở theo nhóm/từng người, chuyển phòng không cập nhật dở dang, lịch UTC+7 và hủy/rút ý định.
 
-**85/85 tình huống JavaScript đạt.** Các luồng cũ vẫn đạt. Phần mới kiểm tra chặn bài chờ thứ tư, sửa bài đang chờ lúc đủ 3, không ghi đè bài đã duyệt khi gửi lại thất bại, giải phóng lượt sau duyệt/từ chối, hạn mức từng phòng, tổng bài không giới hạn và form cũ. Chi tiết phòng kiểm tra dữ liệu vật lý/danh sách đúng phòng, tạo bài chọn sẵn phòng và trở lại danh sách, mở bài/quay lại phòng, quyền chủ trọ/quản trị/người thuê và phòng chưa có bài công khai.
+**89/89 tình huống JavaScript đạt.** Các luồng cũ vẫn đạt. Phần mới kiểm tra chặn bài chờ thứ tư, sửa bài đang chờ lúc đủ 3, không ghi đè bài đã duyệt khi gửi lại thất bại, giải phóng lượt sau duyệt/từ chối, hạn mức từng phòng, tổng bài không giới hạn và form cũ. Chi tiết phòng kiểm tra dữ liệu vật lý/danh sách đúng phòng, tạo bài chọn sẵn phòng và trở lại danh sách, mở bài/quay lại phòng, quyền chủ trọ/quản trị/người thuê và phòng chưa có bài công khai. Kiểm tra thêm người thực tế đang ở, cập nhật đại diện sau bàn giao, giữ lượt ở trên hợp đồng cũ đã đóng, không lộ danh tính cho người xem khác, lọc dịch vụ đúng phòng/nhà/trạng thái, kế thừa giá và giá riêng bằng 0, các danh sách trống.
 
 `npm run test:browser` cũng đạt với Chrome chạy theo giờ Los Angeles: thao tác nút/form thật cho các luồng cũ và gửi/chấp nhận/từ chối/rút đề nghị, tạo lịch trực tiếp sau chat, cảnh báo trước gửi hợp đồng, hủy lịch/đóng đề nghị và thông báo hai bên, xác nhận giữ phòng, hủy hợp đồng và đặt lịch mới. Có kiểm tra UTC+7, trạng thái chung giữa chat/Lịch xem, tải lại localStorage, chia sẻ tin, sửa/gửi lại tin của phòng hiện có và bố cục di động; không có lỗi JavaScript. Cần Node 22+, Chrome tại đường dẫn mặc định hoặc `CHROME_PATH`.
 
@@ -509,3 +520,5 @@ Chạy `npm test` trong thư mục wireframe. Bộ kiểm thử gọi các handl
 Kiểm thử Chrome cũng tạo hai bài mới cho cùng phòng, duyệt một bài/từ chối bài kia, sửa và ẩn độc lập, xem hai thẻ công khai, lưu/chia sẻ/báo cáo đúng bài và xác nhận thẻ chia sẻ của bài bị ẩn không bị thay bằng bài khác cùng phòng. Các biểu mẫu được thử trên bố cục di động.
 
 Chrome kiểm tra thêm Nhà & phòng → chi tiết phòng → bài liên quan → quay lại phòng, tạo đủ 3 bài chờ từ chi tiết phòng, khóa gửi thêm, sửa bài đang chờ, đổi phòng cập nhật hạn mức, duyệt giải phóng lượt và người thuê không thấy bài chưa công khai. Giao diện không tràn ngang trên màn hình di động, không có lỗi JavaScript.
+
+Chrome cũng kiểm tra chi tiết P305 có hai người ở và bốn dịch vụ, bàn giao đại diện cho Ngọc khi Mai rời rồi mở lại phòng, người xem công khai chỉ thấy số người và đơn giá, Internet P204 dùng giá riêng 90.000 đ/phòng, P408 có hai thông báo danh sách trống. Các mục mới không tràn ngang trên màn hình di động. Đợt bổ sung hai danh sách chỉ đổi giao diện/tài liệu/kiểm thử; không thay SQL và không chạy lại bộ tích hợp MySQL.

@@ -37,6 +37,7 @@ function demo(savedState) {
 }
 const byId = (items, id) => items.find((item) => item.id === id);
 const viewingCard = (d, id) => d.node("#app-main").innerHTML.match(new RegExp('<article class="chat-viewing-card" data-viewing-id="' + id + '">([\\s\\S]*?)</article>'))?.[1] || "";
+const roomDetailSection = (d, name) => d.node("#app-main").innerHTML.match(new RegExp(`<section data-room-${name}>([\\s\\S]*?)</section>`))?.[1] || "";
 const k2 = (d) => byId(d.state.contracts, "k2");
 const join = (d) => byId(d.state.joinRequests, "join1");
 function change(d, type, extra = {}) {
@@ -698,6 +699,61 @@ test("room details enforce access and show an empty related list for a new priva
   d.state.role="tenant"; d.api.render(); assert.match(d.node("#app-main").innerHTML,/Không thể xem phòng/);
   d.action("room-detail","r6"); assert.equal(d.state.selectedRoom,"empty-room");
   d.state.role="landlord"; byId(d.state.posts,"p-r4").status="HIDDEN"; d.action("room-detail","r4"); assert.equal(d.state.selectedRoom,"empty-room");
+});
+
+test("room detail lists actual residents and updates the representative after a handover", () => {
+  const d = demo(); d.action("room-detail", "r3");
+  const html = roomDetailSection(d, "residents");
+  assert.match(html, /Người đang ở · 2\/3/);
+  assert.match(html, /Phạm Thu Mai[\s\S]*Đại diện hợp đồng/); assert.match(html, /Đỗ Bích Ngọc/);
+  assert.match(html, /1\/6\/2026/); assert.match(html, /1\/8\/2026/);
+  assert.doesNotMatch(html, /Trần Ngọc Lan|001202|001204|2002|2004/);
+  d.submit("representative-handover", { contractId: "k2", departingId: "o2", successorId: "o3", reason: "Mai rời phòng", consent: "yes" });
+  d.action("room-detail", "r3"); const updated = roomDetailSection(d, "residents");
+  assert.match(updated, /Người đang ở · 1\/3/); assert.doesNotMatch(updated, /Phạm Thu Mai/);
+  assert.match(updated, /Đỗ Bích Ngọc[\s\S]*Đại diện hợp đồng/);
+});
+
+test("resident identities in room detail are restricted to its owner and administrators", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("room-detail", "r3");
+  assert.match(roomDetailSection(d, "residents"), /Phòng hiện có 2 người đang ở/);
+  assert.doesNotMatch(d.node("#app-main").innerHTML, /Phạm Thu Mai|Đỗ Bích Ngọc|data-room-resident-id|001202|001204/);
+  d.state.role = "admin"; d.api.render(); assert.match(roomDetailSection(d, "residents"), /Phạm Thu Mai/);
+  byId(d.state.houses, "h1").ownerId = "huong";
+  d.state.role = "landlord"; d.api.render();
+  assert.match(roomDetailSection(d, "residents"), /Phòng hiện có 2 người đang ở/);
+  assert.doesNotMatch(roomDetailSection(d, "residents"), /Phạm Thu Mai|Đỗ Bích Ngọc|data-room-resident-id/);
+});
+
+test("room detail keeps active stays on closed contracts and excludes planned, left and cancelled stays", () => {
+  const d = demo(); k2(d).status = "TERMINATED";
+  for (const status of ["PLANNED", "LEFT", "CANCELLED"]) k2(d).members.push({ id: status, name: `Excluded ${status}`, status });
+  d.action("room-detail", "r3");
+  assert.match(roomDetailSection(d, "residents"), /Người đang ở · 2\/3/);
+  assert.match(roomDetailSection(d, "residents"), /Đỗ Bích Ngọc/);
+  assert.match(roomDetailSection(d, "residents"), /Cần đối soát trạng thái hợp đồng/);
+  assert.doesNotMatch(roomDetailSection(d, "residents"), /Excluded/);
+  d.action("room-detail", "r5"); assert.match(roomDetailSection(d, "residents"), /Chưa có người đang ở/);
+  d.action("room-detail", "r1"); assert.match(roomDetailSection(d, "residents"), /Chưa có người đang ở/);
+});
+
+test("room detail shows only applied active services with effective room prices, including zero", () => {
+  const d = demo(); d.action("room-detail", "r2");
+  assert.match(roomDetailSection(d, "services"), /90\.000 đ\/phòng/);
+  assert.match(roomDetailSection(d, "services"), /Giá riêng của phòng/);
+  assert.match(roomDetailSection(d, "services"), /3\.800 đ\/kWh/);
+  assert.match(roomDetailSection(d, "services"), /Theo đồng hồ|Theo phòng/);
+  assert.doesNotMatch(roomDetailSection(d, "services"), /Gửi xe|100\.000/);
+  d.state.roomServices.find((x) => x.roomId === "r2" && x.serviceId === "s3").override = 0;
+  byId(d.state.services, "s1").active = false;
+  d.state.roomServices.find((x) => x.roomId === "r2" && x.serviceId === "s2").active = false;
+  d.state.roomServices.push({ roomId: "r2", serviceId: "s5", active: true, override: 12345 }, { roomId: "r2", serviceId: "missing", active: true });
+  d.api.render(); const filtered = roomDetailSection(d, "services");
+  assert.match(filtered, /Dịch vụ của phòng · 1/); assert.match(filtered, /0 đ\/phòng/);
+  assert.doesNotMatch(filtered, /Điện|Nước|12\.345/);
+  d.state.role = "tenant"; d.api.render(); assert.match(roomDetailSection(d, "services"), /0 đ\/phòng/);
+  d.state.role = "landlord"; d.action("room-detail", "r3"); assert.match(roomDetailSection(d, "services"), /Theo người/);
+  d.action("room-detail", "r6"); assert.match(roomDetailSection(d, "services"), /Chưa có dịch vụ áp dụng/);
 });
 
 
