@@ -700,3 +700,82 @@ test("proposals never leak into roommate chats or permit rental contracts before
   assert.doesNotMatch(d.node("#app-main").innerHTML, new RegExp(`data-proposal-id="${p.id}"`));
   assert.doesNotMatch(d.node("#app-main").innerHTML, /data-action="open-viewing-request"/);
 });
+
+const rentalValues = (extra = {}) => ({ viewingId: "v2", start: "2026-10-24", end: "2027-10-24", rent: "4600000", deposit: "4600000", members: "", terms: "Điều khoản đã trao đổi", ...extra });
+function reservationDemo() {
+  const d = demo();
+  d.state.viewings.push(
+    { id: "upcoming", roomId: "r2", tenantId: "bao", ownerId: "quan", conversationId: "c-extra", date: "2026-10-25", time: "11:00", status: "SCHEDULED", decision: "WAITING" },
+    { id: "elapsed", roomId: "r2", tenantId: "mai", ownerId: "quan", date: "2026-10-23", time: "11:00", status: "SCHEDULED", decision: "WAITING" },
+    { id: "ongoing", roomId: "r2", tenantId: "ngoc", ownerId: "quan", date: "2026-10-24", time: "09:30", status: "SCHEDULED", decision: "WAITING" }
+  );
+  d.state.viewingProposals.push(
+    { id: "accepted", roomId: "r2", tenantId: "bao", ownerId: "quan", conversationId: "c-extra", status: "ACCEPTED", scheduledViewingId: "upcoming", date: "2026-10-25", time: "11:00" },
+    { id: "pending", roomId: "r2", tenantId: "ngoc", ownerId: "quan", conversationId: "c-extra", status: "PENDING", date: "2026-10-25", time: "13:00" },
+    { id: "expired-pending", roomId: "r2", tenantId: "mai", ownerId: "quan", status: "PENDING", date: "2026-10-23", time: "13:00" },
+    { id: "other-room", roomId: "r1", tenantId: "lan", ownerId: "quan", conversationId: "c1", status: "PENDING", date: "2026-10-25", time: "12:00" }
+  );
+  return d;
+}
+
+test("agreeing to rent registers interest without cancelling other viewings or holding the room", () => {
+  const d = reservationDemo(); d.state.role = "tenant"; d.action("agree-rent", "v2");
+  assert.equal(byId(d.state.viewings, "v2").decision, "AGREED");
+  assert.equal(byId(d.state.rooms, "r2").status, "AVAILABLE");
+  assert.equal(byId(d.state.viewings, "upcoming").status, "SCHEDULED");
+  assert.equal(byId(d.state.viewingProposals, "pending").status, "PENDING");
+});
+
+test("the contract form explains exactly which future appointments and pending requests will close", () => {
+  const d = reservationDemo(); byId(d.state.viewings, "v2").decision = "AGREED";
+  d.action("open-contract", "v2");
+  assert.match(d.node("#dialog-body").innerHTML, /hủy 1 lịch xem sắp tới và đóng 1 đề nghị chờ/);
+  assert.equal(byId(d.state.viewings, "upcoming").status, "SCHEDULED");
+});
+
+test("sending a contract closes only upcoming activity and notifies affected tenants and the owner", () => {
+  const d = reservationDemo(); byId(d.state.viewings, "v2").decision = "AGREED";
+  d.submit("create-contract", rentalValues());
+  const v = byId(d.state.viewings, "upcoming"), p = byId(d.state.viewingProposals, "pending");
+  assert.equal(v.status, "CANCELLED"); assert.equal(v.cancelledBy, "quan"); assert.ok(v.cancelledAt); assert.match(v.cancellationReason, /Phòng đã được giữ/);
+  assert.equal(p.status, "REJECTED"); assert.equal(p.reviewedBy, "quan"); assert.ok(p.reviewedAt); assert.match(p.rejectionReason, /Phòng đã được giữ/);
+  assert.equal(byId(d.state.viewingProposals, "accepted").status, "ACCEPTED");
+  assert.equal(byId(d.state.viewingProposals, "accepted").scheduledViewingId, v.id);
+  assert.equal(byId(d.state.viewingProposals, "expired-pending").status, "EXPIRED");
+  for (const id of ["elapsed", "ongoing", "v1"]) assert.equal(byId(d.state.viewings, id).status, "SCHEDULED");
+  assert.equal(byId(d.state.viewings, "v2").status, "COMPLETED");
+  assert.equal(byId(d.state.viewingProposals, "other-room").status, "PENDING");
+  assert.equal(byId(d.state.rooms, "r2").status, "RESERVED");
+  assert.ok(d.state.notifications.some((n) => n.userId === "bao" && n.viewingId === v.id));
+  assert.ok(d.state.notifications.some((n) => n.userId === "ngoc" && n.proposalId === p.id));
+  assert.ok(d.state.notifications.some((n) => n.userId === "quan" && /hủy 1 lịch/.test(n.text)));
+});
+
+test("failed contract validation never partially cancels appointments or closes proposals", () => {
+  const d = reservationDemo(); byId(d.state.viewings, "v2").decision = "AGREED";
+  const before = JSON.stringify({ contracts: d.state.contracts, viewings: d.state.viewings, proposals: d.state.viewingProposals, notifications: d.state.notifications });
+  d.submit("create-contract", rentalValues({ members: "A\nB\nC\nD" }));
+  assert.equal(JSON.stringify({ contracts: d.state.contracts, viewings: d.state.viewings, proposals: d.state.viewingProposals, notifications: d.state.notifications }), before);
+});
+
+test("duplicate submissions and stale contract forms cannot duplicate cleanup or notifications", () => {
+  const d = reservationDemo(); byId(d.state.viewings, "v2").decision = "AGREED";
+  d.submit("create-contract", rentalValues()); const count = d.state.notifications.length, contracts = d.state.contracts.length;
+  d.submit("create-contract", rentalValues());
+  assert.equal(d.state.notifications.length, count); assert.equal(d.state.contracts.length, contracts);
+  d.state.viewings.push({ ...byId(d.state.viewings, "v2"), id: "other-agreed", tenantId: "bao" });
+  d.submit("create-contract", rentalValues({ viewingId: "other-agreed" }));
+  assert.equal(d.state.notifications.length, count); assert.equal(d.state.contracts.length, contracts);
+});
+
+test("confirmation keeps the hold and cancelling the contract never restores previously cancelled viewings", () => {
+  const d = reservationDemo(); byId(d.state.viewings, "v2").decision = "AGREED";
+  d.submit("create-contract", rentalValues()); const id = d.state.selectedContract;
+  d.state.role = "tenant"; d.action("confirm-contract", id);
+  assert.equal(byId(d.state.rooms, "r2").status, "RESERVED");
+  d.state.role = "landlord"; d.submit("cancel-contract", { contractId: id, reason: "Hai bên hủy" });
+  assert.equal(byId(d.state.rooms, "r2").status, "AVAILABLE");
+  const reloaded = demo(d.state);
+  assert.equal(byId(reloaded.state.viewings, "upcoming").status, "CANCELLED");
+  assert.equal(byId(reloaded.state.viewingProposals, "pending").status, "REJECTED");
+});

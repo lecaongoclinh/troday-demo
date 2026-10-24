@@ -6,7 +6,7 @@ Wireframe đã mô phỏng các thực thể chính của v5, nhưng trước b�
 
 Các luồng giao diện nằm trong `app.js` và dữ liệu mô phỏng trên `localStorage`. **SQL v5 đã được sửa** để hỗ trợ các nghiệp vụ mới, gồm lịch sử đại diện và các thủ tục giao dịch. Đã chuẩn bị cả bản tạo mới và migration từ v5 gốc. Chỉ kiểm tra trên MySQL tạm riêng; chưa chạy migration hoặc ghi vào CSDL hiện có của người dùng.
 
-Đây là file tổng hợp chung cho các logic đang có, các thay đổi vừa thực hiện và phần còn cần triển khai. SQL tạo mới là `database/schema.sql`; nâng cấp theo thứ tự `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` trong `database/migrations/`. Mỗi migration chạy một lần. Hệ thống có **41 bảng** sau cập nhật. API vẫn cần tích hợp các stored procedure; wireframe HTML chưa kết nối trực tiếp MySQL.
+Đây là file tổng hợp chung cho các logic đang có, các thay đổi vừa thực hiện và phần còn cần triển khai. SQL tạo mới là `database/schema.sql`; nâng cấp theo thứ tự `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` → `20261025_contract_viewing_cleanup.sql` trong `database/migrations/`. Mỗi migration chạy một lần; migration xử lý lịch/hợp đồng chạy cuối dù tên file đứng trước theo bảng chữ cái. Hệ thống có **41 bảng** sau cập nhật. API vẫn cần tích hợp các stored procedure; wireframe HTML chưa kết nối trực tiếp MySQL.
 
 ## 1. Danh mục logic nghiệp vụ đang có
 
@@ -89,6 +89,9 @@ Lỗi “đã có nhà/phòng nhưng bị yêu cầu thêm phòng” đến từ
 | LX-11 | Người thuê gửi đề nghị từ chi tiết phòng hoặc chat đúng chủ trọ; chủ trọ chấp nhận/từ chối có lý do, người thuê được rút khi còn chờ. Chỉ chấp nhận mới tạo lịch `SCHEDULED`; đề nghị và lịch hiển thị đồng bộ trong chat/Lịch xem. | Mới |
 | LX-12 | Một người chỉ có một đề nghị `PENDING` cho cùng phòng. Khóa gửi chống tạo trùng; duyệt lại trả lịch cũ. Đề nghị chờ không giữ giờ/chỗ; duyệt phải kiểm tra lại trùng giờ, phòng, hội thoại và tài khoản. | Mới |
 | LX-13 | Giờ đề nghị đã đến thì hết hạn, không được duyệt/rút kể cả tác vụ nền chưa chạy. Đề nghị đã chấp nhận giữ lịch sử khi lịch bị hủy; đổi giờ bằng rút đề nghị cũ/gửi mới hoặc hủy lịch đã chốt. | Mới |
+| LX-14 | Một phòng được có nhiều lịch khác giờ; lịch xem/đề nghị không phải quyền ưu tiên thuê. Nhiều người đã xem có thể cùng ghi nhận `AGREED`; chủ trọ chọn người để gửi hợp đồng. | Mới |
+| LX-15 | Gửi hợp đồng giữ phòng, tự hủy lịch `SCHEDULED` chưa bắt đầu và từ chối đề nghị `PENDING` còn hạn của đúng phòng, kèm lý do/người/thời điểm và thông báo. Đề nghị quá giờ chuyển `EXPIRED`; lịch đã xem, đã hủy, không đến, đang diễn ra hoặc quá giờ được giữ để đối soát. | Mới |
+| LX-16 | Hủy hợp đồng trước vào ở trả phòng trống nhưng không khôi phục lịch/đề nghị đã đóng và không tự mời lại. Người thuê chủ động gửi đề nghị mới; các lịch sử cũ vẫn hiển thị. | Mới |
 
 Hiển thị lịch trong chat dùng liên kết `room_viewing_requests.conversation_id` đã có; không đổi cấu trúc CSDL. API cần trả lịch theo hội thoại có người dùng tham gia và kiểm tra đúng chủ trọ/người thuê. Thẻ lấy trạng thái hiện tại của lịch, không dùng một bản sao nội dung thông báo để suy ra kết quả mới nhất.
 
@@ -109,6 +112,8 @@ Hiển thị lịch trong chat dùng liên kết `room_viewing_requests.conversa
 | HD-11 | Hợp đồng chưa vào ở ở `DRAFT/PENDING_CONFIRMATION/CONFIRMED` có thể hủy kèm lý do; hủy lượt dự kiến, yêu cầu thêm người và trả chỗ. | Sửa |
 | HD-12 | Người từng có dòng thành viên vẫn thấy hợp đồng sau khi đổi đại diện; thao tác thuộc đại diện chỉ dành cho đại diện hiện tại. | Mới |
 | HD-13 | SQL hỗ trợ `PAPER_IMPORT`; demo có dữ liệu mẫu nhập giấy nhưng chưa có luồng nhập hồ sơ giấy đầy đủ. | Có một phần |
+| HD-14 | `sp_create_rental_contract` tạo hợp đồng, giữ phòng, đóng hoạt động xem phòng sắp tới và ghi thông báo trong cùng giao dịch. Thất bại ở bất kỳ bước nào rollback toàn bộ; hai phiên tranh cùng phòng chỉ tạo được một hợp đồng mở. | Mới |
+| HD-15 | Form lập hợp đồng hiển thị số lịch xem sắp tới/đề nghị chờ sẽ bị ảnh hưởng trước khi gửi; khi submit kiểm tra lại quyền, phòng, hợp đồng và sức chứa. Không giữ phòng chỉ bằng việc mở form hoặc bấm đồng ý thuê. | Mới |
 
 ### 1.7. Người ở và duyệt thêm người
 
@@ -184,7 +189,7 @@ Khi triển khai API, trong một giao dịch phải khóa và kiểm tra lời 
 | QT-02 | Có đánh giá sao/nhận xét gắn lượt thuê; demo chống đánh giá trùng theo hợp đồng. SQL gắn bằng chứng tới lượt cư trú; UI chưa kiểm tra đầy đủ điều kiện thời điểm đánh giá. | Có một phần |
 | QT-03 | Mẫu hợp đồng có số phiên bản; tạo cùng tên tăng phiên bản, có bật/ngừng, giữ mẫu cũ. | Có |
 | QT-04 | Ghi nhật ký quyết định duyệt/từ chối tin, hồ sơ, khóa/mở tài khoản và xử lý báo cáo. Demo hiện cho tạo mẫu và xử lý dữ liệu qua vai trò quản trị. | Có |
-| QT-05 | Thông báo theo người dùng, có chưa đọc/đã đọc. Gửi hợp đồng và bàn giao đại diện phát sinh thông báo trong dữ liệu demo. | Có / Mới |
+| QT-05 | Thông báo theo người dùng, có chưa đọc/đã đọc. Gửi hợp đồng, bàn giao đại diện, phản hồi đề nghị và tự hủy lịch/đóng đề nghị do giữ phòng đều phát sinh thông báo. Người thuê nhận kết quả cho lịch/đề nghị của mình; chủ trọ nhận tổng số đã xử lý. | Có / Mới |
 | QT-06 | Thông báo demo nằm trong `localStorage`, không gửi email, SMS hoặc push thực. | Có |
 
 ### 1.12. Dữ liệu, kiểm tra và giới hạn
@@ -301,7 +306,7 @@ Các thủ tục công khai dưới đây tự mở giao dịch `READ COMMITTED`
 | `sp_review_viewing_proposal` | Chủ trọ chấp nhận/từ chối; chấp nhận tạo và liên kết lịch trong cùng giao dịch, trả ID lịch qua OUT. |
 | `sp_withdraw_viewing_proposal` | Người thuê rút đề nghị đang chờ; lưu người và thời điểm rút. |
 | `sp_set_viewing_outcome` | Xử lý `ATTENDED`, `NO_SHOW`, `CANCEL`, `AGREE`, `DECLINE`, `WITHDRAW`, kiểm tra đúng chủ trọ/người thuê và thời điểm được phép. |
-| `sp_create_rental_contract` | Tạo nháp, đại diện/thành viên dự kiến, phiên bản đầu và gửi xác nhận trong một giao dịch. Trả ID hợp đồng. |
+| `sp_create_rental_contract` | Tạo đại diện/thành viên dự kiến, phiên bản đầu và gửi xác nhận; giữ phòng, hủy lịch sắp tới, đóng đề nghị chờ và ghi thông báo cùng giao dịch. Trả ID hợp đồng. |
 | `sp_confirm_contract` | Đại diện hiện tại xác nhận phiên bản đang chờ, đưa hợp đồng sang `CONFIRMED`. |
 | `sp_confirm_move_in` | Nhận mảng JSON các ID lượt cư trú và ngày thực tế ở Việt Nam; hỗ trợ nhóm/từng người, bắt buộc đại diện ở lần kích hoạt. |
 | `sp_approve_occupant_join` | Khóa phòng/hợp đồng/yêu cầu, kiểm tra số chỗ còn lại và giữ chỗ 48 giờ. |
@@ -314,7 +319,7 @@ Các thủ tục công khai dưới đây tự mở giao dịch `READ COMMITTED`
 | `sp_apply_contract_change` | Áp dụng yêu cầu đã duyệt và được đại diện hiện tại xác nhận: gia hạn, kết thúc hoặc đổi phòng. Khóa hai phòng theo thứ tự ID khi đổi phòng. |
 | `sp_set_room_capacity` | Chủ trọ đổi sức chứa sau khi kiểm tra cả người ở, người dự kiến và chỗ giữ. |
 
-Chữ ký đầy đủ nằm trong hai file `database/source/workflows.sql` và `database/source/viewing-proposals.sql`, có thể xem bằng `SHOW CREATE PROCEDURE`. Worker dùng riêng `sp_expire_viewing_proposals()` để cập nhật đề nghị quá giờ; không cấp thủ tục này cho người dùng cuối. Với `sp_create_rental_contract`, JSON thành viên phụ dùng `full_name`, `tenant_id` (tùy chọn), `identity_number` và `date_of_birth`; không gửi trực tiếp các khóa JavaScript của prototype.
+Chữ ký nằm trong ba nguồn SQL ở `database/source/`; phiên bản hiện tại của `sp_create_rental_contract` nằm trong `contract-viewing-cleanup.sql`, thay bản ban đầu khi tạo mới/nâng cấp. Có thể kiểm tra bằng `SHOW CREATE PROCEDURE`. Worker dùng riêng `sp_expire_viewing_proposals()` để cập nhật đề nghị quá giờ; không cấp thủ tục này cho người dùng cuối. Với `sp_create_rental_contract`, JSON thành viên phụ dùng `full_name`, `tenant_id` (tùy chọn), `identity_number` và `date_of_birth`; không gửi trực tiếp các khóa JavaScript của prototype.
 
 Ví dụ cấu trúc lời gọi cho backend, với các ID thực tế do API tra cứu:
 
@@ -333,7 +338,7 @@ Gia hạn cần `proposed_revision_id` đã xác nhận. Đổi phòng cần `pr
 ### 4.7. Chạy bản tạo mới hoặc migration
 
 1. Chưa có CSDL v5: chạy toàn bộ `database/schema.sql`. File tự tạo và chọn CSDL; nếu tên đó đã tồn tại thì dừng để tránh nhầm với nâng cấp.
-2. Đã có v5 gốc 39 bảng: sao lưu, dừng ghi và chạy lần lượt ba file trong `database/migrations/`: `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql`, mỗi file một lần. Đã nâng cấp một phần thì chỉ chạy các file còn thiếu theo thứ tự. Đã có chia sẻ tin phòng thì chỉ cần migration lịch mới. Không chạy migration trên CSDL vừa tạo bằng schema mới.
+2. Đã có v5 gốc 39 bảng: sao lưu, dừng ghi và chạy lần lượt bốn file trong `database/migrations/`: `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` → `20261025_contract_viewing_cleanup.sql`, mỗi file một lần. Đã nâng cấp một phần thì chỉ chạy các file còn thiếu theo thứ tự này. Đã có đề nghị lịch xem thì chỉ cần migration xử lý lịch/hợp đồng mới. Không chạy migration trên CSDL vừa tạo bằng schema mới.
 3. Preflight từ chối trường hợp phòng vượt sức chứa, hợp đồng đóng nhưng còn lượt ở mở, hợp đồng hoạt động không có đại diện đang ở, hoặc nhiều hợp đồng mở trên cùng phòng. Cần đối soát các hàng đó, không tự xóa người hoặc đoán ngày ra.
 4. Nếu script báo đã nâng cấp/đang dở, không dùng `--force` hoặc chạy lại bỏ qua lỗi. DDL MySQL có implicit commit, nên lỗi sau một số lệnh DDL cần kiểm tra trạng thái và phục hồi/hoàn tất theo bản sao lưu. [Tài liệu MySQL về implicit commit](https://dev.mysql.com/doc/refman/8.0/en/implicit-commit.html).
 5. Sau nâng cấp, API gọi các thủ tục đúng quyền; thiết lập múi giờ UTC cho mọi kết nối, còn ngày cư trú truyền vào là ngày Việt Nam. Các SQL trong `tests/fixtures/` chỉ phục vụ kiểm thử.
@@ -399,6 +404,37 @@ Khi gửi đã kiểm tra phòng/giờ hợp lệ và lịch đã chốt; vẫn 
 
 Kiểm thử JavaScript, Chrome và MySQL bao phủ luồng mới; chi tiết ở mục 8. CSDL thật vẫn cần migration và API trước khi dùng tính năng ngoài prototype.
 
+### 4.10. Nhiều lịch xem cùng phòng và xử lý khi chốt hợp đồng
+
+Các quy tắc dưới đây đã được triển khai trong wireframe và SQL. Mô hình hiện tại là thuê nguyên phòng với tối đa một hợp đồng mở, không phải đặt từng giường hoặc xếp lịch các đợt thuê tương lai.
+
+Một phòng được có nhiều lịch xem khác khung giờ. Hai lịch `SCHEDULED` không được giao nhau; các đề nghị chờ có thể cùng giờ vì chưa giữ giờ. Khóa phòng bảo đảm hai phiên duyệt đề nghị trùng giờ chỉ tạo được một lịch. Lịch xem không tạo quyền ưu tiên thuê; không tự chọn người gửi đề nghị hoặc bấm đồng ý thuê đầu tiên.
+
+| Mốc | Trạng thái phòng | Xử lý lịch/đề nghị khác |
+| --- | --- | --- |
+| Người thuê đã xem và bấm “Đồng ý thuê” | `AVAILABLE` nếu chưa có hợp đồng mở/người ở | Giữ nguyên lịch và đề nghị khác; `AGREED` chỉ ghi nhận mong muốn |
+| Chủ trọ gửi hợp đồng qua `sp_create_rental_contract` | `RESERVED`, hợp đồng `PENDING_CONFIRMATION` | Hủy lịch sắp tới và đóng đề nghị chờ của đúng phòng, thông báo người liên quan |
+| Người thuê xác nhận hợp đồng | `RESERVED`, hợp đồng `CONFIRMED` | Tiếp tục chặn lịch mới; chưa ghi nhận đã vào ở |
+| Chủ trọ xác nhận thực tế vào ở | `OCCUPIED`, hợp đồng `ACTIVE` | Quản lý người ở theo hợp đồng; không nhận lịch thuê nguyên phòng |
+| Hủy hợp đồng trước khi vào ở | `AVAILABLE` nếu không còn người/hợp đồng mở | Nhận đề nghị/lịch mới; không tự khôi phục lịch/đề nghị đã đóng |
+
+Gửi hợp đồng thực hiện trong một giao dịch `READ COMMITTED`: khóa phòng trước, khóa lịch xem được chọn; kiểm tra đúng chủ trọ còn hoạt động, lịch đã xem/đồng ý thuê, phòng trống, chưa có hợp đồng mở, điều khoản và sức chứa; tạo hợp đồng/thành viên/phiên bản; gửi xác nhận và giữ phòng. Sau đó gọi helper nội bộ `_v5_close_viewings_for_contract` và commit. Helper không tự mở hoặc commit giao dịch, không gọi lồng public procedure.
+
+Helper chỉ xử lý đúng `room_id` của hợp đồng vừa gửi:
+
+- Lịch `SCHEDULED` có `starts_at >= thời điểm xử lý` chuyển `CANCELLED`, ghi `cancelled_by_id` là chủ trọ, `cancelled_at`, `cancellation_reason`. Lý do là phòng đã được giữ để lập hợp đồng, không gán lỗi người thuê hoặc ghi `NO_SHOW`.
+- Đề nghị `PENDING` quá giờ chuyển `EXPIRED`; đề nghị còn hạn chuyển `REJECTED`, ghi chủ trọ/thời điểm/lý do phòng đã được giữ. Không sửa danh tính, giờ hoặc ghi chú gốc.
+- Đề nghị đã `ACCEPTED` giữ quyết định và `scheduled_viewing_id` kể cả lịch tương ứng vừa bị hủy. Lịch đã xem, quyết định thuê cũ và các trạng thái kết thúc giữ nguyên. Lịch đã bắt đầu/đã quá giờ không tự bị hủy ngược; chủ trọ đối soát đã xem/không đến theo bằng chứng thực tế.
+- Phòng khác không bị ảnh hưởng. Kể cả người được chọn thuê còn một lịch xem khác chưa bắt đầu của cùng phòng thì lịch dư đó cũng được hủy.
+
+Mỗi lịch bị hủy có thông báo `VIEWING_CANCELLED` tới người thuê với tham chiếu lịch của họ; mỗi đề nghị bị từ chối có `VIEWING_REJECT` với tham chiếu đề nghị. Chủ trọ nhận `ROOM_VIEWINGS_CLOSED` tổng hợp số lịch/đề nghị đã đóng, người được chọn vẫn nhận `CONTRACT_SENT`. Nội dung cho người thuê không công khai danh tính hoặc số hợp đồng của người khác. `event_key` riêng theo lịch/đề nghị/hợp đồng chống trùng. Không có hoạt động cần đóng thì không tạo thông báo tổng hợp rỗng. Lỗi ghi thông báo hoặc bất kỳ bước nào rollback cả hợp đồng, lượt dự kiến, phòng, lịch và đề nghị. API chỉ phát thông báo bên ngoài sau khi giao dịch thành công.
+
+Khóa phòng tuần tự hóa cả cuộc đua gửi hợp đồng/duyệt đề nghị: lịch được duyệt trước thì hợp đồng hủy lịch sắp tới đó; hợp đồng giữ phòng trước thì đề nghị bị đóng và không duyệt được nữa. Hai phiên gửi hợp đồng cùng phòng chỉ một phiên thành công. Lời gọi tạo hợp đồng lặp bị từ chối vì phòng đã được giữ, không tạo thêm hợp đồng hoặc thông báo.
+
+Wireframe hiển thị số lịch sắp tới/đề nghị chờ trong form lập hợp đồng, giữ dữ liệu khi chỉ mở/hủy form và kiểm tra lại khi submit. Gửi thành công cập nhật thẻ chat, Lịch xem và Thông báo. Nút tạo hợp đồng từ lịch khác bị vô hiệu khi phòng đã giữ. Hủy hợp đồng không mở lại những cuộc hẹn đã thông báo hủy; người thuê gửi đề nghị mới, hoặc chủ trọ tạo lịch mới sau trao đổi. Hợp đồng đang sửa về `DRAFT` vẫn giữ phòng theo quy tắc hợp đồng mở hiện có, không tự phục hồi lịch.
+
+**Ảnh hưởng CSDL:** không thêm bảng/cột/trạng thái, tổng vẫn 41 bảng; dùng trường kiểm toán và `notifications` hiện có. Nguồn mới là `database/source/contract-viewing-cleanup.sql`, build vào schema và migration `20261025_contract_viewing_cleanup.sql`; không sửa các migration đã phát hành. Migration chỉ thay routine, không tự viết lại lịch sử của hợp đồng đã tồn tại. Dữ liệu cũ mâu thuẫn cần đối soát, không suy đoán thời điểm hủy.
+
 ## 5. Backend cần làm thêm cho các luồng còn lại
 
 Các CHECK/FK, trigger và thủ tục mới hỗ trợ các luồng vừa sửa, nhưng chưa phải một backend/API hoàn chỉnh. Những kiểm tra tổng hợp và giao dịch phải được thực hiện qua thủ tục tương ứng; không thay bằng các lệnh ghi rời rạc từ client. Backend cần xác thực tài khoản, lấy actor ID từ phiên đăng nhập và cấp quyền DB theo phạm vi công việc, không tin actor ID do trình duyệt tùy ý gửi lên.
@@ -425,10 +461,10 @@ Sửa các lỗi trên không đồng nghĩa wireframe đã thay thế backend h
 
 Chạy `npm test` trong thư mục wireframe. Bộ kiểm thử gọi các handler thực tế với đồng hồ cố định, bao phủ sức chứa, giữ chỗ, trạng thái hợp đồng, vào ở theo nhóm/từng người, chuyển phòng không cập nhật dở dang, lịch UTC+7 và hủy/rút ý định.
 
-**67/67 tình huống JavaScript đạt.** Bao phủ bàn giao và lịch sử đại diện, sức chứa, hợp đồng/vào ở/đổi phòng, chat và chia sẻ bài, kết nối không tự đồng thuận thuê, quyền và sửa tin phòng có sẵn. Phần lịch mới có gửi từ phòng chưa có tin nhắn, gửi lặp, một đề nghị chờ mỗi người/phòng, duyệt lặp, trùng giờ với lịch chính thức, kiểm tra lại phòng/tin/tài khoản/hội thoại, từ chối có lý do, rút/hết hạn và khôi phục lịch sử. Đề nghị chưa duyệt không tạo hợp đồng hoặc giữ chỗ. Tạo lịch trực tiếp đòi hỏi tin nhắn thật của người thuê về đúng phòng.
+**73/73 tình huống JavaScript đạt.** Bao phủ bàn giao/lịch sử đại diện, sức chứa, hợp đồng/vào ở/đổi phòng, chat/chia sẻ bài, kết nối không tự đồng thuận thuê, quyền và sửa tin phòng có sẵn. Phần lịch có gửi/duyệt lặp, đúng người/phòng/hội thoại, trùng giờ, từ chối/rút/hết hạn và lịch sử. Phần giữ phòng kiểm tra đồng ý thuê chưa hủy lịch, cảnh báo số hoạt động bị ảnh hưởng, đóng đúng hoạt động sắp tới, giữ lịch quá giờ/đang diễn ra và lịch sử duyệt, thông báo đúng người, validation thất bại không ghi dở, submit lặp không tạo thông báo trùng, xác nhận hợp đồng chưa vào ở và hủy hợp đồng không phục hồi lịch cũ.
 
-`npm run test:browser` cũng đạt với Chrome chạy theo giờ Los Angeles: thao tác nút/form thật cho các luồng cũ và gửi/chấp nhận/từ chối/rút đề nghị, tạo lịch trực tiếp sau chat; xác nhận giờ UTC+7, trạng thái chung giữa chat/Lịch xem, bố cục di động và không có lỗi JavaScript. Bộ này còn kiểm tra tải lại localStorage, chia sẻ tin và sửa/gửi lại tin của phòng hiện có. Cần Node 22+, Chrome tại đường dẫn mặc định hoặc `CHROME_PATH`.
+`npm run test:browser` cũng đạt với Chrome chạy theo giờ Los Angeles: thao tác nút/form thật cho các luồng cũ và gửi/chấp nhận/từ chối/rút đề nghị, tạo lịch trực tiếp sau chat, cảnh báo trước gửi hợp đồng, hủy lịch/đóng đề nghị và thông báo hai bên, xác nhận giữ phòng, hủy hợp đồng và đặt lịch mới. Có kiểm tra UTC+7, trạng thái chung giữa chat/Lịch xem, tải lại localStorage, chia sẻ tin, sửa/gửi lại tin của phòng hiện có và bố cục di động; không có lỗi JavaScript. Cần Node 22+, Chrome tại đường dẫn mặc định hoặc `CHROME_PATH`.
 
-`npm run test:database`: **34/34 kiểm tra tích hợp đạt trên MySQL 8.0.42**, gồm tạo mới 41 bảng, nâng cấp qua cả ba migration và tính tương đương cột/FK; các luồng đại diện, hợp đồng, người ở, sức chứa, đổi phòng, lịch và chia sẻ tin cũ vẫn đạt. Phần mới kiểm tra gửi lặp/đổi nội dung, đúng người/phòng/hội thoại, từ chối/rút và lịch sử bất biến, phòng hoặc tài khoản đổi trước duyệt, hết hạn trước worker, tạo lịch trực tiếp cần tin người thuê. Hai phiên duyệt đề nghị cùng giờ chỉ một phiên tạo lịch thành công; phiên còn lại giữ `PENDING`. Duyệt lại sau khi hủy lịch trả lịch cũ, không tạo thêm lịch/thông báo. Migration từ chối sai thứ tự/chạy lại; thủ tục không làm mất giao dịch của bên gọi khi bị gọi lồng.
+`npm run test:database`: **40/40 kiểm tra tích hợp đạt trên MySQL 8.0.42**, gồm tạo mới 41 bảng, nâng cấp qua cả bốn migration và tính tương đương cột/FK/nội dung thủ tục tạo hợp đồng; các luồng cũ vẫn đạt. Phần lịch kiểm tra gửi/duyệt lặp, quyền/ngữ cảnh, trùng giờ, lịch sử và hết hạn. Phần mới xác nhận mong muốn thuê chưa đóng lịch, gửi hợp đồng đóng đúng phòng và thông báo đúng người, giữ lịch sử đề nghị đã chấp nhận, hết hạn đúng cách, hủy hợp đồng không khôi phục lịch. Đã cố ý gây lỗi tại bước thông báo tổng hợp cuối để xác nhận rollback cả hợp đồng/lượt dự kiến/phòng/lịch/đề nghị/thông báo. Ba thao tác đồng thời gồm hai phiên tạo hợp đồng và một phiên duyệt đề nghị chỉ để lại một hợp đồng mở, không còn lịch sắp tới hoặc đề nghị chờ trên phòng đã giữ. Migration từ chối sai thứ tự/chạy lại; public procedure không làm mất giao dịch bên gọi khi bị gọi lồng.
 
-`npm run db:check` xác nhận SQL tạo mới và các migration sinh ra đồng bộ với hai nguồn trong `database/source/`. Các kiểm tra chỉ dùng instance tạm có thư mục dữ liệu/cổng riêng và dữ liệu fixture; chưa xác nhận dữ liệu hoặc triển khai trên CSDL hiện có của người dùng.
+`npm run db:check` xác nhận SQL tạo mới và các migration sinh ra đồng bộ với ba nguồn trong `database/source/`. Các kiểm tra chỉ dùng instance tạm có thư mục dữ liệu/cổng riêng và dữ liệu fixture; chưa xác nhận dữ liệu hoặc triển khai trên CSDL hiện có của người dùng.

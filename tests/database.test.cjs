@@ -49,11 +49,11 @@ async function main() {
     assert.equal(path.resolve(await query("SELECT @@datadir;")), path.resolve(directory), "Connected server is not the temporary instance");
     ownsServer = true;
     console.log(`Temporary MySQL ${await query("SELECT VERSION();")} ready.`);
-    const { schema, upgrade, viewingUpgrade } = require("../scripts/build-database.cjs").build();
+    const { schema, upgrade, viewingUpgrade, cleanupUpgrade } = require("../scripts/build-database.cjs").build();
     await query(schema.replaceAll("room_rental_v5_20261023", "rr_v5_fresh_test"));
     assert.equal(await query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE';", "rr_v5_fresh_test"), "41");
     if (process.argv.includes("--probe")) console.log("Fresh schema import passed (41 tables).");
-    else await runTests(query, { schema, upgrade, viewingUpgrade });
+    else await runTests(query, { schema, upgrade, viewingUpgrade, cleanupUpgrade });
   } catch (error) {
     error.message += `\nTemporary server log:\n${serverLog.slice(-4000)}`; throw error;
   } finally {
@@ -69,7 +69,7 @@ async function main() {
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });
 
-async function runTests(query, { schema, upgrade, viewingUpgrade }) {
+async function runTests(query, { schema, upgrade, viewingUpgrade, cleanupUpgrade }) {
   const fixture = fs.readFileSync(path.join(root, "tests", "fixtures", "workflow-data.sql"), "utf8");
   const original = fs.readFileSync(path.join(root, "tests", "fixtures", "v5-original-schema.sql"), "utf8");
   const sharingUpgrade = fs.readFileSync(path.join(root, "database", "migrations", "20261025_chat_post_sharing.sql"), "utf8");
@@ -237,6 +237,7 @@ DELIMITER ;`, core);
     await query("INSERT INTO chat_messages(id,conversation_id,sender_id,client_message_key,content,sent_at) VALUES(7000,1,1,UUID(),'Existing conversation',UTC_TIMESTAMP(6));", upgraded);
     await query(sharingUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
     await query(viewingUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
+    await query(cleanupUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
     assert.equal(await query("SELECT content,shared_post_id FROM chat_messages WHERE id=7000;", upgraded), "Existing conversation\tNULL");
     assert.equal(await query("SELECT event_type,started_at,consent_method,is_current FROM contract_representative_history;", upgraded), "LEGACY_BASELINE\tNULL\tLEGACY_UNKNOWN\t1");
     assert.equal(await query("SELECT COUNT(*) FROM invoices;", upgraded), "1");
@@ -248,6 +249,8 @@ DELIMITER ;`, core);
     assert.equal(await columns(core), await columns(upgraded));
     const keys = (database) => query("SELECT table_name,constraint_name,referenced_table_name,delete_rule,update_rule FROM information_schema.referential_constraints WHERE constraint_schema=DATABASE() ORDER BY table_name,constraint_name;", database);
     assert.equal(await keys(core), await keys(upgraded));
+    const creationRoutine = (database) => query("SELECT routine_definition,routine_comment FROM information_schema.routines WHERE routine_schema=DATABASE() AND routine_name='sp_create_rental_contract';", database);
+    assert.equal(await creationRoutine(core), await creationRoutine(upgraded));
     await query(upgrade.replaceAll("room_rental_v5_20261023", upgraded), undefined, /already applied or incomplete/);
   });
   const invalid = await setup("rr_v5_invalid_upgrade_test", true);
@@ -373,5 +376,79 @@ DELIMITER ;`, proposals);
     await query(viewingUpgrade.replaceAll("room_rental_v5_20261023", invalid), undefined, /workflow and chat sharing migrations before/);
     await query(viewingUpgrade.replaceAll("room_rental_v5_20261023", upgraded), undefined, /already applied or incomplete/);
   });
-  console.log(`${checks} MySQL integration checks passed; fresh schema, ordered migrations, concurrent approvals, proposal history and direct owner scheduling verified.`);
+  const cleanup = await setup("rr_v5_cleanup_test");
+  let upcoming, accepted, pending, expired, unaffected, createdContract;
+  const createContract = (number) => query(`CALL sp_create_rental_contract(400,1,'${number}',DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR),DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR)+INTERVAL 1 YEAR,4000000,4000000,'Agreed terms',NULL,JSON_ARRAY(),@contract); SELECT @contract;`, cleanup);
+  await check("rental interest leaves other appointments and pending proposals open", async () => {
+    await query("INSERT INTO conversations(id,type,room_id,post_id) VALUES(703,'ROOM_INQUIRY',4,1),(704,'ROOM_INQUIRY',4,1),(705,'ROOM_INQUIRY',4,1); INSERT INTO conversation_participants(conversation_id,user_id,joined_at) VALUES(703,1,UTC_TIMESTAMP(6)),(703,6,UTC_TIMESTAMP(6)),(704,1,UTC_TIMESTAMP(6)),(704,4,UTC_TIMESTAMP(6)),(705,1,UTC_TIMESTAMP(6)),(705,2,UTC_TIMESTAMP(6));", cleanup);
+    accepted = Number(await query("CALL sp_request_viewing(703,4,6,UTC_TIMESTAMP()+INTERVAL 2 DAY,30,'Accepted proposal',UUID(),@p); SELECT @p;", cleanup));
+    upcoming = Number(await query(`CALL sp_review_viewing_proposal(${accepted},1,'ACCEPT',NULL,@v); SELECT @v;`, cleanup));
+    pending = Number(await query("CALL sp_request_viewing(704,4,4,UTC_TIMESTAMP()+INTERVAL 3 DAY,30,'Pending proposal',UUID(),@p); SELECT @p;", cleanup));
+    expired = Number(await query("SET timestamp=UNIX_TIMESTAMP()-172800; CALL sp_request_viewing(705,4,2,UTC_TIMESTAMP()+INTERVAL 1 DAY,30,'Elapsed proposal',UUID(),@p); SELECT @p;", cleanup));
+    unaffected = Number(await query("CALL sp_schedule_viewing(2,5,6,1,UTC_TIMESTAMP()+INTERVAL 2 DAY,30,'Other room',@v); SELECT @v;", cleanup));
+    await query("INSERT INTO room_viewing_requests(id,room_id,house_id,conversation_id,tenant_id,created_by_id,starts_at,ends_at,status,attendance_confirmed_by_id,attendance_confirmed_at) SELECT 399,room_id,house_id,conversation_id,tenant_id,created_by_id,starts_at,ends_at,'COMPLETED',attendance_confirmed_by_id,attendance_confirmed_at FROM room_viewing_requests WHERE id=400; CALL sp_set_viewing_outcome(399,5,'AGREE',NULL);", cleanup);
+    assert.equal(await query(`SELECT status FROM room_viewing_requests WHERE id=${upcoming};`, cleanup), "SCHEDULED");
+    assert.equal(await query(`SELECT status FROM room_viewing_proposals WHERE id=${pending};`, cleanup), "PENDING");
+    assert.equal(await query("SELECT status FROM rooms WHERE id=4;", cleanup), "AVAILABLE");
+  });
+  await check("notification failures roll back the contract, room hold, cancellations and proposal decisions together", async () => {
+    await query(`DELIMITER $$
+CREATE TRIGGER fixture_cleanup_notification BEFORE INSERT ON notifications FOR EACH ROW
+BEGIN IF NEW.type='ROOM_VIEWINGS_CLOSED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Fixture notification failure'; END IF; END$$
+DELIMITER ;`, cleanup);
+    const before = await query("SELECT COUNT(*) FROM notifications;", cleanup);
+    await assert.rejects(createContract("ROLLBACK-CLEANUP"), /Fixture notification failure/);
+    assert.equal(await query("SELECT COUNT(*) FROM contracts WHERE room_id=4;", cleanup), "0");
+    assert.equal(await query("SELECT COUNT(*) FROM room_tenants WHERE room_id=4;", cleanup), "0");
+    assert.equal(await query("SELECT status FROM rooms WHERE id=4;", cleanup), "AVAILABLE");
+    assert.equal(await query(`SELECT status FROM room_viewing_requests WHERE id=${upcoming};`, cleanup), "SCHEDULED");
+    assert.equal(await query(`SELECT status FROM room_viewing_proposals WHERE id=${pending};`, cleanup), "PENDING");
+    assert.equal(await query("SELECT COUNT(*) FROM notifications;", cleanup), before);
+    await query("DROP TRIGGER fixture_cleanup_notification;", cleanup);
+  });
+  await check("sending a contract cancels upcoming viewings, rejects pending requests and preserves accepted history", async () => {
+    createdContract = Number(await createContract("CLEANUP"));
+    assert.equal(await query(`SELECT status,cancelled_by_id,cancellation_reason IS NOT NULL,cancelled_at IS NOT NULL FROM room_viewing_requests WHERE id=${upcoming};`, cleanup), "CANCELLED\t1\t1\t1");
+    assert.equal(await query(`SELECT status,reviewed_by_id,rejection_reason IS NOT NULL FROM room_viewing_proposals WHERE id=${pending};`, cleanup), "REJECTED\t1\t1");
+    assert.equal(await query(`SELECT status,scheduled_viewing_id FROM room_viewing_proposals WHERE id=${accepted};`, cleanup), `ACCEPTED\t${upcoming}`);
+    assert.equal(await query(`SELECT status FROM room_viewing_proposals WHERE id=${expired};`, cleanup), "EXPIRED");
+    assert.equal(await query(`SELECT status FROM room_viewing_requests WHERE id=${unaffected};`, cleanup), "SCHEDULED");
+    assert.equal(await query("SELECT status,rental_decision FROM room_viewing_requests WHERE id=400;", cleanup), "COMPLETED\tAGREED");
+    assert.equal(await query("SELECT status FROM rooms WHERE id=4;", cleanup), "RESERVED");
+    assert.equal(await query(`SELECT user_id,type,resource_type,resource_id FROM notifications WHERE event_key='viewing:${upcoming}:cancelled-room-reserved';`, cleanup), `6\tVIEWING_CANCELLED\tROOM_VIEWING\t${upcoming}`);
+    assert.equal(await query(`SELECT user_id,type FROM notifications WHERE event_key='viewing-proposal:${pending}:REJECT';`, cleanup), "4\tVIEWING_REJECT");
+    await assert.rejects(createContract("DUPLICATE-CLEANUP"), /occupied or reserved/);
+    assert.equal(await query("SELECT COUNT(*) FROM notifications WHERE type='ROOM_VIEWINGS_CLOSED';", cleanup), "1");
+  });
+  await check("contract confirmation keeps the room reserved; cancellation never resurrects old schedules or proposals", async () => {
+    await query(`CALL sp_confirm_contract(${createdContract},5);`, cleanup);
+    assert.equal(await query("SELECT status FROM rooms WHERE id=4;", cleanup), "RESERVED");
+    await query(`CALL sp_cancel_contract(${createdContract},1,'Tenant changed plan');`, cleanup);
+    assert.equal(await query("SELECT status FROM rooms WHERE id=4;", cleanup), "AVAILABLE");
+    assert.equal(await query(`SELECT status FROM room_viewing_requests WHERE id=${upcoming};`, cleanup), "CANCELLED");
+    assert.equal(await query(`SELECT status FROM room_viewing_proposals WHERE id=${pending};`, cleanup), "REJECTED");
+    await query("CALL sp_request_viewing(704,4,4,UTC_TIMESTAMP()+INTERVAL 4 DAY,30,'New request after release',UUID(),@p);", cleanup);
+  });
+  await check("cleanup migration enforces order and replaces the same routine on existing databases", async () => {
+    await query(cleanupUpgrade.replaceAll("room_rental_v5_20261023", invalid), undefined, /viewing proposals migration before/);
+    await query(cleanupUpgrade.replaceAll("room_rental_v5_20261023", upgraded), undefined, /already applied/);
+  });
+  await check("competing contracts and proposal approval cannot leave a future schedule on a newly held room", async () => {
+    const nextProposal = Number(await query("SELECT id FROM room_viewing_proposals WHERE status='PENDING' AND room_id=4;", cleanup));
+    const results = await Promise.allSettled([
+      createContract("RACE-FIRST"),
+      query("CALL sp_create_rental_contract(399,1,'RACE-SECOND',DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR),DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR)+INTERVAL 1 YEAR,4000000,4000000,'Agreed terms',NULL,JSON_ARRAY(),@contract);", cleanup),
+      query(`CALL sp_review_viewing_proposal(${nextProposal},1,'ACCEPT',NULL,@v);`, cleanup)
+    ]);
+    assert.equal(results.slice(0,2).filter((r) => r.status==='fulfilled').length, 1);
+    assert.match(results.slice(0,2).find((r) => r.status==='rejected').reason.message, /occupied or reserved/);
+    assert.equal(await query("SELECT COUNT(*) FROM contracts WHERE room_id=4 AND status='PENDING_CONFIRMATION';", cleanup), "1");
+    assert.equal(await query("SELECT COUNT(*) FROM room_viewing_requests WHERE room_id=4 AND status='SCHEDULED' AND starts_at>UTC_TIMESTAMP(6);", cleanup), "0");
+    assert.equal(await query("SELECT COUNT(*) FROM room_viewing_proposals WHERE room_id=4 AND status='PENDING';", cleanup), "0");
+    const proposalState = await query(`SELECT status FROM room_viewing_proposals WHERE id=${nextProposal};`, cleanup);
+    assert.ok(['ACCEPTED','REJECTED'].includes(proposalState));
+    if (proposalState==='ACCEPTED') assert.equal(await query(`SELECT v.status FROM room_viewing_requests v JOIN room_viewing_proposals p ON p.scheduled_viewing_id=v.id WHERE p.id=${nextProposal};`, cleanup), "CANCELLED");
+    assert.equal(await query("SELECT status FROM rooms WHERE id=4;", cleanup), "RESERVED");
+  });
+  console.log(`${checks} MySQL integration checks passed; migrations, concurrent approvals, contract reservation cleanup, notifications and rollback verified.`);
 }

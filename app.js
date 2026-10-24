@@ -385,7 +385,7 @@ function viewingActions(v) {
   }
   if (v.status !== "COMPLETED") return "";
   const linked = liveViewingContract(v.id);
-  if (state.role === "landlord" && v.decision === "AGREED") return linked ? button("Xem hợp đồng", "contract-detail", linked.id, "small") : button("Tạo hợp đồng", "open-contract", v.id, "small primary");
+  if (state.role === "landlord" && v.decision === "AGREED") return linked ? button("Xem hợp đồng", "contract-detail", linked.id, "small") : button("Tạo hợp đồng", "open-contract", v.id, "small primary", hasLiveRoomContract(v.roomId) || room(v.roomId)?.status !== "AVAILABLE" ? 'disabled title="Phòng không còn trống để lập hợp đồng mới"' : "");
   if (state.role === "tenant" && v.decision === "WAITING") return `${button("Đồng ý thuê", "agree-rent", v.id, "small primary")}${button("Từ chối", "decline-rent", v.id, "small")}`;
   if (state.role === "tenant" && v.decision === "AGREED") return button("Rút ý định thuê", "withdraw-rent", v.id, "small", linked ? 'disabled title="Cần chủ trọ hủy hoặc kết thúc hợp đồng liên quan trước"' : "");
   return "";
@@ -395,7 +395,7 @@ function renderViewings() {
   const tabs = [["all", "Tất cả"], ["SCHEDULED", "Lịch đã hẹn"], ["COMPLETED", "Đã xem"], ["CANCELLED", "Đã hủy"], ["NO_SHOW", "Không đến"]];
   const visible = my.filter((v) => state.tab === "all" || v.status === state.tab);
   return head("Lịch xem phòng", `${my.length} lịch hẹn`, state.role === "landlord" ? button(`${icon("calendar-plus")} Tạo lịch hẹn`, "open-appointment", "", "primary") : button("Đề nghị lịch xem", "open-viewing-request", "", "primary")) +
-    renderViewingProposals() + `<p class="muted tiny">Thời gian hiển thị theo giờ Việt Nam (UTC+7).</p><div class="tabs">${tabs.map(([id, label]) => `<button type="button" class="tab-button ${state.tab === id ? "active" : ""}" data-action="tab" data-id="${id}">${label}</button>`).join("")}</div><div class="table-surface table-scroll">${visible.length ? `<table><thead><tr><th>Phòng</th><th>Người thuê</th><th>Thời gian</th><th>Lịch xem</th><th>Quyết định</th><th></th></tr></thead><tbody>${visible.map((v) => { const r = room(v.roomId); return `<tr><td><div class="room-row"><img src="${esc(r.photo)}" alt=""><div><span class="cell-title">${esc(r.code)}</span><span class="cell-sub">${esc(house(r.houseId).name)}</span></div></div></td><td>${esc(person(v.tenantId).name)}</td><td>${dateLabel(v.date)}<span class="cell-sub">${viewingTimeLabel(v)}</span>${v.cancellationReason ? `<span class="cell-sub">${esc(v.cancellationReason)}</span>` : ""}</td><td>${chip(...VIEWING_LABEL[v.status])}</td><td>${chip(...DECISION_LABEL[v.decision])}</td><td class="actions-cell"><div class="table-actions">${viewingActions(v)}</div></td></tr>`; }).join("")}</tbody></table>` : empty("Không có lịch hẹn", "Các lịch xem phòng sẽ xuất hiện ở đây.")}</div>`;
+    renderViewingProposals() + `<p class="muted tiny">Giờ Việt Nam (UTC+7). Đồng ý thuê chỉ ghi nhận mong muốn; chủ trọ gửi hợp đồng mới giữ phòng và hủy các lịch xem sắp tới còn lại.</p><div class="tabs">${tabs.map(([id, label]) => `<button type="button" class="tab-button ${state.tab === id ? "active" : ""}" data-action="tab" data-id="${id}">${label}</button>`).join("")}</div><div class="table-surface table-scroll">${visible.length ? `<table><thead><tr><th>Phòng</th><th>Người thuê</th><th>Thời gian</th><th>Lịch xem</th><th>Quyết định</th><th></th></tr></thead><tbody>${visible.map((v) => { const r = room(v.roomId); return `<tr><td><div class="room-row"><img src="${esc(r.photo)}" alt=""><div><span class="cell-title">${esc(r.code)}</span><span class="cell-sub">${esc(house(r.houseId).name)}</span></div></div></td><td>${esc(person(v.tenantId).name)}</td><td>${dateLabel(v.date)}<span class="cell-sub">${viewingTimeLabel(v)}</span>${v.cancellationReason ? `<span class="cell-sub">${esc(v.cancellationReason)}</span>` : ""}</td><td>${chip(...VIEWING_LABEL[v.status])}</td><td>${chip(...DECISION_LABEL[v.decision])}</td><td class="actions-cell"><div class="table-actions">${viewingActions(v)}</div></td></tr>`; }).join("")}</tbody></table>` : empty("Không có lịch hẹn", "Các lịch xem phòng sẽ xuất hiện ở đây.")}</div>`;
 }
 
 const CONTRACT_LABEL = { DRAFT: ["Bản nháp", "gray"], PENDING_CONFIRMATION: ["Chờ xác nhận", "yellow"], CONFIRMED: ["Đã xác nhận", "purple"], ACTIVE: ["Đang ở", "green"], TERMINATED: ["Đã kết thúc", "gray"], EXPIRED: ["Hết hạn", "gray"], CANCELLED: ["Đã hủy", "red"] };
@@ -703,6 +703,28 @@ function notifyViewingProposal(p, user, text) {
   const id = `np-${p.id}-${p.status}`;
   if (!state.notifications.some((n) => n.id === id)) state.notifications.push({ id, userId: user, proposalId: p.id, text, read: false });
 }
+const RESERVED_VIEWING_REASON = "Phòng đã được giữ để lập hợp đồng; lịch xem bị hủy. Vui lòng trao đổi để chọn phòng khác.";
+const RESERVED_PROPOSAL_REASON = "Phòng đã được giữ để lập hợp đồng; đề nghị xem phòng không được chấp nhận.";
+function pendingRoomViewings(roomId) {
+  return {
+    viewings: state.viewings.filter((v) => v.roomId === roomId && v.status === "SCHEDULED" && viewingStart(v) >= Date.now()),
+    proposals: state.viewingProposals.filter((p) => p.roomId === roomId && p.status === "PENDING" && viewingStart(p) > Date.now())
+  };
+}
+function closeRoomViewingsForContract(c) {
+  expireViewingProposals();
+  const { viewings, proposals } = pendingRoomViewings(c.roomId), now = new Date().toISOString();
+  for (const v of viewings) {
+    Object.assign(v, { status: "CANCELLED", cancelledAt: now, cancelledBy: c.ownerId, cancellationReason: RESERVED_VIEWING_REASON });
+    state.notifications.push({ id: `n-${v.id}-cancelled-room-reserved`, userId: v.tenantId, viewingId: v.id, text: `Lịch xem ${roomName(c.roomId)} đã hủy: ${RESERVED_VIEWING_REASON}`, read: false });
+  }
+  for (const p of proposals) {
+    Object.assign(p, { status: "REJECTED", reviewedBy: c.ownerId, reviewedAt: now, rejectionReason: RESERVED_PROPOSAL_REASON });
+    notifyViewingProposal(p, p.tenantId, `Đề nghị xem ${roomName(c.roomId)} đã đóng: ${RESERVED_PROPOSAL_REASON}`);
+  }
+  if (viewings.length + proposals.length) state.notifications.push({ id: `n-${c.id}-viewings-closed`, userId: c.ownerId, contractId: c.id, text: `Đã giữ ${roomName(c.roomId)}, hủy ${viewings.length} lịch sắp tới và đóng ${proposals.length} đề nghị chờ; người liên quan đã được thông báo.`, read: false });
+  return { cancelled: viewings.length, rejected: proposals.length };
+}
 function scheduledViewing(c, r, tenantId, ownerId, date, time, start, end, notes, sourceProposalId = null) {
   const viewingId = `v${Date.now()}-${state.viewings.length}`;
   const v = { id: viewingId, roomId: r.id, tenantId, ownerId, createdBy: ownerId, conversationId: c.id, date, time, startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(), status: "SCHEDULED", decision: "WAITING", notes, sourceProposalId };
@@ -765,13 +787,15 @@ function openAppointment(mode = "DIRECT", roomId = "") {
 function openContract(viewingId) {
   if (state.role !== "landlord") return;
   const v = byId(state.viewings, viewingId);
-  if (!v || v.status !== "COMPLETED" || v.decision !== "AGREED") { flash("Cần xác nhận đã xem và người thuê đồng ý trước."); return; }
+  if (!v || v.ownerId !== userId() || (state.lockedUsers || []).includes(userId()) || v.status !== "COMPLETED" || v.decision !== "AGREED") { flash("Cần xác nhận đã xem và người thuê đồng ý trước."); return; }
   if (liveViewingContract(viewingId)) { flash("Lịch xem đã có hợp đồng."); return; }
   const r = room(v.roomId);
+  if (r.status !== "AVAILABLE" || hasLiveRoomContract(r.id) || roomLoad(r.id)) { flash("Phòng không còn trống để lập hợp đồng mới."); return; }
   const start = todayISO();
   const end = `${Number(start.slice(0, 4)) + 1}${start.slice(4)}`;
   const templates = (state.templates || []).filter((item) => item.active);
-  modal("Lập hợp đồng thuê", `<form data-form="create-contract"><input type="hidden" name="viewingId" value="${v.id}"><div class="form-grid"><label class="field">Phòng<input value="${esc(roomName(r.id))}" disabled></label><label class="field">Đại diện<input value="${esc(person(v.tenantId).name)}" disabled></label><label class="field">Bắt đầu<input type="date" name="start" value="${start}" required></label><label class="field">Kết thúc<input type="date" name="end" value="${end}" required></label><label class="field">Giá thuê / tháng<input type="number" name="rent" min="0" value="${r.price}" required></label><label class="field">Tiền cọc<input type="number" name="deposit" min="0" value="${r.deposit}" required></label><label class="field full">Thành viên khác<textarea name="members" placeholder="Mỗi người một dòng: họ tên, số CCCD (nếu có)"></textarea></label><label class="field full">Mẫu hợp đồng<select name="templateId" data-change="contract-template">${templates.map((item) => `<option value="${item.id}">${esc(item.name)} · v${item.version}</option>`).join("")}</select></label><label class="field full">Điều khoản<textarea name="terms" required>${esc(templates[0]?.content || "")}</textarea></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button type="submit" class="button primary">${icon("send")} Gửi đại diện xác nhận</button></div></form>`);
+  const affected = pendingRoomViewings(r.id);
+  modal("Lập hợp đồng thuê", `<p class="connection-note">Gửi hợp đồng sẽ giữ phòng, hủy ${affected.viewings.length} lịch xem sắp tới và đóng ${affected.proposals.length} đề nghị chờ của phòng này. Người liên quan sẽ được thông báo. Nếu hợp đồng bị hủy, cần đặt lịch mới.</p><form data-form="create-contract"><input type="hidden" name="viewingId" value="${v.id}"><div class="form-grid"><label class="field">Phòng<input value="${esc(roomName(r.id))}" disabled></label><label class="field">Đại diện<input value="${esc(person(v.tenantId).name)}" disabled></label><label class="field">Bắt đầu<input type="date" name="start" value="${start}" required></label><label class="field">Kết thúc<input type="date" name="end" value="${end}" required></label><label class="field">Giá thuê / tháng<input type="number" name="rent" min="0" value="${r.price}" required></label><label class="field">Tiền cọc<input type="number" name="deposit" min="0" value="${r.deposit}" required></label><label class="field full">Thành viên khác<textarea name="members" placeholder="Mỗi người một dòng: họ tên, số CCCD (nếu có)"></textarea></label><label class="field full">Mẫu hợp đồng<select name="templateId" data-change="contract-template">${templates.map((item) => `<option value="${item.id}">${esc(item.name)} · v${item.version}</option>`).join("")}</select></label><label class="field full">Điều khoản<textarea name="terms" required>${esc(templates[0]?.content || "")}</textarea></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button type="submit" class="button primary">${icon("send")} Gửi đại diện xác nhận</button></div></form>`);
 }
 
 function openFeedback(id) { modal("Yêu cầu sửa hợp đồng", `<form data-form="contract-feedback"><input type="hidden" name="contractId" value="${esc(id)}"><label class="field">Nội dung cần sửa<textarea name="feedback" required placeholder="Ghi rõ điều khoản, thành viên hoặc giá cần chỉnh..."></textarea></label><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Gửi yêu cầu</button></div></form>`); }
@@ -956,7 +980,7 @@ function handleAction(action, id) {
         item.decision = action === "agree-rent" ? "AGREED" : "DECLINED";
         item.rentalDecidedBy = userId(); item.rentalDecidedAt = new Date().toISOString();
       }
-      finish(action === "withdraw-rent" ? "Đã rút ý định thuê." : action === "agree-rent" ? "Đã đồng ý thuê. Chủ trọ có thể lập hợp đồng." : "Đã lưu quyết định không thuê."); return;
+      finish(action === "withdraw-rent" ? "Đã rút ý định thuê." : action === "agree-rent" ? "Đã ghi nhận mong muốn thuê. Phòng chỉ được giữ khi chủ trọ gửi hợp đồng." : "Đã lưu quyết định không thuê."); return;
     }
     case "cancel-contract": {
       item = contract(id);
@@ -1232,7 +1256,7 @@ function handleForm(form) {
     }
     case "create-contract": {
       const v = byId(state.viewings, value("viewingId"));
-      if (!v || state.role !== "landlord" || v.ownerId !== userId() || v.status !== "COMPLETED" || v.decision !== "AGREED" || liveViewingContract(v.id)) { flash("Chưa đủ điều kiện tạo hợp đồng hoặc lịch xem đã có hợp đồng."); return; }
+      if (!v || state.role !== "landlord" || v.ownerId !== userId() || (state.lockedUsers || []).some((id) => [userId(), v.tenantId].includes(id)) || v.status !== "COMPLETED" || v.decision !== "AGREED" || liveViewingContract(v.id)) { flash("Chưa đủ điều kiện tạo hợp đồng hoặc lịch xem đã có hợp đồng."); return; }
       if (value("end") < value("start")) { flash("Ngày kết thúc phải sau ngày bắt đầu."); return; }
       if (state.contracts.some((c) => c.roomId === v.roomId && ["PENDING_CONFIRMATION", "CONFIRMED", "ACTIVE"].includes(c.status))) { flash("Phòng đã có hợp đồng còn hiệu lực."); return; }
       const extra = value("members").split("\n").map((line) => line.trim()).filter(Boolean).map((line, index) => { const parts = line.split(",").map((x) => x.trim()); return { id: `o${Date.now()}-${index}`, tenantId: null, name: parts[0], identity: parts[1] || "", dob: "", status: "PLANNED", moveIn: "" }; });
@@ -1245,7 +1269,8 @@ function handleForm(form) {
       c.members.forEach((m) => { m.plannedMoveIn = c.start; m.intakeSource = "INITIAL_CONTRACT"; });
       state.contracts.push(c); room(v.roomId).status = "RESERVED"; state.selectedContract = c.id; state.view = "contracts";
       state.notifications.push({ id: `n${Date.now()}`, userId: v.tenantId, text: `Chủ trọ đã gửi hợp đồng ${number} để bạn xác nhận.`, read: false });
-      finish("Đã gửi hợp đồng cho đại diện xác nhận."); return;
+      const closed = closeRoomViewingsForContract(c);
+      finish(`Đã gửi hợp đồng và giữ phòng. Đã hủy ${closed.cancelled} lịch sắp tới, đóng ${closed.rejected} đề nghị chờ.`); return;
     }
     case "contract-feedback": {
       const c = contract(value("contractId")); if (!c || c.status !== "PENDING_CONFIRMATION" || state.role !== "tenant" || c.tenantId !== userId()) return;
