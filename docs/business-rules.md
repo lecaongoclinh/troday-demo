@@ -10,7 +10,7 @@ Các luồng giao diện nằm trong `app.js` và dữ liệu mô phỏng trên 
 
 ## 1. Danh mục logic nghiệp vụ đang có
 
-Ký hiệu: **Có** = đang được mô phỏng bằng code; **Sửa** = đã chỉnh trong đợt rà soát này; **Mới** = bổ sung theo yêu cầu đổi đại diện; **Thiết kế** = có trong SQL hoặc là yêu cầu backend, chưa triển khai đầy đủ trong wireframe. Các trạng thái này không xác nhận rằng đã có API hoặc kiểm thử MySQL.
+Ký hiệu: **Có** = đang được mô phỏng bằng code; **Sửa** = đã chỉnh trong đợt rà soát này; **Mới** = bổ sung theo yêu cầu đổi đại diện; **Thiết kế** = có trong SQL hoặc là yêu cầu backend, chưa triển khai đầy đủ trong wireframe; **Đề xuất** = phương án đang được đề nghị, chưa triển khai vào SQL hoặc giao diện. Các trạng thái này không xác nhận rằng đã có API hoặc kiểm thử MySQL.
 
 ### 1.1. Tài khoản, vai trò và hồ sơ
 
@@ -86,6 +86,7 @@ Lỗi “đã có nhà/phòng nhưng bị yêu cầu thêm phòng” đến từ
 | LX-08 | Sau khi xem xong, người thuê chuyển quyết định từ `WAITING` sang `AGREED` hoặc `DECLINED`; lưu người và thời điểm quyết định. | Có / Sửa |
 | LX-09 | Chỉ rút ý định từ `AGREED` sang `WITHDRAWN`; còn hợp đồng mở thì phải xử lý hợp đồng trước. Không cho sửa ngược quyết định chỉ bằng nút cũ. | Sửa |
 | LX-10 | Tổng quan chỉ đếm lịch đã hẹn chưa hết giờ và sắp xếp theo giờ bắt đầu. | Sửa |
+| LX-11 | Người thuê gửi đề nghị giờ xem; chủ trọ chấp nhận/từ chối; chỉ sau chấp nhận mới tạo lịch `SCHEDULED`. CSDL hiện chưa hỗ trợ bước đề nghị/duyệt này. Thiết kế bổ sung ở mục 4.9, chưa triển khai vào schema hoặc wireframe. | Đề xuất |
 
 Hiển thị lịch trong chat dùng liên kết `room_viewing_requests.conversation_id` đã có; không đổi cấu trúc CSDL. API cần trả lịch theo hội thoại có người dùng tham gia và kiểm tra đúng chủ trọ/người thuê. Thẻ lấy trạng thái hiện tại của lịch, không dùng một bản sao nội dung thông báo để suy ra kết quả mới nhất.
 
@@ -343,6 +344,45 @@ Nhãn “Chủ trọ”/“Bạn ghép”/“Người thuê” được suy ra t
 Ví dụ dữ liệu API: `{ "message_type": "POST_SHARE", "shared_post_id": 123, "content": "Bạn thấy phòng này thế nào?" }`. Trong prototype, phòng và tin đăng đang gộp nên `sharedPostId` dùng ID đối tượng phòng; backend phải ánh xạ sang **ID bài đăng** thực, không chép ID phòng vào FK này. Không thay `conversations.room_id/post_id` của chat bạn ghép bằng phòng vừa chia sẻ: loại hội thoại vẫn là `ROOMMATE` và gắn lời mời kết nối.
 
 API phải kiểm tra người gửi thuộc đúng hội thoại, kết nối đã chấp nhận/chưa kết thúc và bài đăng được phép chia sẻ, ghi người gửi từ phiên đăng nhập, dùng `client_message_key` chống gửi lặp. Các FK/CHECK chỉ bảo đảm cấu trúc và tham chiếu; chúng không thay kiểm tra quyền, trạng thái kết nối hoặc khả năng công khai của bài đăng ở API. Khi đọc thẻ, kiểm tra lại quyền xem và lấy nội dung hiện tại. Không dựa vào việc có FK để công khai tin đã ẩn; không dùng giá hiện tại trên thẻ làm giá đã chốt của hợp đồng. Tin đã được tham chiếu nên xử lý ẩn/lưu trữ thay vì xóa cứng bài đăng.
+
+### 4.9. Đề xuất người thuê gửi yêu cầu xem phòng, chủ trọ duyệt — chưa triển khai
+
+**Phạm vi:** đề xuất thiết kế theo yêu cầu ngày 25/10/2026. Chưa thêm bảng, procedure, migration hoặc thay đổi wireframe cho luồng này; CSDL hiện tại vẫn 40 bảng. Không xem các tên bảng/thủ tục dưới đây là API đã tồn tại.
+
+**Kết quả đối chiếu hiện trạng:** `room_viewing_requests.created_by_id` gắn với chủ trọ của nhà qua `fk_viewings_house_owner`. CHECK trạng thái chỉ có `SCHEDULED/COMPLETED/CANCELLED/NO_SHOW`; trigger không cho chuyển từ một trạng thái chờ duyệt. `sp_schedule_viewing` kiểm tra actor là chủ trọ; các procedure ghi nhận đã xem, không đến và tạo hợp đồng cũng đang dùng `created_by_id` làm chủ trọ. `AGREE` trong `sp_set_viewing_outcome` là quyết định thuê sau khi đã xem, không phải duyệt yêu cầu lịch. Vì vậy chưa thể chỉ thêm nút người thuê gửi lịch mà vẫn bảo đảm đúng CSDL hiện có.
+
+**Phương án đề xuất:** thêm bảng `room_viewing_proposals` cho đề nghị của người thuê; giữ `room_viewing_requests` làm lịch đã được chủ trọ chốt. Nếu áp dụng, số bảng tăng từ 40 lên 41; các lịch xem và bằng chứng hợp đồng cũ giữ nguyên. Không đổi nghĩa `created_by_id` của lịch hiện tại thành người gửi đề nghị.
+
+| Trường đề xuất | Kiểu / ý nghĩa |
+| --- | --- |
+| `id` | BIGINT, khóa chính |
+| `room_id`, `house_id` | Phòng và nhà được đề nghị xem; FK kép tới `rooms(id, house_id)` |
+| `conversation_id` | Hội thoại hỏi đúng phòng, FK kép `(conversation_id, room_id)` tới `conversations(id, room_id)`; không dùng chat `ROOMMATE` làm hội thoại chủ trọ |
+| `tenant_id` | Người gửi, lấy từ tài khoản đăng nhập; FK tới `tenants`, đồng thời phải là thành viên của hội thoại |
+| `landlord_id` | Chủ trọ nhận đề nghị, suy ra từ nhà; FK kép `(house_id, landlord_id)` tới `rental_houses(id, landlord_id)`, đồng thời là thành viên hội thoại |
+| `client_request_key` | CHAR(36), khóa chống gửi lặp; unique theo `(tenant_id, client_request_key)` |
+| `starts_at`, `ends_at` | DATETIME(6) theo UTC; hiển thị theo Việt Nam; `ends_at > starts_at` |
+| `notes` | VARCHAR(2000), ghi chú của người thuê |
+| `status` | VARCHAR(40): `PENDING`, `ACCEPTED`, `REJECTED`, `WITHDRAWN`, `EXPIRED`; mặc định `PENDING` |
+| `reviewed_by_id`, `reviewed_at`, `rejection_reason` | Người/thời điểm chủ trọ xét duyệt, lý do từ chối |
+| `withdrawn_by_id`, `withdrawn_at` | Người/thời điểm rút đề nghị; chỉ người thuê gửi được rút khi còn `PENDING` |
+| `expired_at` | Thời điểm hết hạn do không còn khả năng duyệt giờ tương lai |
+| `scheduled_viewing_id` | NULL trước duyệt; FK kép gồm ID/phòng/người thuê tới `room_viewing_requests(id, room_id, tenant_id)`, unique để một lịch không được gắn cho nhiều đề nghị |
+| `created_at`, `updated_at` | Thời điểm tạo/cập nhật phục vụ đối soát |
+
+Các ràng buộc cần triển khai cùng bảng: trạng thái hợp lệ; `ACCEPTED` bắt buộc có người/thời điểm duyệt và `scheduled_viewing_id`, các trạng thái khác không được gắn lịch; `REJECTED` bắt buộc có lý do; người duyệt phải đúng `landlord_id`; người rút phải đúng `tenant_id`. Thêm unique qua cột sinh để mỗi người chỉ có một đề nghị `PENDING` trên cùng phòng; sau khi rút/từ chối/hết hạn thì được gửi đề nghị mới. Lập chỉ mục `(landlord_id, status, starts_at)`, `(tenant_id, status, created_at)`, `(room_id, status, starts_at, ends_at)` cho hàng đợi và tra cứu. Procedure/API kiểm tra các điều kiện liên bảng, quyền và thời gian; CHECK/FK không thay thế những kiểm tra này.
+
+**Trình tự trạng thái:** `PENDING → ACCEPTED / REJECTED / WITHDRAWN / EXPIRED`. Chủ trọ chỉ duyệt/từ chối; người thuê chỉ rút; tác vụ nền đánh dấu hết hạn khi giờ đề nghị đã đến. Một đề nghị đã chấp nhận giữ trạng thái `ACCEPTED` ngay cả khi lịch tương ứng bị hủy sau đó: quyết định duyệt là lịch sử, còn kết quả hẹn nằm ở lịch đã tạo.
+
+**Duyệt và tạo lịch trong cùng giao dịch:** xác thực chủ trọ; khóa hàng phòng trước, sau đó khóa đề nghị theo cùng thứ tự với các thao tác lịch hiện tại. Đọc lại trạng thái `PENDING`, chủ trọ, hội thoại, phòng còn cho xem, hợp đồng/lượt ở hiện có, giờ còn ở tương lai và thời lượng 30/60/90/120 phút. Kiểm tra giao nhau với các lịch `SCHEDULED` của phòng tại thời điểm duyệt. Sau đó tạo đúng một `room_viewing_requests` với `created_by_id` là chủ trọ, gắn `scheduled_viewing_id`, cập nhật đề nghị thành `ACCEPTED` và ghi thông báo cho người thuê, rồi commit. Bất kỳ bước nào lỗi phải rollback toàn bộ; duyệt lặp cùng đề nghị trả lại lịch đã tạo, không tạo lịch thứ hai. Duyệt hai đề nghị trùng giờ đồng thời thì chỉ một được thành công; đề nghị còn lại vẫn chưa được duyệt và cần xử lý giờ khác.
+
+Không gọi lồng trực tiếp public `sp_schedule_viewing` trong giao dịch duyệt vì thủ tục đó tự sở hữu giao dịch. Khi triển khai, tách helper dùng chung không tự commit hoặc thực hiện phần kiểm tra/INSERT trong thủ tục duyệt mới; vẫn giữ một giao dịch bao trùm đề nghị và lịch. API không được tự ghi `ACCEPTED` rồi tạo lịch trong một yêu cầu rời rạc khác.
+
+Đề xuất các thủ tục công khai: `sp_request_viewing` (người thuê gửi), `sp_review_viewing_proposal` (chủ trọ chấp nhận/từ chối), `sp_withdraw_viewing_proposal` (người thuê rút), cùng tác vụ hết hạn. Đây là tên dự kiến, chưa tồn tại trong SQL. Khi gửi đã kiểm tra phòng/giờ hợp lệ và lịch đã chốt; vẫn phải kiểm tra lại khi duyệt. Đề nghị chờ không giữ khung giờ và không giữ chỗ thuê, nên các người thuê khác có thể đề nghị cùng một khoảng giờ. Chấp nhận xem cũng không đổi phòng thành đã giữ chỗ thuê.
+
+**Wireframe sau khi triển khai CSDL:** thêm “Đề nghị lịch xem” ở chi tiết phòng và chat với chủ trọ; nếu xuất phát từ tin được bạn ghép chia sẻ thì mở hội thoại riêng với đúng chủ trọ/phòng. Người thuê nhập ngày/giờ/thời lượng/ghi chú; gửi xong hiện thẻ “Chờ chủ trọ duyệt”, có nút rút. Chủ trọ có hàng đợi và nút chấp nhận/từ chối kèm lý do. Hai bên nhận thông báo và thấy trạng thái đồng bộ ở chat/Lịch xem. Chỉ lịch đã chấp nhận mới có thao tác đã đến xem, không đến, quyết định thuê và lập hợp đồng theo luồng hiện tại. Luồng chủ trọ chủ động tạo lịch vẫn giữ nguyên.
+
+**Kiểm thử cần có khi triển khai:** sai người gửi/duyệt/rút; sai phòng/hội thoại; giờ quá khứ và UTC+7; gửi/duyệt lặp; hai phiên duyệt trùng giờ; phòng đã có người/hợp đồng trước lúc duyệt; rút/hết hạn đồng thời với duyệt; rollback không để lại lịch hoặc đề nghị dở; không được xác nhận đã xem/lập hợp đồng từ đề nghị chưa chấp nhận; tạo mới/nâng cấp giữ nguyên các lịch và liên kết hợp đồng cũ. Các kiểm thử hiện tại không xác nhận thiết kế này đã được triển khai.
 
 ## 5. Backend cần làm thêm cho các luồng còn lại
 
