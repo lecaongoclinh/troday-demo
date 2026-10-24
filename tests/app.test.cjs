@@ -448,3 +448,78 @@ test("scheduling outside chat still opens the calendar", () => {
   d.submit("appointment", { conversationId: "c1", roomId: "r1", date: "2026-10-24", time: "10:30", duration: "30" });
   assert.equal(d.state.view, "viewings"); assert.equal(d.state.viewings.at(-1).status, "SCHEDULED");
 });
+
+test("chat names show relationship tags for landlords, tenants and roommate connections", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("navigate", "chats");
+  assert.match(d.node("#app-main").innerHTML, /chat-person-name[\s\S]*Nguyễn Minh Quân[\s\S]*Chủ trọ/);
+  d.action("accept-roommate", "rm2");
+  assert.match(d.node("#app-main").innerHTML, /<h2>Phạm Thu Mai<\/h2><span class="pill green">Bạn ghép/);
+  d.state.role = "landlord"; d.action("navigate", "chats"); d.action("select-chat", "c1");
+  assert.match(d.node("#app-main").innerHTML, /<h2>Trần Ngọc Lan<\/h2><span class="pill gray">Người thuê/);
+});
+
+test("sharing a post opens the connected chat, preserves drafts and creates no rental activity", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("accept-roommate", "rm1");
+  const c = byId(d.state.conversations, d.state.selectedConversation);
+  d.state.chatDrafts["lan:" + c.id] = "Mình đang so sánh hai phòng";
+  const before = JSON.stringify({ contracts: d.state.contracts, joins: d.state.joinRequests, viewings: d.state.viewings });
+  d.action("share-post", ""); assert.match(d.node("#dialog-body").innerHTML, /data-form="share-post"/);
+  d.submit("share-post", { inviteId: "rm1", postId: "r2", note: '<b>Thử xem phòng này</b>' });
+  assert.equal(c.messages.at(-1).messageType, "POST_SHARE"); assert.equal(c.messages.at(-1).sharedPostId, "r2");
+  assert.equal(c.messages.at(-1).roomId, null); assert.equal(d.state.chatContext, null);
+  assert.equal(d.state.chatDrafts["lan:" + c.id], "Mình đang so sánh hai phòng");
+  assert.equal(JSON.stringify({ contracts: d.state.contracts, joins: d.state.joinRequests, viewings: d.state.viewings }), before);
+  assert.match(d.node("#app-main").innerHTML, /shared-post-card/); assert.match(d.node("#app-main").innerHTML, /&lt;b&gt;Thử xem phòng này/);
+  const restored = demo(d.state); restored.state.role = "tenant"; restored.action("chat-roommate", "rm1");
+  assert.equal(byId(restored.state.conversations, c.id).messages.length, 1);
+  assert.match(restored.node("#app-main").innerHTML, /Phòng ban công thoáng/);
+});
+
+test("sharing rechecks connection and publication before changing any conversation", () => {
+  for (const kind of ["pending", "ended", "foreign", "unpublished", "missing", "landlord"]) {
+    const d = demo(); d.state.role = "tenant"; d.action("accept-roommate", "rm1");
+    const invite = byId(d.state.roommateInvites, "rm1");
+    if (kind === "pending") invite.status = "PENDING";
+    if (kind === "ended") invite.endedAt = "2026-10-25T01:00:00Z";
+    if (kind === "foreign") { invite.senderId = "mai"; invite.receiverId = "ngoc"; }
+    if (kind === "unpublished") byId(d.state.rooms, "r2").postStatus = "REJECTED";
+    if (kind === "landlord") d.state.role = "landlord";
+    const before = JSON.stringify(d.state.conversations);
+    d.submit("share-post", { inviteId: "rm1", postId: kind === "missing" ? "gone" : "r2" });
+    assert.equal(JSON.stringify(d.state.conversations), before, kind);
+  }
+});
+
+test("shared posts hide unavailable listings and keep live availability without losing the message", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("accept-roommate", "rm1");
+  d.submit("share-post", { inviteId: "rm1", postId: "r2" });
+  const c = byId(d.state.conversations, d.state.selectedConversation); const id = c.messages[0].id;
+  byId(d.state.rooms, "r2").postStatus = "REJECTED"; d.api.render();
+  assert.match(d.node("#app-main").innerHTML, /Tin phòng không còn hiển thị/);
+  assert.doesNotMatch(d.node("#app-main").innerHTML, /Phòng ban công thoáng|shared-post-detail/);
+  d.action("shared-post-detail", id); assert.equal(d.state.view, "chats");
+  byId(d.state.rooms, "r2").postStatus = "APPROVED"; byId(d.state.rooms, "r2").status = "MAINTENANCE"; d.api.render();
+  assert.match(d.node("#app-main").innerHTML, /Đang bảo trì/); assert.equal(c.messages.length, 1);
+});
+
+test("a shared post opens its detail and returns to the same roommate conversation", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("accept-roommate", "rm1");
+  const id = d.state.selectedConversation; const count = d.state.conversations.length;
+  d.submit("share-post", { inviteId: "rm1", postId: "r4" });
+  d.action("shared-post-detail", byId(d.state.conversations, id).messages[0].id);
+  assert.equal(d.state.view, "detail"); assert.equal(d.state.selectedRoom, "r4");
+  assert.match(d.node("#app-main").innerHTML, /Quay lại tin nhắn/);
+  d.action("return-shared-chat", id); assert.equal(d.state.view, "chats"); assert.equal(d.state.selectedConversation, id);
+  assert.equal(d.state.conversations.length, count);
+});
+
+test("sharing from a room detail can select a different accepted roommate", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("accept-roommate", "rm1"); d.action("accept-roommate", "rm2");
+  const maiChat = d.state.selectedConversation;
+  d.action("room-detail", "r1"); d.action("share-post", "r1");
+  assert.match(d.node("#dialog-body").innerHTML, /Lê Gia Bảo/); assert.match(d.node("#dialog-body").innerHTML, /Phạm Thu Mai/);
+  assert.doesNotMatch(d.node("#dialog-body").innerHTML, /value="r6"/);
+  d.submit("share-post", { inviteId: "rm1", postId: "r1" });
+  assert.equal(byId(d.state.conversations, maiChat).messages.length, 0);
+  assert.equal(byId(d.state.conversations, d.state.selectedConversation).roommateRequestId, "rm1");
+});

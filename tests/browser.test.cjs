@@ -110,6 +110,7 @@ async function main() {
     await page("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
     await evaluate(`__troday.reset(); __troday.action('switch-role', 'landlord'); __troday.action('navigate', 'chats'); __troday.action('select-chat', 'c1')`);
     assert.equal(await evaluate(`document.querySelectorAll('.chat-viewing-card').length`), 3);
+    assert.equal(await evaluate(`document.querySelector('.chat-pane-head .chat-person-name .pill').textContent`), "Người thuê");
     assert.equal(await evaluate(`document.querySelector('[data-viewing-id="v1"]').textContent.includes('17:00–18:00') && !document.querySelector('[data-viewing-id="v4"]')`), true);
     await evaluate(`document.querySelector('[data-action="open-appointment"]').click(); document.querySelector('[name="roomId"]').value = 'r1'; document.querySelector('[name="notes"]').value = 'Gặp tại cổng nhà trọ'; document.querySelector('form[data-form="appointment"]').requestSubmit()`);
     const chatViewingId = await evaluate(`__troday.getState().viewings.at(-1).id`);
@@ -142,6 +143,8 @@ async function main() {
     await evaluate(`document.querySelector('#dialog-body [data-action="accept-roommate"]').click()`);
     const roommateChatId = await evaluate(`__troday.getState().selectedConversation`);
     assert.equal(await evaluate(`!document.querySelector('#app-dialog').open && __troday.getState().view === 'chats' && __troday.getState().conversations.find(c => c.id === ${JSON.stringify(roommateChatId)}).users.includes('bao')`), true);
+    assert.equal(await evaluate(`document.querySelector('.chat-pane-head .chat-person-name .pill').textContent`), "Bạn ghép");
+    assert.equal(await evaluate(`Array.from(document.querySelectorAll('.contact .chat-person-name .pill')).some(p => p.textContent === 'Chủ trọ')`), true);
     assert.equal(await evaluate(`!document.querySelector('[data-action="open-appointment"]') && !document.querySelector('#chat-room-context')`), true);
     assert.equal(await evaluate(`document.querySelectorAll('.chat-viewing-card').length`), 0);
     await evaluate(`document.querySelector('#chat-message').value = 'Chào Bảo, mình muốn trao đổi trước khi quyết định thuê chung.'; document.querySelector('#chat-message').dispatchEvent(new Event('input', { bubbles: true }))`);
@@ -150,6 +153,18 @@ async function main() {
     assert.equal(await evaluate(`__troday.getState().conversations.find(c => c.id === ${JSON.stringify(roommateChatId)}).messages[0].roomId`), null);
     assert.equal(await evaluate(`document.querySelector('[role="log"]').textContent.includes('Chào Bảo')`), true);
     assert.equal(await evaluate(`JSON.stringify({ contracts: __troday.getState().contracts, joins: __troday.getState().joinRequests, rooms: __troday.getState().rooms })`), beforeConnection);
+
+    // Share a live listing with a connected roommate, without changing rental state or the draft.
+    await evaluate(`document.querySelector('#chat-message').value = 'Mình đang so sánh phòng'; document.querySelector('#chat-message').dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('[data-action="share-post"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#app-dialog').open && !Array.from(document.querySelector('[name="postId"]').options).some(o => o.value === 'r6')`), true);
+    await evaluate(`document.querySelector('[name="postId"]').value = 'r2'; document.querySelector('[name="note"]').value = 'Cùng xem phòng này nhé'; document.querySelector('form[data-form="share-post"]').requestSubmit()`);
+    assert.equal(await evaluate(`document.querySelector('#chat-message').value`), "Mình đang so sánh phòng");
+    assert.equal(await evaluate(`document.querySelector('.shared-post-card').textContent.includes('P204') && __troday.getState().conversations.find(c => c.id === ${JSON.stringify(roommateChatId)}).messages.at(-1).messageType === 'POST_SHARE'`), true);
+    assert.equal(await evaluate(`JSON.stringify({ contracts: __troday.getState().contracts, joins: __troday.getState().joinRequests, rooms: __troday.getState().rooms })`), beforeConnection);
+    await evaluate(`document.querySelector('[data-action="shared-post-detail"]').click()`);
+    assert.equal(await evaluate(`__troday.getState().view === 'detail' && __troday.getState().selectedRoom === 'r2'`), true);
+    await evaluate(`document.querySelector('[data-action="return-shared-chat"]').click()`);
+    assert.equal(await evaluate(`__troday.getState().selectedConversation`), roommateChatId);
 
     // Restore from real localStorage, then reopen the same connection on mobile.
     await page("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/index.html?role=tenant&view=roommates&check=roommate-reload` });
@@ -165,6 +180,11 @@ async function main() {
     await evaluate(`document.querySelector('[data-action="chat-roommate"][data-id="rm1"]').click()`);
     assert.equal(await evaluate(`__troday.getState().selectedConversation`), roommateChatId);
     assert.equal(await evaluate(`document.querySelector('.chat-shell').classList.contains('thread-open') && document.querySelector('[role="log"]').textContent.includes('Chào Bảo')`), true);
+    assert.equal(await evaluate(`document.querySelectorAll('.shared-post-card').length === 1 && document.documentElement.scrollWidth <= window.innerWidth`), true);
+    assert.equal(await evaluate(`document.querySelector('.chat-pane-body').scrollWidth <= document.querySelector('.chat-pane-body').clientWidth`), true);
+    await evaluate(`__troday.getState().rooms.find(r => r.id === 'r2').postStatus = 'REJECTED'; __troday.action('chat-roommate', 'rm1')`);
+    assert.equal(await evaluate(`Boolean(document.querySelector('.shared-post-unavailable')) && !document.querySelector('[data-action="shared-post-detail"]') && !document.querySelector('[role="log"]').textContent.includes('Phòng ban công thoáng')`), true);
+    await evaluate(`__troday.getState().rooms.find(r => r.id === 'r2').postStatus = 'APPROVED'; __troday.action('chat-roommate', 'rm1')`);
     assert.equal(await evaluate(`document.querySelector('.chat-composer').getBoundingClientRect().bottom <= window.innerHeight`), true);
     await evaluate(`document.querySelector('[data-action="roommate-profile"]').click()`);
     assert.equal(await evaluate(`document.querySelector('#dialog-body').textContent.includes('Lê Gia Bảo')`), true);
@@ -180,7 +200,7 @@ async function main() {
     await evaluate(`document.querySelector('[data-action="edit-roommate-profile"]').click()`);
     assert.equal(await evaluate(`Boolean(document.querySelector('form[data-form="roommate-profile"]'))`), true);
     assert.deepEqual(errors, []);
-    console.log("Browser smoke passed: representative handover, approval hold, group move-in, UTC+7 calendar, live viewing cards in chat, cancellation, roommate profiles and connection chat, persistence and mobile layout; no runtime exceptions.");
+    console.log("Browser smoke passed: rental workflows, live viewing cards, roommate profiles, relationship tags, post sharing and return navigation, hidden listings, persistence and mobile layout; no runtime exceptions.");
     await call("Browser.close");
   } finally {
     socket?.close(); chrome?.kill();

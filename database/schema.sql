@@ -1,4 +1,4 @@
--- Current V5 schema (2026-10-24); 40 business/support tables, no AI storage.
+-- Current V5 schema (2026-10-25); 40 business/support tables, no AI storage.
 -- CREATE A NEW DATABASE ONLY. This is not a Flyway migration or an upgrade script.
 -- MySQL 8.0.16+ / InnoDB; recommended MySQL 8.4. Do not use --force when importing.
 -- Never change the USE target to the old database; keep the existing migrations intact.
@@ -895,13 +895,16 @@ CREATE TABLE `chat_messages` (
   `client_message_key` CHAR(36) NOT NULL,
   `message_type` VARCHAR(40) NOT NULL DEFAULT 'TEXT',
   `content` TEXT,
+  `shared_post_id` BIGINT,
   `sent_at` DATETIME(6) NOT NULL,
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   UNIQUE KEY `uq_message_client_key` (`sender_id`, `client_message_key`),
   UNIQUE KEY `uq_messages_conversation_id` (`conversation_id`, `id`),
   KEY `ix_messages_time` (`conversation_id`, `sent_at`, `id`),
-  CONSTRAINT `ck_chat_messages_message_type` CHECK (message_type IN ('TEXT', 'IMAGE', 'SYSTEM')),
+  KEY `ix_messages_shared_post` (`shared_post_id`),
+  CONSTRAINT `ck_chat_messages_message_type` CHECK (message_type IN ('TEXT', 'IMAGE', 'SYSTEM', 'POST_SHARE')),
+  CONSTRAINT `ck_chat_messages_post_share` CHECK ((message_type = 'POST_SHARE' AND shared_post_id IS NOT NULL) OR (message_type <> 'POST_SHARE' AND shared_post_id IS NULL)),
   CONSTRAINT `ck_chat_messages_text` CHECK (message_type <> 'TEXT' OR content IS NOT NULL)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -1084,6 +1087,7 @@ ALTER TABLE `conversations` ADD CONSTRAINT `fk_conversation_last_message` FOREIG
 ALTER TABLE `conversation_participants` ADD CONSTRAINT `fk_participants_conversation` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`);
 ALTER TABLE `conversation_participants` ADD CONSTRAINT `fk_participants_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`);
 ALTER TABLE `chat_messages` ADD CONSTRAINT `fk_messages_participant` FOREIGN KEY (`conversation_id`, `sender_id`) REFERENCES `conversation_participants` (`conversation_id`, `user_id`);
+ALTER TABLE `chat_messages` ADD CONSTRAINT `fk_messages_shared_post` FOREIGN KEY (`shared_post_id`) REFERENCES `posts` (`id`);
 ALTER TABLE `notifications` ADD CONSTRAINT `fk_notifications_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`);
 ALTER TABLE `reports` ADD CONSTRAINT `fk_reports_reporter_id` FOREIGN KEY (`reporter_id`) REFERENCES `users` (`id`);
 ALTER TABLE `reports` ADD CONSTRAINT `fk_reports_reported_user_id` FOREIGN KEY (`reported_user_id`) REFERENCES `users` (`id`);

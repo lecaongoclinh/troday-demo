@@ -72,6 +72,7 @@ main().catch((error) => { console.error(error); process.exitCode = 1; });
 async function runTests(query, { schema, upgrade }) {
   const fixture = fs.readFileSync(path.join(root, "tests", "fixtures", "workflow-data.sql"), "utf8");
   const original = fs.readFileSync(path.join(root, "tests", "fixtures", "v5-original-schema.sql"), "utf8");
+  const sharingUpgrade = fs.readFileSync(path.join(root, "database", "migrations", "20261025_chat_post_sharing.sql"), "utf8");
   let checks = 0;
   const check = async (label, body) => { await body(); checks++; console.log(`PASS ${checks}: ${label}`); };
   const setup = async (name, old = false) => {
@@ -233,6 +234,9 @@ DELIMITER ;`, core);
   const upgraded = await setup("rr_v5_upgrade_test", true);
   await check("upgrade preserves old business rows and records an honest legacy baseline", async () => {
     await query(upgrade.replaceAll("room_rental_v5_20261023", upgraded));
+    await query("INSERT INTO chat_messages(id,conversation_id,sender_id,client_message_key,content,sent_at) VALUES(7000,1,1,UUID(),'Existing conversation',UTC_TIMESTAMP(6));", upgraded);
+    await query(sharingUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
+    assert.equal(await query("SELECT content,shared_post_id FROM chat_messages WHERE id=7000;", upgraded), "Existing conversation\tNULL");
     assert.equal(await query("SELECT event_type,started_at,consent_method,is_current FROM contract_representative_history;", upgraded), "LEGACY_BASELINE\tNULL\tLEGACY_UNKNOWN\t1");
     assert.equal(await query("SELECT COUNT(*) FROM invoices;", upgraded), "1");
     await query("CALL sp_handover_representative(1,10,11,1,'Migrated handover',TRUE);", upgraded);
@@ -257,5 +261,25 @@ DELIMITER ;`, core);
     await query(upgrade.replaceAll("room_rental_v5_20261023", invalid), undefined, /multiple open contracts/);
     assert.equal(await query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND column_name='initial_representative_room_tenant_id';", invalid), "0");
   });
-  console.log(`${checks} MySQL integration checks passed; fresh schema, upgrade and concurrent approval verified.`);
+  await check("shared posts persist in roommate chats on fresh and upgraded schemas", async () => {
+    for (const database of [core, upgraded]) {
+      await query("INSERT INTO roommate_requests(id,sender_id,receiver_id,scenario,status,responded_at) VALUES(700,2,3,'SEARCH_TOGETHER','ACCEPTED',UTC_TIMESTAMP(6)); INSERT INTO conversations(id,type,roommate_request_id) VALUES(700,'ROOMMATE',700); INSERT INTO conversation_participants(conversation_id,user_id,joined_at) VALUES(700,2,UTC_TIMESTAMP(6)),(700,3,UTC_TIMESTAMP(6)); INSERT INTO chat_messages(id,conversation_id,sender_id,client_message_key,message_type,shared_post_id,sent_at) VALUES(7001,700,2,UUID(),'POST_SHARE',1,UTC_TIMESTAMP(6));", database);
+      assert.equal(await query("SELECT m.message_type,m.shared_post_id,p.room_id,c.type FROM chat_messages m JOIN posts p ON p.id=m.shared_post_id JOIN conversations c ON c.id=m.conversation_id WHERE m.id=7001;", database), "POST_SHARE\t1\t4\tROOMMATE");
+    }
+  });
+  await check("shared messages require an existing post and a matching message type", async () => {
+    await query("INSERT INTO chat_messages(conversation_id,sender_id,client_message_key,message_type,shared_post_id,sent_at) VALUES(700,2,UUID(),'POST_SHARE',999999,UTC_TIMESTAMP(6));", core, /fk_messages_shared_post/);
+    await query("INSERT INTO chat_messages(conversation_id,sender_id,client_message_key,message_type,sent_at) VALUES(700,2,UUID(),'POST_SHARE',UTC_TIMESTAMP(6));", core, /ck_chat_messages_post_share/);
+    await query("INSERT INTO chat_messages(conversation_id,sender_id,client_message_key,content,shared_post_id,sent_at) VALUES(700,2,UUID(),'Hello',1,UTC_TIMESTAMP(6));", core, /ck_chat_messages_post_share/);
+  });
+  await check("shared messages preserve participant and idempotency constraints", async () => {
+    await query("INSERT INTO chat_messages(conversation_id,sender_id,client_message_key,message_type,shared_post_id,sent_at) VALUES(700,5,UUID(),'POST_SHARE',1,UTC_TIMESTAMP(6));", core, /fk_messages_participant/);
+    await query("INSERT INTO chat_messages(conversation_id,sender_id,client_message_key,message_type,shared_post_id,sent_at) SELECT conversation_id,sender_id,client_message_key,message_type,shared_post_id,sent_at FROM chat_messages WHERE id=7001;", core, /uq_message_client_key/);
+  });
+  await check("chat sharing migration rejects wrong order and repeated application", async () => {
+    await query(sharingUpgrade.replaceAll("room_rental_v5_20261023", invalid), undefined, /workflow migration before chat sharing/);
+    await query(sharingUpgrade.replaceAll("room_rental_v5_20261023", upgraded), undefined, /already applied or incomplete/);
+    assert.equal(await query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='chat_messages' AND column_name='shared_post_id';", invalid), "0");
+  });
+  console.log(`${checks} MySQL integration checks passed; fresh schema, migrations, concurrent approval and post sharing verified.`);
 }

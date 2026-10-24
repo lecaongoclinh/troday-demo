@@ -1,12 +1,12 @@
 # Quy tắc nghiệp vụ hệ thống Trọday
 
-Phiên bản v5, cập nhật ngày 24/10/2026.
+Phiên bản v5, cập nhật ngày 25/10/2026.
 
 Wireframe đã mô phỏng các thực thể chính của v5, nhưng trước bản sửa này chưa bảo đảm các quy tắc nghiệp vụ giữa lịch xem, hợp đồng, lượt cư trú và sức chứa. Không nên coi việc có đủ màn hình là đã tuân thủ đầy đủ CSDL.
 
 Các luồng giao diện nằm trong `app.js` và dữ liệu mô phỏng trên `localStorage`. **SQL v5 đã được sửa** để hỗ trợ các nghiệp vụ mới, gồm lịch sử đại diện và các thủ tục giao dịch. Đã chuẩn bị cả bản tạo mới và migration từ v5 gốc. Chỉ kiểm tra trên MySQL tạm riêng; chưa chạy migration hoặc ghi vào CSDL hiện có của người dùng.
 
-Đây là file tổng hợp chung cho các logic đang có, các thay đổi vừa thực hiện và phần còn cần triển khai. SQL tạo mới là `database/schema.sql`; bản nâng cấp một lần là `database/migrations/20261024_v5_workflows.sql`. Hệ thống có **40 bảng** sau cập nhật. API vẫn cần tích hợp các stored procedure; wireframe HTML chưa kết nối trực tiếp MySQL.
+Đây là file tổng hợp chung cho các logic đang có, các thay đổi vừa thực hiện và phần còn cần triển khai. SQL tạo mới là `database/schema.sql`; nâng cấp theo thứ tự `database/migrations/20261024_v5_workflows.sql` rồi `database/migrations/20261025_chat_post_sharing.sql`. Mỗi migration chạy một lần. Hệ thống có **40 bảng** sau cập nhật. API vẫn cần tích hợp các stored procedure; wireframe HTML chưa kết nối trực tiếp MySQL.
 
 ## 1. Danh mục logic nghiệp vụ đang có
 
@@ -61,6 +61,10 @@ Ký hiệu: **Có** = đang được mô phỏng bằng code; **Sửa** = đã c
 | HT-07 | Chat ở ghép không có nút hẹn xem hoặc ngữ cảnh phòng của cuộc chat trước. Tin nhắn lưu trong cùng hội thoại khi tải lại hoặc mở lại từ lời mời/hồ sơ. Chỉ thành viên của kết nối còn hiệu lực được mở và gửi. | Mới |
 | HT-08 | Trong nội dung chat có khối lịch xem của đúng hội thoại và đúng cặp người thuê/chủ trọ, sắp theo giờ hẹn. Thẻ hiển thị phòng, địa điểm, ngày/giờ UTC+7, ghi chú, trạng thái lịch và quyết định thuê; thao tác theo quyền như màn hình Lịch xem. Lịch hủy vẫn giữ thẻ và lý do. | Mới |
 | HT-09 | Thẻ lịch đọc trực tiếp bản ghi lịch xem, không sao chép thành tin nhắn văn bản hoặc tạo lịch trùng khi tải lại. Chat và danh sách lịch dùng chung trạng thái. Không đưa lịch của chủ trọ vào chat ở ghép. Khi gửi tin, cuộn tới tin vừa gửi để khối lịch không che tin mới. | Mới |
+| HT-10 | Tên ở danh sách hội thoại và đầu cuộc chat có nhãn theo quan hệ: “Chủ trọ” khi người thuê hỏi phòng của chủ trọ, “Người thuê” ở phía chủ trọ, “Bạn ghép” trong hội thoại kết nối. Không dùng nhãn để suy ra đã ở chung; không lưu thêm nhãn cố định vào người dùng. | Mới |
+| HT-11 | Trong chat bạn ghép có “Chia sẻ phòng”; trang chi tiết có “Chia sẻ cho bạn ghép”. Chỉ gửi tới kết nối đã chấp nhận và chưa kết thúc, kiểm tra lại khi gửi; chọn đúng người nhận và bài đăng đang hiển thị. Giữ nháp tin nhắn thường khi chia sẻ. | Mới |
+| HT-12 | Tin chia sẻ có ảnh, tên phòng, giá hiện tại, khu vực và tình trạng còn phòng/giữ chỗ/đang ở/bảo trì. Bấm thẻ mở đúng chi tiết, có nút quay lại đúng bạn ghép. Không tự thêm chủ trọ vào chat, đặt lịch, giữ chỗ hoặc tạo đồng thuận thuê. | Mới |
+| HT-13 | Tin đã chia sẻ vẫn lưu khi tải lại. Nếu bài đăng bị ẩn, không còn tồn tại hoặc không được phép xem thì thẻ báo “Tin phòng không còn hiển thị”, không lộ ảnh/tiêu đề cũ và không mở nhầm phòng khác. | Mới |
 
 ### 1.5. Lịch xem và quyết định thuê
 
@@ -317,12 +321,22 @@ Gia hạn cần `proposed_revision_id` đã xác nhận. Đổi phòng cần `pr
 ### 4.7. Chạy bản tạo mới hoặc migration
 
 1. Chưa có CSDL v5: chạy toàn bộ `database/schema.sql`. File tự tạo và chọn CSDL; nếu tên đó đã tồn tại thì dừng để tránh nhầm với nâng cấp.
-2. Đã có v5 gốc 39 bảng: sao lưu, dừng các thao tác ghi và chạy toàn bộ `database/migrations/20261024_v5_workflows.sql` một lần. Không chạy bản tạo mới trước migration.
+2. Đã có v5 gốc 39 bảng: sao lưu, dừng các thao tác ghi và chạy lần lượt `database/migrations/20261024_v5_workflows.sql` rồi `database/migrations/20261025_chat_post_sharing.sql`, mỗi file một lần. Nếu đã có bản nâng cấp nghiệp vụ ngày 24/10 thì chỉ chạy file chia sẻ tin phòng. Không chạy migration trên CSDL vừa tạo bằng schema mới.
 3. Preflight từ chối trường hợp phòng vượt sức chứa, hợp đồng đóng nhưng còn lượt ở mở, hợp đồng hoạt động không có đại diện đang ở, hoặc nhiều hợp đồng mở trên cùng phòng. Cần đối soát các hàng đó, không tự xóa người hoặc đoán ngày ra.
 4. Nếu script báo đã nâng cấp/đang dở, không dùng `--force` hoặc chạy lại bỏ qua lỗi. DDL MySQL có implicit commit, nên lỗi sau một số lệnh DDL cần kiểm tra trạng thái và phục hồi/hoàn tất theo bản sao lưu. [Tài liệu MySQL về implicit commit](https://dev.mysql.com/doc/refman/8.0/en/implicit-commit.html).
 5. Sau nâng cấp, API gọi các thủ tục đúng quyền; thiết lập múi giờ UTC cho mọi kết nối, còn ngày cư trú truyền vào là ngày Việt Nam. Các SQL trong `tests/fixtures/` chỉ phục vụ kiểm thử.
 
 Các thao tác nhiều bảng dùng stored procedure để tránh giới hạn cập nhật bảng đang được câu lệnh gọi trigger sử dụng. [Giới hạn stored program và trigger của MySQL](https://dev.mysql.com/doc/refman/8.0/en/stored-program-restrictions.html).
+
+### 4.8. Chia sẻ tin phòng trong chat, cập nhật 25/10/2026
+
+Nhãn “Chủ trọ”/“Bạn ghép”/“Người thuê” được suy ra từ loại hội thoại và quan hệ với phòng, không cần thêm cột nhãn vào tài khoản. Khi triển khai API, dùng loại `conversations` và chủ trọ của phòng tương ứng; nhãn UI không phải bằng chứng quyền.
+
+Để lưu thẻ chia sẻ có cấu trúc, `chat_messages` đã bổ sung `shared_post_id` (FK tới `posts.id`) và loại `POST_SHARE` vào CHECK `message_type`. CHECK mới yêu cầu chỉ `POST_SHARE` được có `shared_post_id`, đồng thời bắt buộc tin loại này tham chiếu bài đăng. Không thêm bảng. TEXT/IMAGE/SYSTEM cũ giữ nguyên với `shared_post_id = NULL`. Migration ngày 25/10 kiểm tra thứ tự và từ chối chạy lại; chưa áp dụng lên CSDL hiện có của người dùng.
+
+Ví dụ dữ liệu API: `{ "message_type": "POST_SHARE", "shared_post_id": 123, "content": "Bạn thấy phòng này thế nào?" }`. Trong prototype, phòng và tin đăng đang gộp nên `sharedPostId` dùng ID đối tượng phòng; backend phải ánh xạ sang **ID bài đăng** thực, không chép ID phòng vào FK này. Không thay `conversations.room_id/post_id` của chat bạn ghép bằng phòng vừa chia sẻ: loại hội thoại vẫn là `ROOMMATE` và gắn lời mời kết nối.
+
+API phải kiểm tra người gửi thuộc đúng hội thoại, kết nối đã chấp nhận/chưa kết thúc và bài đăng được phép chia sẻ, ghi người gửi từ phiên đăng nhập, dùng `client_message_key` chống gửi lặp. Các FK/CHECK chỉ bảo đảm cấu trúc và tham chiếu; chúng không thay kiểm tra quyền, trạng thái kết nối hoặc khả năng công khai của bài đăng ở API. Khi đọc thẻ, kiểm tra lại quyền xem và lấy nội dung hiện tại. Không dựa vào việc có FK để công khai tin đã ẩn; không dùng giá hiện tại trên thẻ làm giá đã chốt của hợp đồng. Tin đã được tham chiếu nên xử lý ẩn/lưu trữ thay vì xóa cứng bài đăng.
 
 ## 5. Backend cần làm thêm cho các luồng còn lại
 
@@ -350,8 +364,8 @@ Sửa các lỗi trên không đồng nghĩa wireframe đã thay thế backend h
 
 Chạy `npm test` trong thư mục wireframe. Bộ kiểm thử gọi các handler thực tế với đồng hồ cố định, bao phủ sức chứa, giữ chỗ, trạng thái hợp đồng, vào ở theo nhóm/từng người, chuyển phòng không cập nhật dở dang, lịch UTC+7 và hủy/rút ý định.
 
-Kết quả sau bổ sung lịch trong chat: 45/45 tình huống đạt, cả với múi giờ thiết bị Los Angeles. Có kiểm tra bàn giao đại diện, giữ hóa đơn/phiên bản/người xem ban đầu, chỉ kết nối không tạo đồng thuận thuê, chặn lời mời chéo, quyền người nhận, gửi tin và giữ lịch sử sau tải lại, mở hồ sơ và không lộ thông tin căn cước. Các kiểm tra lịch trong chat bao phủ đúng hội thoại/cặp người, giờ qua ngày, ghi chú, đồng bộ hủy/quyết định thuê, giữ nháp và không tạo thẻ trùng sau tải lại. Kiểm tra trình duyệt bằng `npm run test:browser` (Node 22+, Chrome cài tại đường dẫn mặc định hoặc cấu hình `CHROME_PATH`) cũng đạt: thao tác nút/form thật, bàn giao, hợp đồng hai người, lịch UTC+7, tạo/hủy lịch ngay trong chat, cuộn tới lịch/tin mới, hủy/rút ý định, xem hồ sơ người gửi, chấp nhận để mở đúng chat, gửi tin, khôi phục từ localStorage và bố cục di động; không có lỗi JavaScript khi chạy các luồng đó. Các kiểm tra JavaScript/Chrome này độc lập với bộ kiểm thử MySQL bên dưới.
+Kết quả sau bổ sung nhãn và chia sẻ tin phòng: 51/51 tình huống đạt, cả với múi giờ thiết bị Los Angeles. Có kiểm tra bàn giao đại diện, giữ hóa đơn/phiên bản/người xem ban đầu, chỉ kết nối không tạo đồng thuận thuê, chặn lời mời chéo, quyền người nhận, gửi tin và giữ lịch sử sau tải lại, mở hồ sơ và không lộ thông tin căn cước. Các kiểm tra lịch trong chat bao phủ đúng hội thoại/cặp người, giờ qua ngày, ghi chú, đồng bộ hủy/quyết định thuê, giữ nháp và không tạo thẻ trùng sau tải lại. Kiểm tra trình duyệt bằng `npm run test:browser` (Node 22+, Chrome cài tại đường dẫn mặc định hoặc cấu hình `CHROME_PATH`) cũng đạt: thao tác nút/form thật, bàn giao, hợp đồng hai người, lịch UTC+7, tạo/hủy lịch ngay trong chat, cuộn tới lịch/tin mới, hủy/rút ý định, xem hồ sơ người gửi, chấp nhận để mở đúng chat, gửi tin, khôi phục từ localStorage và bố cục di động; không có lỗi JavaScript khi chạy các luồng đó. Các kiểm tra mới còn bao phủ nhãn quan hệ, chia sẻ từ chat/trang chi tiết, giữ nháp, quay lại đúng hội thoại, từ chối kết nối hoặc tin không hợp lệ và ẩn thẻ tin không còn công khai. Kiểm tra Chrome cũng xác nhận các thao tác này trên desktop/điện thoại sau tải lại. Các kiểm tra JavaScript/Chrome này độc lập với bộ kiểm thử MySQL bên dưới.
 
-Chạy `npm run test:database` để tạo instance MySQL tạm riêng và kiểm tra SQL. **22/22 kiểm tra tích hợp đạt trên MySQL 8.0.42**, gồm tạo mới 40 bảng, nâng cấp v5 gốc, tính tương đương cột/FK của hai cách tạo, bàn giao trên hợp đồng nhập giấy và thuê mới, người vào sau ngày kích hoạt tiếp quản, lịch sử không bị ghi đè, giữ hóa đơn/phiên bản cũ, vào ở theo nhóm/từng người, kết thúc/đổi phòng đầy đủ, lịch xem UTC và rút ý định. Đã kiểm tra hai phiên duyệt cùng tranh chỗ cuối chỉ một phiên thành công; migration từ chối dữ liệu vượt sức chứa hoặc bản nháp trùng phòng trước khi đổi cấu trúc. Thủ tục cũng từ chối giao dịch lồng mà không commit/rollback nhầm giao dịch của bên gọi.
+Chạy `npm run test:database` để tạo instance MySQL tạm riêng và kiểm tra SQL. **26/26 kiểm tra tích hợp đạt trên MySQL 8.0.42**, gồm tạo mới 40 bảng, nâng cấp v5 gốc, tính tương đương cột/FK của hai cách tạo, bàn giao trên hợp đồng nhập giấy và thuê mới, người vào sau ngày kích hoạt tiếp quản, lịch sử không bị ghi đè, giữ hóa đơn/phiên bản cũ, vào ở theo nhóm/từng người, kết thúc/đổi phòng đầy đủ, lịch xem UTC và rút ý định. Đã kiểm tra hai phiên duyệt cùng tranh chỗ cuối chỉ một phiên thành công; migration từ chối dữ liệu vượt sức chứa hoặc bản nháp trùng phòng trước khi đổi cấu trúc. Thủ tục cũng từ chối giao dịch lồng mà không commit/rollback nhầm giao dịch của bên gọi. Phần chat đã kiểm tra migration giữ tin cũ, tạo mới/nâng cấp tương đương, lưu POST_SHARE trong chat bạn ghép, FK bài đăng, CHECK loại tin, quyền thành viên qua FK, khóa chống gửi lặp và từ chối migration sai thứ tự/chạy lại.
 
 `npm run db:check` xác nhận SQL tạo mới và migration đồng bộ với `database/source/workflows.sql`. Các kiểm tra chỉ dùng instance tạm có thư mục dữ liệu/cổng riêng và dữ liệu fixture; chưa xác nhận dữ liệu hoặc triển khai trên CSDL hiện có của người dùng.

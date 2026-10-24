@@ -234,12 +234,39 @@ function renderDetail() {
     return service && service.active ? `${service.name}: ${money(item.override ?? service.price)}/${service.unit}` : "";
   }).filter(Boolean);
   const backView = state.role === "admin" ? "moderation" : state.role === "landlord" ? "listings" : "discover";
-  return head(r.title, `${r.code} · ${h.address}`, `${button(`${icon("arrow-left")} Danh sách`, "navigate", backView)}${state.role === "tenant" ? button(`${icon("heart")} ${saved ? "Bỏ lưu" : "Lưu tin"}`, "favorite", r.id) : ""}`) +
-    `<div class="detail-layout"><div><img class="detail-image" src="${esc(r.photo)}" alt="${esc(r.title)}"><div class="detail-info"><div><span class="muted tiny">Diện tích</span><strong>${r.area} m²</strong></div><div><span class="muted tiny">Sức chứa</span><strong>${r.capacity} người</strong></div><div><span class="muted tiny">Khoảng cách</span><strong>${r.distance} km</strong></div></div><div class="section-bar"><h2>Về phòng này</h2></div><p class="muted" style="font-size:13px;line-height:1.6">${esc(r.description)}</p><div class="section-bar"><h2>Tiện ích</h2></div><div class="amenity-list">${r.amenities.map((x) => `<span>${esc(x)}</span>`).join("")}</div><div class="section-bar"><h2>Dịch vụ áp dụng</h2></div><div class="stack tight">${services.length ? services.map((x) => `<div class="list-row"><strong>${esc(x)}</strong></div>`).join("") : `<span class="muted tiny">Chủ trọ chưa cập nhật dịch vụ.</span>`}</div></div><aside class="detail-sidebar"><div class="price">${shortMoney(r.price)} <small>/tháng</small></div><p class="muted tiny">Cọc ${money(r.deposit)} · ${chip(r.status === "AVAILABLE" ? "Còn phòng" : "Đã giữ chỗ", r.status === "AVAILABLE" ? "green" : "yellow")}</p><div class="list-row"><div>${avatar(h.ownerId)}</div><div style="flex:1"><strong>${esc(owner.name)}</strong><small>Chủ trọ · ${esc(h.name)}</small></div></div>${state.role === "tenant" ? `<div class="stack" style="margin-top:16px">${button(`${icon("message-circle")} Nhắn tin về phòng này`, "chat-room", r.id, "primary")}${button(`${icon("flag")} Báo cáo tin`, "report-post", r.id)}</div>` : ""}</aside></div>`;
+  const returnChat = visibleConversations().find((c) => c.id === state.sharedPostReturn && c.type === "ROOMMATE");
+  return head(r.title, `${r.code} · ${h.address}`, `${returnChat ? button(`${icon("arrow-left")} Quay lại tin nhắn`, "return-shared-chat", returnChat.id) : button(`${icon("arrow-left")} Danh sách`, "navigate", backView)}${state.role === "tenant" ? button(`${icon("heart")} ${saved ? "Bỏ lưu" : "Lưu tin"}`, "favorite", r.id) : ""}`) +
+    `<div class="detail-layout"><div><img class="detail-image" src="${esc(r.photo)}" alt="${esc(r.title)}"><div class="detail-info"><div><span class="muted tiny">Diện tích</span><strong>${r.area} m²</strong></div><div><span class="muted tiny">Sức chứa</span><strong>${r.capacity} người</strong></div><div><span class="muted tiny">Khoảng cách</span><strong>${r.distance} km</strong></div></div><div class="section-bar"><h2>Về phòng này</h2></div><p class="muted" style="font-size:13px;line-height:1.6">${esc(r.description)}</p><div class="section-bar"><h2>Tiện ích</h2></div><div class="amenity-list">${r.amenities.map((x) => `<span>${esc(x)}</span>`).join("")}</div><div class="section-bar"><h2>Dịch vụ áp dụng</h2></div><div class="stack tight">${services.length ? services.map((x) => `<div class="list-row"><strong>${esc(x)}</strong></div>`).join("") : `<span class="muted tiny">Chủ trọ chưa cập nhật dịch vụ.</span>`}</div></div><aside class="detail-sidebar"><div class="price">${shortMoney(r.price)} <small>/tháng</small></div><p class="muted tiny">Cọc ${money(r.deposit)} · ${chip(r.status === "AVAILABLE" ? "Còn phòng" : "Đã giữ chỗ", r.status === "AVAILABLE" ? "green" : "yellow")}</p><div class="list-row"><div>${avatar(h.ownerId)}</div><div style="flex:1"><strong>${esc(owner.name)}</strong><small>Chủ trọ · ${esc(h.name)}</small></div></div>${state.role === "tenant" ? `<div class="stack" style="margin-top:16px">${button(`${icon("message-circle")} Nhắn tin về phòng này`, "chat-room", r.id, "primary")}${r.postStatus === "APPROVED" ? button(`${icon("share-2")} Chia sẻ cho bạn ghép`, "share-post", r.id) : ""}${button(`${icon("flag")} Báo cáo tin`, "report-post", r.id)}</div>` : ""}</aside></div>`;
 }
 
 function visibleConversations() { return state.conversations.filter((c) => c.users.includes(userId())); }
 function otherUser(conversation) { return conversation.users.find((id) => id !== userId()); }
+function chatPeerTag(conversation) {
+  if (conversation.type === "ROOMMATE") return chip("Bạn ghép", "green");
+  return state.houses.some((h) => h.ownerId === otherUser(conversation)) ? chip("Chủ trọ", "yellow") : chip("Người thuê", "gray");
+}
+function acceptedRoommateInvite(invite) {
+  return state.role === "tenant" && invite?.status === "ACCEPTED" && !invite.endedAt && invite.senderId !== invite.receiverId && [invite.senderId, invite.receiverId].includes(userId());
+}
+function shareablePost(id) { const r = room(id); return r?.postStatus === "APPROVED" ? r : null; }
+function sharedPostPreview(message) {
+  return message?.messageType === "POST_SHARE" ? `Đã chia sẻ: ${shareablePost(message.sharedPostId)?.title || "Tin phòng không còn hiển thị"}` : message?.text || "Bắt đầu cuộc trò chuyện";
+}
+function sharedPostCard(message) {
+  const r = shareablePost(message.sharedPostId);
+  if (!r) return '<div class="shared-post-unavailable">Tin phòng không còn hiển thị.</div>';
+  const status = { AVAILABLE: "Còn phòng", RESERVED: "Đã giữ chỗ", OCCUPIED: "Đã có người ở", MAINTENANCE: "Đang bảo trì" };
+  return `<div class="shared-post-card"><img src="${esc(r.photo)}" alt=""><div class="shared-post-info"><strong>${esc(r.code)} · ${esc(r.title)}</strong><span>${shortMoney(r.price)}/tháng · ${r.area} m²</span><span>${esc(house(r.houseId).area)}</span>${chip(status[r.status] || "Chưa rõ tình trạng", r.status === "AVAILABLE" ? "green" : "gray")}${button("Xem phòng", "shared-post-detail", message.id, "small")}</div></div>`;
+}
+function openSharePost(id = "") {
+  if (state.role !== "tenant") return;
+  const invites = state.roommateInvites.filter(acceptedRoommateInvite);
+  const posts = state.rooms.filter((r) => r.postStatus === "APPROVED" && (!id || r.id === id));
+  if (!invites.length) { flash("Bạn cần có kết nối đã chấp nhận để chia sẻ tin phòng."); return; }
+  if (!posts.length) { flash("Không có tin phòng đang hiển thị để chia sẻ."); return; }
+  const current = byId(state.conversations, state.selectedConversation);
+  modal("Chia sẻ tin phòng", `<form data-form="share-post"><div class="form-grid"><label class="field full">Gửi cho bạn ghép<select name="inviteId" required>${invites.map((invite) => { const peer = invite.senderId === userId() ? invite.receiverId : invite.senderId; return `<option value="${esc(invite.id)}" ${current?.type === "ROOMMATE" && current.roommateRequestId === invite.id ? "selected" : ""}>${esc(person(peer).name)}</option>`; }).join("")}</select></label><label class="field full">Tin phòng<select name="postId" required>${posts.map((r) => `<option value="${esc(r.id)}">${esc(r.code)} · ${esc(r.title)} · ${shortMoney(r.price)}/tháng</option>`).join("")}</select></label><label class="field full">Lời nhắn kèm theo<textarea name="note" maxlength="2000" placeholder="Bạn thấy phòng này thế nào?"></textarea></label></div><p class="muted tiny">Chia sẻ để cùng xem và trao đổi, chưa giữ chỗ hoặc xác nhận thuê chung.</p><div class="form-actions">${button("Hủy", "close-dialog")}<button type="submit" class="button primary">Chia sẻ phòng</button></div></form>`);
+}
 function chatRoomChoices(conversation) {
   if (conversation.type === "ROOMMATE") return [];
   const fromMessages = conversation.messages.map((m) => m.roomId).filter(Boolean);
@@ -296,7 +323,7 @@ function renderChats() {
     const r = room(m.roomId);
     const context = r && previousRoom !== m.roomId ? `<button type="button" class="context-event" data-action="room-detail" data-id="${r.id}"><img src="${esc(r.photo)}" alt=""><span><strong>${esc(r.code)} · ${esc(r.title)}</strong><small>${shortMoney(r.price)}/tháng · ${esc(house(r.houseId).area)}</small></span></button>` : "";
     previousRoom = m.roomId;
-    return `${context}<div class="message-row ${m.senderId === me ? "mine" : ""}"><div class="message-bubble"><span class="message-text">${esc(m.text)}</span><small>${esc(m.time)}</small></div></div>`;
+    return `${context}<div class="message-row ${m.senderId === me ? "mine" : ""}"><div class="message-bubble">${m.text ? `<span class="message-text">${esc(m.text)}</span>` : ""}${m.messageType === "POST_SHARE" ? sharedPostCard(m) : ""}<small>${esc(m.time)}</small></div></div>`;
   }).join("");
   const choices = chatRoomChoices(current);
   const activeRoom = choices.includes(state.chatContext) ? room(state.chatContext) : null;
@@ -309,17 +336,18 @@ function renderChats() {
         <div class="contact-list">${conversations.map((c) => {
           const p = otherUser(c);
           const last = c.messages[c.messages.length - 1];
-          return `<button type="button" class="contact ${c.id === current.id ? "active" : ""}" data-action="select-chat" data-id="${c.id}">${avatar(p)}<span class="contact-copy"><strong>${esc(person(p).name)}</strong><small>${esc(last?.text || "Bắt đầu cuộc trò chuyện")}</small></span></button>`;
+          return `<button type="button" class="contact ${c.id === current.id ? "active" : ""}" data-action="select-chat" data-id="${c.id}">${avatar(p)}<span class="contact-copy"><span class="chat-person-name"><strong>${esc(person(p).name)}</strong>${chatPeerTag(c)}</span><small>${esc(sharedPostPreview(last))}</small></span></button>`;
         }).join("")}</div>
       </section>
       <section class="chat-pane" aria-label="Hội thoại với ${esc(person(peer).name)}">
         <div class="chat-pane-head">
           <button type="button" class="icon-button mobile-back" data-action="back-chats" aria-label="Danh sách hội thoại">${icon("arrow-left")}</button>
-          ${avatar(peer)}<div class="head-copy"><h2>${esc(person(peer).name)}</h2><small>${isRoommate ? "Đã kết nối · Trao đổi ở ghép" : `${choices.length} phòng đã trao đổi`}</small></div>
+          ${avatar(peer)}<div class="head-copy"><div class="chat-person-name"><h2>${esc(person(peer).name)}</h2>${chatPeerTag(current)}</div><small>${isRoommate ? "Đã kết nối · Trao đổi ở ghép" : `${choices.length} phòng đã trao đổi`}</small></div>
           ${isRoommate ? button("Xem hồ sơ", "roommate-profile", peer, "small") : button(`${icon("calendar-plus")} Hẹn xem`, "open-appointment", "", "small", state.role !== "landlord" ? "disabled title=\"Chủ trọ tạo lịch hẹn\"" : "")}
         </div>
         <div class="chat-pane-body" role="log" aria-label="Nội dung hội thoại">${isRoommate ? '<p class="connection-note">Hai bạn đã kết nối để trao đổi. Việc thuê chung cần được thỏa thuận và xác nhận riêng.</p>' : '<div class="message-date">Hội thoại gần đây</div>'}${messages || (isRoommate ? '<p class="muted tiny">Gửi lời chào để bắt đầu cuộc trò chuyện.</p>' : "")}${chatViewingCards(current)}</div>
         <form class="chat-composer" data-form="chat-message" aria-label="Soạn tin nhắn">
+          ${isRoommate ? `<div class="chat-share-toolbar">${button(`${icon("share-2")} Chia sẻ phòng`, "share-post", "", "small")}</div>` : ""}
           ${!isRoommate ? `<div class="chat-room-picker">
             <label for="chat-room-context">Trao đổi về</label>
             <select id="chat-room-context" data-change="chat-context" aria-label="Chọn phòng trao đổi" ${choices.length ? "" : "disabled"}>
@@ -768,7 +796,18 @@ function handleAction(action, id) {
     case "read-notification": item = byId(state.notifications, id); if (item) item.read = true; save(); openNotifications(); renderShell(); refreshIcons(); return;
     case "favorite": state.favorites = state.favorites.includes(id) ? state.favorites.filter((x) => x !== id) : [...state.favorites, id]; finish(state.favorites.includes(id) ? "Đã lưu tin đăng." : "Đã bỏ lưu tin đăng."); return;
     case "clear-filters": state.filters = structuredClone(seed.filters); finish("Đã xóa bộ lọc."); return;
-    case "room-detail": state.selectedRoom = id; state.view = "detail"; save(); render(); window.scrollTo(0, 0); return;
+    case "room-detail": state.sharedPostReturn = null; state.selectedRoom = id; state.view = "detail"; save(); render(); window.scrollTo(0, 0); return;
+    case "share-post": openSharePost(id); return;
+    case "shared-post-detail": {
+      const c = visibleConversations().find((x) => x.type === "ROOMMATE" && x.messages.some((m) => m.id === id && m.messageType === "POST_SHARE"));
+      const message = c?.messages.find((m) => m.id === id);
+      if (!message || !shareablePost(message.sharedPostId)) { flash("Tin phòng không còn hiển thị."); return; }
+      state.sharedPostReturn = c.id; state.selectedRoom = message.sharedPostId; state.view = "detail"; save(); render(); window.scrollTo(0, 0); return;
+    }
+    case "return-shared-chat": {
+      const c = visibleConversations().find((x) => x.id === id && x.type === "ROOMMATE");
+      if (c) { state.sharedPostReturn = null; openRoommateChat(c.roommateRequestId); } return;
+    }
     case "chat-room": {
       if (state.role !== "tenant") return;
       const owner = house(room(id).houseId).ownerId;
@@ -962,14 +1001,18 @@ function moveOut(value) {
   syncRoomStatus(c.roomId);
   finish("Đã ghi nhận ngày rời phòng.");
 }
-function openRoommateChat(id) {
-  const invite = byId(state.roommateInvites, id);
-  if (state.role !== "tenant" || !invite || invite.status !== "ACCEPTED" || invite.endedAt || ![invite.senderId, invite.receiverId].includes(userId()) || invite.senderId === invite.receiverId) return;
+function roommateConversation(invite) {
   let conversation = state.conversations.find((c) => c.type === "ROOMMATE" && c.roommateRequestId === invite.id && c.users.length === 2 && c.users.includes(invite.senderId) && c.users.includes(invite.receiverId));
   if (!conversation) {
     conversation = { id: `c-roommate-${invite.id}`, type: "ROOMMATE", roommateRequestId: invite.id, users: [invite.senderId, invite.receiverId], messages: [] };
     state.conversations.push(conversation);
   }
+  return conversation;
+}
+function openRoommateChat(id) {
+  const invite = byId(state.roommateInvites, id);
+  if (!acceptedRoommateInvite(invite)) return;
+  const conversation = roommateConversation(invite);
   state.selectedConversation = conversation.id;
   state.chatContext = null; state.chatContexts[chatDraftKey(conversation.id)] = null;
   state.chatMobileOpen = true; state.view = "chats"; state.tab = "all"; state.selectedRoom = null;
@@ -1013,6 +1056,15 @@ function handleForm(form) {
     case "filters": {
       state.filters = { query: value("query"), area: value("area"), maxPrice: value("maxPrice"), minArea: value("minArea"), amenity: value("amenity"), distance: value("distance") };
       save(); render(); return;
+    }
+    case "share-post": {
+      const invite = byId(state.roommateInvites, value("inviteId"));
+      const r = shareablePost(value("postId"));
+      const note = value("note");
+      if (!acceptedRoommateInvite(invite) || !r || note.length > 2000) { flash("Kết nối hoặc tin phòng đã thay đổi. Hãy chọn lại trước khi chia sẻ."); return; }
+      const c = roommateConversation(invite);
+      c.messages.push({ id: `share-${Date.now()}-${c.messages.length}`, senderId: userId(), messageType: "POST_SHARE", sharedPostId: r.id, roomId: null, text: note, time: vietnamTime(Date.now()) });
+      openRoommateChat(invite.id); return;
     }
     case "chat-message": {
       const c = byId(state.conversations, state.selectedConversation);
