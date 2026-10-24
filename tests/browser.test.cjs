@@ -279,8 +279,30 @@ async function main() {
     assert.equal(await evaluate(`__troday.getState().rooms.find(r => r.id === 'r2').status === 'AVAILABLE' && __troday.getState().viewings.at(-1).status === 'CANCELLED' && __troday.getState().viewingProposals.at(-1).status === 'REJECTED'`), true);
     await evaluate(`__troday.action('switch-role', 'tenant'); __troday.action('open-viewing-request', 'r2'); document.querySelector('[name="time"]').value = '16:00'; document.querySelector('form[data-form="viewing-request"]').requestSubmit()`);
     assert.equal(await evaluate(`__troday.getState().viewingProposals.at(-1).status === 'PENDING' && document.documentElement.scrollWidth <= window.innerWidth`), true);
+    // Room detail lists its own posts and enforces three pending reviews per room.
+    await evaluate(`__troday.reset(); __troday.action('switch-role','landlord'); __troday.action('navigate','properties'); document.querySelector('[data-action="room-detail"][data-id="r1"]').click()`);
+    assert.equal(await evaluate(`__troday.getState().view==='room-detail' && document.querySelector('#app-main').textContent.includes('Thông tin phòng') && document.querySelectorAll('[data-related-post-id]').length===1 && document.querySelector('[data-room-quota]').textContent.includes('0/3')`),true);
+    await evaluate(`document.querySelector('[data-action="room-post-detail"][data-id="p-r1"]').click()`);
+    assert.equal(await evaluate(`__troday.getState().selectedPost==='p-r1' && document.querySelector('#app-main').textContent.includes('Quay lại chi tiết phòng')`),true);
+    await evaluate(`document.querySelector('[data-action="room-detail"]').click()`);
+    for(let index=0;index<3;index++) {
+      await evaluate(`document.querySelector('[data-action="create-room-post"]').click(); document.querySelector('[name="title"]').value='Bài chờ P101 ${index}'; document.querySelector('[name="description"]').value='Nội dung bài ${index}'; document.querySelector('form[data-form="listing"]').requestSubmit()`);
+      assert.equal(await evaluate(`__troday.getState().view==='room-detail' && __troday.getState().selectedRoom==='r1'`),true);
+    }
+    const pendingPost = await evaluate(`__troday.getState().posts.at(-1).id`);
+    assert.equal(await evaluate(`document.querySelectorAll('[data-related-post-id]').length===4 && document.querySelector('[data-action="create-room-post"]').disabled && document.querySelector('[data-room-quota]').textContent.includes('3/3') && document.documentElement.scrollWidth<=window.innerWidth`),true);
+    await evaluate(`document.querySelector('[data-action="edit-listing"][data-id="${pendingPost}"]').click()`);
+    assert.equal(await evaluate(`!document.querySelector('form[data-form="listing"] button[type="submit"]').disabled`),true);
+    await evaluate(`document.querySelector('[name="title"]').value='Bài chờ đã sửa khi đủ 3'; document.querySelector('form[data-form="listing"]').requestSubmit(); __troday.action('open-listing','')`);
+    assert.equal(await evaluate(`document.querySelector('form[data-form="listing"] button[type="submit"]').disabled && document.querySelector('[data-listing-quota]').textContent.includes('3/3')`),true);
+    await evaluate(`document.querySelector('[name="roomId"]').value='r2'; document.querySelector('[name="roomId"]').dispatchEvent(new Event('change',{bubbles:true}))`);
+    assert.equal(await evaluate(`!document.querySelector('form[data-form="listing"] button[type="submit"]').disabled && document.querySelector('[data-listing-quota]').textContent.includes('0/3')`),true);
+    await evaluate(`document.querySelector('[data-action="close-dialog"]').click(); __troday.action('switch-role','tenant'); __troday.action('room-detail','r1')`);
+    assert.equal(await evaluate(`document.querySelectorAll('[data-related-post-id]').length===1 && !document.querySelector('[data-room-quota]') && !document.querySelector('[data-action="create-room-post"]') && !document.querySelector('#app-main').textContent.includes('Bài chờ P101')`),true);
+    await evaluate(`__troday.action('switch-role','admin'); __troday.action('approve-listing','${pendingPost}'); __troday.action('switch-role','landlord'); __troday.action('room-detail','r1')`);
+    assert.equal(await evaluate(`document.querySelector('[data-room-quota]').textContent.includes('2/3') && !document.querySelector('[data-action="create-room-post"]').disabled`),true);
     assert.deepEqual(errors, []);
-    console.log("Browser smoke passed: rental workflows, chat, listings, both viewing flows, contract hold cleanup/notifications, release without restoring old schedules, persistence and mobile layout; no runtime exceptions.");
+    console.log("Browser smoke passed: rental workflows, independent posts, room details with related posts, pending quota and role visibility, both viewing flows, contract cleanup, persistence and mobile layout; no runtime exceptions.");
     await call("Browser.close");
   } finally {
     socket?.close(); chrome?.kill();

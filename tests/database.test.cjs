@@ -49,11 +49,11 @@ async function main() {
     assert.equal(path.resolve(await query("SELECT @@datadir;")), path.resolve(directory), "Connected server is not the temporary instance");
     ownsServer = true;
     console.log(`Temporary MySQL ${await query("SELECT VERSION();")} ready.`);
-    const { schema, upgrade, viewingUpgrade, cleanupUpgrade } = require("../scripts/build-database.cjs").build();
+    const { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade } = require("../scripts/build-database.cjs").build();
     await query(schema.replaceAll("room_rental_v5_20261023", "rr_v5_fresh_test"));
     assert.equal(await query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE';", "rr_v5_fresh_test"), "41");
     if (process.argv.includes("--probe")) console.log("Fresh schema import passed (41 tables).");
-    else await runTests(query, { schema, upgrade, viewingUpgrade, cleanupUpgrade });
+    else await runTests(query, { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade });
   } catch (error) {
     error.message += `\nTemporary server log:\n${serverLog.slice(-4000)}`; throw error;
   } finally {
@@ -69,7 +69,7 @@ async function main() {
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });
 
-async function runTests(query, { schema, upgrade, viewingUpgrade, cleanupUpgrade }) {
+async function runTests(query, { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade }) {
   const fixture = fs.readFileSync(path.join(root, "tests", "fixtures", "workflow-data.sql"), "utf8");
   const original = fs.readFileSync(path.join(root, "tests", "fixtures", "v5-original-schema.sql"), "utf8");
   const sharingUpgrade = fs.readFileSync(path.join(root, "database", "migrations", "20261025_chat_post_sharing.sql"), "utf8");
@@ -240,6 +240,13 @@ DELIMITER ;`, core);
     await query(viewingUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
     await query(cleanupUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
     await query(postsUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
+    await query("INSERT INTO posts(id,landlord_id,house_id,room_id,title,status) VALUES(901,1,1,3,'Legacy pending A','PENDING_REVIEW'),(902,1,1,3,'Legacy pending B','PENDING_REVIEW'),(903,1,1,3,'Legacy pending C','PENDING_REVIEW'),(904,1,1,3,'Legacy pending D','PENDING_REVIEW');", upgraded);
+    await query(quotaUpgrade.replaceAll("room_rental_v5_20261023", upgraded), undefined, /more than 3 pending posts/);
+    assert.equal(await query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='posts' AND column_name='pending_review_slot';", upgraded), "0");
+    assert.equal(await query("SELECT COUNT(*) FROM posts WHERE room_id=3 AND status='PENDING_REVIEW';", upgraded), "4");
+    await query("UPDATE posts SET status='APPROVED' WHERE id=901;", upgraded);
+    await query(quotaUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
+    assert.equal(await query("SELECT GROUP_CONCAT(pending_review_slot ORDER BY pending_review_slot) FROM posts WHERE room_id=3 AND status='PENDING_REVIEW';", upgraded), "1,2,3");
     assert.equal(await query("SELECT content,shared_post_id FROM chat_messages WHERE id=7000;", upgraded), "Existing conversation\tNULL");
     assert.equal(await query("SELECT event_type,started_at,consent_method,is_current FROM contract_representative_history;", upgraded), "LEGACY_BASELINE\tNULL\tLEGACY_UNKNOWN\t1");
     assert.equal(await query("SELECT COUNT(*) FROM invoices;", upgraded), "1");
@@ -491,5 +498,58 @@ DELIMITER ;`, cleanup);
     await query(postsUpgrade.replaceAll("room_rental_v5_20261023", upgraded), undefined, /already applied or incomplete/);
     assert.equal(await query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='posts' AND column_name='live_room_id';", multiple), "0");
   });
-  console.log(`${checks} MySQL integration checks passed; migrations, multiple independent posts, room-level viewing conflicts, contract holds and rollback verified.`);
+  let pendingA, pendingB;
+  await check("concurrent submissions compete for the third pending slot without limiting total posts", async () => {
+    pendingA = Number(await query("CALL sp_submit_post(NULL,5,1,'Pending A','Content',NULL,@id); SELECT @id;", multiple));
+    pendingB = Number(await query("CALL sp_submit_post(NULL,5,1,'Pending B','Content',NULL,@id); SELECT @id;", multiple));
+    const results = await Promise.allSettled([
+      query("CALL sp_submit_post(NULL,5,1,'Pending C','Content',NULL,@id);", multiple),
+      query("CALL sp_submit_post(NULL,5,1,'Pending D','Content',NULL,@id);", multiple)
+    ]);
+    assert.equal(results.filter((r)=>r.status==='fulfilled').length,1);
+    assert.match(results.find((r)=>r.status==='rejected').reason.message,/at most 3 pending-review/);
+    assert.equal(await query("SELECT COUNT(*),COUNT(DISTINCT pending_review_slot) FROM posts WHERE room_id=5 AND status='PENDING_REVIEW';", multiple),"3\t3");
+    await query("INSERT INTO posts(landlord_id,house_id,room_id,title,status) VALUES(1,1,5,'Approved A','APPROVED'),(1,1,5,'Approved B','APPROVED'),(1,1,5,'Approved C','APPROVED'),(1,1,5,'Draft','DRAFT'),(1,1,5,'Hidden','HIDDEN');",multiple);
+    assert.equal(await query("SELECT COUNT(*)>3 FROM posts WHERE room_id=5;", multiple),"1");
+  });
+  await check("editing pending posts at capacity is allowed, while resubmitting another post rolls back", async () => {
+    const slot = await query(`SELECT pending_review_slot FROM posts WHERE id=${pendingA};`,multiple);
+    await query(`CALL sp_submit_post(${pendingA},5,1,'Pending edited','New content',1,@id);`, multiple);
+    assert.equal(await query(`SELECT pending_review_slot,content_version FROM posts WHERE id=${pendingA};`,multiple),`${slot}\t2`);
+    const original = await query("SELECT title,status,content_version FROM posts WHERE id=2;",multiple);
+    await query("CALL sp_submit_post(2,5,1,'Must not overwrite','New content',1,@id);",multiple,/at most 3 pending-review/);
+    assert.equal(await query("SELECT title,status,content_version FROM posts WHERE id=2;",multiple),original);
+    await query(`UPDATE posts SET status='APPROVED' WHERE id=${pendingB}; CALL sp_submit_post(2,5,1,'Now resubmitted','New content',1,@id);`,multiple);
+    assert.equal(await query(`SELECT pending_review_slot FROM posts WHERE id=${pendingB};`,multiple),"NULL");
+    assert.equal(await query("SELECT COUNT(*) FROM posts WHERE room_id=5 AND status='PENDING_REVIEW';",multiple),"3");
+    await query(`CALL sp_submit_post(${pendingA},5,1,'Stale','Content',1,@id);`,multiple,/content version has changed/);
+    await query("CALL sp_submit_post(NULL,5,6,'Foreign owner','Content',NULL,@id);",multiple,/Invalid post owner/);
+  });
+  await check("direct SQL cannot exceed or forge the pending quota; rejection frees a slot", async () => {
+    await query("INSERT INTO posts(landlord_id,house_id,room_id,title,status,pending_review_slot) VALUES(1,1,5,'Bypass','PENDING_REVIEW',9);",multiple,/at most 3 pending-review/);
+    await query("UPDATE posts SET pending_review_slot=NULL WHERE id=2;",multiple);
+    assert.notEqual(await query("SELECT pending_review_slot FROM posts WHERE id=2;",multiple),"NULL");
+    await query("UPDATE posts SET status='REJECTED',rejection_reason='Revise' WHERE id=2; INSERT INTO posts(landlord_id,house_id,room_id,title,status) VALUES(1,1,5,'Replacement','PENDING_REVIEW');",multiple);
+    assert.equal(await query("SELECT COUNT(*) FROM posts WHERE room_id=5 AND status='PENDING_REVIEW';",multiple),"3");
+    await query(`DELIMITER $$
+CREATE PROCEDURE fixture_nested_post()
+BEGIN
+  DECLARE caught BOOLEAN DEFAULT FALSE;
+  START TRANSACTION;
+  UPDATE users SET full_name='Uncommitted post owner' WHERE id=1;
+  BEGIN DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET caught=TRUE; CALL sp_submit_post(NULL,5,1,'Nested','Content',NULL,@id); END;
+  IF NOT caught OR (SELECT full_name FROM users WHERE id=1)<>'Uncommitted post owner' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Caller transaction was lost'; END IF;
+  ROLLBACK;
+END$$
+CALL fixture_nested_post()$$
+DROP PROCEDURE fixture_nested_post$$
+DELIMITER ;`,multiple);
+    assert.equal(await query("SELECT full_name FROM users WHERE id=1;",multiple),"Owner");
+  });
+  await check("quota migration rejects wrong order and reapplication without discarding pending posts", async () => {
+    await query(quotaUpgrade.replaceAll("room_rental_v5_20261023",invalid),undefined,/multiple room posts migration before/);
+    await query(quotaUpgrade.replaceAll("room_rental_v5_20261023",upgraded),undefined,/already applied or incomplete/);
+    assert.equal(await query("SELECT COUNT(*) FROM posts WHERE room_id=3 AND status='PENDING_REVIEW';",upgraded),"3");
+  });
+  console.log(`${checks} MySQL integration checks passed; migrations, concurrent pending-post quota, independent posts, shared room holds and rollback verified.`);
 }

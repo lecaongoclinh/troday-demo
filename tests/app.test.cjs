@@ -530,7 +530,7 @@ const editValues = (p, extra = {}) => listingValues({ listingMode: "EDIT", postI
 test("all existing rooms remain selectable even when they already have approved or pending posts", () => {
   const d = demo(); d.action("open-listing", ""); const html = d.node("#dialog-body").innerHTML;
   assert.match(html, /data-form="listing"/); assert.match(html, /option value="r1"/); assert.match(html, /option value="r6"/);
-  assert.doesNotMatch(html, /option value="r4"/); assert.match(html, /nhiều bài đăng và nhiều tin chờ duyệt/);
+  assert.doesNotMatch(html, /option value="r4"/); assert.match(html, /0\/3 bài chờ duyệt/); assert.match(html, /Tổng số bài đăng của phòng không giới hạn/);
 });
 
 test("a landlord with no rooms gets an accurate empty state", () => {
@@ -539,11 +539,11 @@ test("a landlord with no rooms gets an accurate empty state", () => {
   assert.doesNotMatch(d.node("#dialog-body").innerHTML, /data-form="listing"/);
 });
 
-test("one room accepts many pending posts without overwriting existing posts or the physical room", () => {
+test("one room accepts three pending posts and rejects further submissions without overwriting other data", () => {
   const d = demo(), before = JSON.stringify(d.state.rooms), original = JSON.stringify(byId(d.state.posts,"p-r1")), count = d.state.posts.length;
   for (let n=0;n<5;n++) d.submit("listing",listingValues({ title: `Bài độc lập ${n}` }));
-  assert.equal(d.state.posts.length,count+5); assert.equal(new Set(d.state.posts.map((p) => p.id)).size,count+5);
-  assert.equal(d.state.posts.filter((p) => p.roomId === "r1" && p.status === "PENDING_REVIEW").length,5);
+  assert.equal(d.state.posts.length,count+3); assert.equal(new Set(d.state.posts.map((p) => p.id)).size,count+3);
+  assert.equal(d.state.posts.filter((p) => p.roomId === "r1" && p.status === "PENDING_REVIEW").length,3);
   assert.equal(JSON.stringify(byId(d.state.posts,"p-r1")),original); assert.equal(JSON.stringify(d.state.rooms),before);
 });
 
@@ -629,6 +629,75 @@ test("old saved room-based posts, favorites and shared messages migrate once wit
   const reloaded=demo(old); assert.equal(reloaded.state.posts.length,6); assert.equal(reloaded.state.favorites[0],"p-r2");
   assert.equal(byId(reloaded.state.conversations,"legacy-shared").messages[0].sharedPostId,"p-r2");
   assert.equal(JSON.stringify(reloaded.state.contracts),contractSnapshot); assert.equal(demo(reloaded.state).state.posts.length,6);
+});
+
+test("a pending post can be edited at the limit, while resubmitting an approved post preserves its old data", () => {
+  const d=demo(); for(let n=0;n<3;n++) d.submit("listing",listingValues({title:`Pending ${n}`}));
+  const p=d.state.posts.at(-1), total=d.state.posts.length;
+  d.submit("listing",editValues(p,{title:"Edited while full"}));
+  assert.equal(p.title,"Edited while full"); assert.equal(p.version,2); assert.equal(d.state.posts.length,total);
+  const approved=byId(d.state.posts,"p-r1"), before=JSON.stringify(approved);
+  d.submit("listing",editValues(approved,{title:"Must remain approved"}));
+  assert.equal(JSON.stringify(approved),before);
+  d.action("edit-listing",approved.id); assert.match(d.node("#dialog-body").innerHTML,/type="submit" disabled/);
+});
+
+test("the pending limit is per room, and approval or rejection frees a place without limiting total posts", () => {
+  const d=demo(); for(const roomId of ["r1","r2"]) for(let n=0;n<3;n++) d.submit("listing",listingValues({roomId,title:`${roomId} ${n}`}));
+  assert.equal(d.state.posts.filter((p)=>p.status==="PENDING_REVIEW" && p.roomId==="r1").length,3);
+  assert.equal(d.state.posts.filter((p)=>p.status==="PENDING_REVIEW" && p.roomId==="r2").length,3);
+  const first=d.state.posts.find((p)=>p.status==="PENDING_REVIEW"&&p.roomId==="r1");
+  d.state.role="admin"; d.action("approve-listing",first.id); d.state.role="landlord"; d.submit("listing",listingValues({title:"Place reopened"}));
+  assert.equal(d.state.posts.at(-1).title,"Place reopened");
+  for(let n=0;n<5;n++) {
+    const candidate=d.state.posts.find((p)=>p.status==="PENDING_REVIEW"&&p.roomId==="r1");
+    d.state.role="admin"; d.submit("moderation-reason",{kind:"reject-listing",targetId:candidate.id,reason:"Revise"});
+    d.state.role="landlord"; d.submit("listing",listingValues({title:`No total cap ${n}`}));
+  }
+  assert.ok(d.state.posts.filter((p)=>p.roomId==="r1").length>6);
+  assert.equal(d.state.posts.filter((p)=>p.status==="PENDING_REVIEW"&&p.roomId==="r1").length,3);
+});
+
+test("a stale create form rechecks pending capacity at submit without changing any post", () => {
+  const d=demo(); for(let n=0;n<2;n++) d.submit("listing",listingValues({title:`Pending ${n}`}));
+  d.action("open-listing",""); assert.match(d.node("#dialog-body").innerHTML,/2\/3 bài chờ duyệt/);
+  d.submit("listing",listingValues({title:"Third from another form"})); const before=JSON.stringify(d.state.posts);
+  d.submit("listing",listingValues({title:"Stale fourth"})); assert.equal(JSON.stringify(d.state.posts),before);
+});
+
+test("room details show physical data and only posts for that room, with a round trip to post detail", () => {
+  const d=demo(); d.submit("listing",listingValues({title:"Related pending"}));
+  d.action("navigate","properties"); assert.match(d.node("#app-main").innerHTML,/data-action="room-detail" data-id="r1"/);
+  d.action("room-detail","r1"); const html=d.node("#app-main").innerHTML;
+  assert.equal(d.state.view,"room-detail"); assert.equal(d.state.selectedPost,null);
+  assert.match(html,/Thông tin phòng/); assert.match(html,/Related pending/); assert.match(html,/data-related-post-id="p-r1"/);
+  assert.doesNotMatch(html,/data-related-post-id="p-r2"/); assert.match(html,/1\/3 bài chờ duyệt/);
+  d.action("room-post-detail","p-r1"); assert.equal(d.state.selectedPost,"p-r1"); assert.match(d.node("#app-main").innerHTML,/Quay lại chi tiết phòng/);
+  d.action("room-detail","r1"); assert.equal(d.state.view,"room-detail");
+});
+
+test("creating a post from room detail preselects that room and returns to its related list", () => {
+  const d=demo(); d.action("room-detail","r2"); d.action("create-room-post","r2");
+  assert.match(d.node("#dialog-body").innerHTML,/option value="r2" selected/);
+  d.submit("listing",listingValues({roomId:"r2",title:"From room detail"}));
+  assert.equal(d.state.posts.at(-1).roomId,"r2"); assert.equal(d.state.view,"room-detail"); assert.equal(d.state.selectedRoom,"r2");
+  assert.match(d.node("#app-main").innerHTML,/From room detail/);
+});
+
+test("tenant room detail hides pending, rejected and hidden posts while the owner can manage them", () => {
+  const d=demo(); for(const status of ["PENDING_REVIEW","REJECTED","HIDDEN"]) d.state.posts.push({id:`private-${status}`,roomId:"r1",title:`Private ${status}`,status,version:1,description:"Private content",photo:"assets/r1.webp"});
+  d.state.role="tenant"; d.action("room-detail","r1"); const html=d.node("#app-main").innerHTML;
+  assert.match(html,/data-related-post-id="p-r1"/); assert.doesNotMatch(html,/Private|private-|data-room-quota|create-room-post|edit-listing/);
+  d.state.role="landlord"; d.api.render(); assert.match(d.node("#app-main").innerHTML,/Private PENDING_REVIEW/);
+  d.state.role="admin"; d.api.render(); assert.match(d.node("#app-main").innerHTML,/Private HIDDEN/);
+});
+
+test("room details enforce access and show an empty related list for a new private room", () => {
+  const d=demo(); d.state.rooms.push({...byId(d.state.rooms,"r1"),id:"empty-room",code:"EMPTY"});
+  d.action("room-detail","empty-room"); assert.match(d.node("#app-main").innerHTML,/Chưa có bài đăng liên quan/);
+  d.state.role="tenant"; d.api.render(); assert.match(d.node("#app-main").innerHTML,/Không thể xem phòng/);
+  d.action("room-detail","r6"); assert.equal(d.state.selectedRoom,"empty-room");
+  d.state.role="landlord"; byId(d.state.posts,"p-r4").status="HIDDEN"; d.action("room-detail","r4"); assert.equal(d.state.selectedRoom,"empty-room");
 });
 
 

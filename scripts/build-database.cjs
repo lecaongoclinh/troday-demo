@@ -6,17 +6,19 @@ const schemaPath = path.join(root, "database", "schema.sql");
 const migrationPath = path.join(root, "database", "migrations", "20261024_v5_workflows.sql");
 const viewingMigrationPath = path.join(root, "database", "migrations", "20261025_viewing_proposals.sql");
 const cleanupMigrationPath = path.join(root, "database", "migrations", "20261025_contract_viewing_cleanup.sql");
+const quotaMigrationPath = path.join(root, "database", "migrations", "20261025_post_review_quota.sql");
 const marker = "-- BEGIN V5 WORKFLOW OBJECTS 20261024";
 function build() {
   let schema = fs.readFileSync(schemaPath, "utf8").replaceAll("\r\n", "\n");
   const objects = fs.readFileSync(path.join(root, "database", "source", "workflows.sql"), "utf8").replaceAll("\r\n", "\n").trimEnd() + "\n";
   const proposals = fs.readFileSync(path.join(root, "database", "source", "viewing-proposals.sql"), "utf8").replaceAll("\r\n", "\n").trimEnd() + "\n";
   const cleanup = fs.readFileSync(path.join(root, "database", "source", "contract-viewing-cleanup.sql"), "utf8").replaceAll("\r\n", "\n").trimEnd() + "\n";
+  const quota = fs.readFileSync(path.join(root, "database", "source", "post-review-quota.sql"), "utf8").replaceAll("\r\n", "\n").trimEnd() + "\n";
   schema = schema.split(marker)[0].trimEnd() + "\n";
   for (const name of ["trg_viewings_before_update", "trg_contracts_before_insert", "trg_contracts_before_update"]) {
     schema = schema.replace(new RegExp("CREATE TRIGGER `" + name + "`[\\s\\S]*?END\\$\\$\\s*", "g"), "");
   }
-  schema = schema.trimEnd() + "\n\n" + objects + "\n" + proposals + "\n" + cleanup;
+  schema = schema.trimEnd() + "\n\n" + objects + "\n" + proposals + "\n" + cleanup + "\n" + quota;
   const historyDDL = /CREATE TABLE `contract_representative_history` \([\s\S]*?\) ENGINE=[^\n]+;/.exec(schema)?.[0];
   if (!historyDDL) throw new Error("History table definition is missing");
   const foreignKeys = schema.split("\n").filter((line) => line.startsWith("ALTER TABLE `contract_representative_history`") || line.includes("`fk_changes_cancelled_by`") || line.includes("`fk_join_cancelled_by`")).join("\n");
@@ -125,15 +127,46 @@ DROP PROCEDURE _v5_preflight_contract_viewing_cleanup$$
 DELIMITER ;
 
 ${cleanup}`;
-  return { schema, upgrade, viewingUpgrade, cleanupUpgrade };
+  const quotaUpgrade = `-- Run once AFTER 20261025_multiple_room_posts.sql. Back up and stop writers first.
+-- Preflight never rejects or deletes existing posts automatically.
+USE room_rental_v5_20261023;
+SET time_zone = '+00:00';
+DELIMITER $$
+DROP PROCEDURE IF EXISTS _v5_preflight_post_review_quota$$
+CREATE PROCEDURE _v5_preflight_post_review_quota()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='posts' AND index_name='ix_posts_room_status')
+    OR EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='posts' AND column_name='live_room_id') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Apply multiple room posts migration before post review quota';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='posts' AND column_name='pending_review_slot') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Post review quota migration already applied or incomplete';
+  END IF;
+  IF EXISTS (SELECT room_id FROM posts WHERE status='PENDING_REVIEW' GROUP BY room_id HAVING COUNT(*)>3) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Preflight: review rooms with more than 3 pending posts before migration';
+  END IF;
+END$$
+CALL _v5_preflight_post_review_quota()$$
+DROP PROCEDURE _v5_preflight_post_review_quota$$
+DELIMITER ;
+ALTER TABLE posts ADD COLUMN pending_review_slot TINYINT AFTER status;
+CREATE TEMPORARY TABLE _v5_existing_pending_slots(id BIGINT PRIMARY KEY, slot TINYINT NOT NULL);
+INSERT INTO _v5_existing_pending_slots SELECT id,ROW_NUMBER() OVER (PARTITION BY room_id ORDER BY created_at,id) FROM posts WHERE status='PENDING_REVIEW';
+UPDATE posts p JOIN _v5_existing_pending_slots s ON s.id=p.id SET p.pending_review_slot=s.slot;
+DROP TEMPORARY TABLE _v5_existing_pending_slots;
+ALTER TABLE posts ADD UNIQUE KEY uq_posts_pending_slot(room_id,pending_review_slot),
+  ADD CONSTRAINT ck_posts_pending_slot CHECK ((status='PENDING_REVIEW' AND pending_review_slot IS NOT NULL AND pending_review_slot BETWEEN 1 AND 3) OR (status<>'PENDING_REVIEW' AND pending_review_slot IS NULL));
+
+${quota}`;
+  return { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade };
 }
 if (require.main === module) {
-  const { schema, upgrade, viewingUpgrade, cleanupUpgrade } = build();
+  const { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade } = build();
   if (process.argv.includes("--print-fresh")) process.stdout.write(schema);
   else if (process.argv.includes("--print-upgrade")) process.stdout.write(upgrade);
   else if (process.argv.includes("--check")) {
-    if (fs.readFileSync(schemaPath, "utf8").replaceAll("\r\n", "\n") !== schema || fs.readFileSync(migrationPath, "utf8").replaceAll("\r\n", "\n") !== upgrade || fs.readFileSync(viewingMigrationPath, "utf8").replaceAll("\r\n", "\n") !== viewingUpgrade || fs.readFileSync(cleanupMigrationPath, "utf8").replaceAll("\r\n", "\n") !== cleanupUpgrade) throw new Error("SQL bundles differ from shared workflow source; rebuild them");
+    if (fs.readFileSync(schemaPath, "utf8").replaceAll("\r\n", "\n") !== schema || fs.readFileSync(migrationPath, "utf8").replaceAll("\r\n", "\n") !== upgrade || fs.readFileSync(viewingMigrationPath, "utf8").replaceAll("\r\n", "\n") !== viewingUpgrade || fs.readFileSync(cleanupMigrationPath, "utf8").replaceAll("\r\n", "\n") !== cleanupUpgrade || fs.readFileSync(quotaMigrationPath, "utf8").replaceAll("\r\n", "\n") !== quotaUpgrade) throw new Error("SQL bundles differ from shared workflow source; rebuild them");
     console.log("Fresh schema and migration match the shared workflow definitions.");
-  } else { fs.writeFileSync(schemaPath, schema); fs.writeFileSync(migrationPath, upgrade); fs.writeFileSync(viewingMigrationPath, viewingUpgrade); fs.writeFileSync(cleanupMigrationPath, cleanupUpgrade); }
+  } else { fs.writeFileSync(schemaPath, schema); fs.writeFileSync(migrationPath, upgrade); fs.writeFileSync(viewingMigrationPath, viewingUpgrade); fs.writeFileSync(cleanupMigrationPath, cleanupUpgrade); fs.writeFileSync(quotaMigrationPath, quotaUpgrade); }
 }
 module.exports = { build };

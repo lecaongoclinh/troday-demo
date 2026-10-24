@@ -185,20 +185,21 @@ function modal(title, body) {
   if (!$("#app-dialog").open) $("#app-dialog").showModal(); refreshIcons();
 }
 function refreshIcons() { if (window.lucide) window.lucide.createIcons(); }
-function changeView(view) { state.view = view; state.tab = "all"; state.selectedRoom = null; state.selectedPost = null; state.chatMobileOpen = false; save(); render(); window.scrollTo(0, 0); }
+function changeView(view) { state.view = view; state.tab = "all"; state.selectedRoom = null; state.selectedPost = null; state.postReturnRoom = null; state.chatMobileOpen = false; save(); render(); window.scrollTo(0, 0); }
 function switchRole(role) { state.role = role; state.view = role === "tenant" ? "discover" : "dashboard"; state.selectedConversation = role === "landlord" ? "c1" : "c1"; state.chatMobileOpen = false; save(); render(); window.scrollTo(0, 0); }
 
 function renderShell() {
   const roleLabel = { tenant: "Không gian người thuê", landlord: "Không gian chủ trọ", admin: "Không gian quản trị" }[state.role];
   $("#sidebar-role").innerHTML = `<div class="sidebar-role">${roleLabel}</div>`;
   const navigation = NAV[state.role];
-  $("#sidebar-nav").innerHTML = navigation.map(([id, label, glyph], index) => `${index === 0 ? `<div class="nav-group-title">Điều hướng</div>` : ""}<button type="button" class="nav-link ${state.view === id || (state.view === "detail" && id === "discover") ? "active" : ""}" data-action="navigate" data-id="${id}">${icon(glyph)}<span>${label}</span></button>`).join("");
-  $("#mobile-nav").innerHTML = navigation.map(([id, label, glyph]) => `<button type="button" class="nav-link ${state.view === id || (state.view === "detail" && id === "discover") ? "active" : ""}" data-action="navigate" data-id="${id}">${icon(glyph)}<span>${label}</span></button>`).join("");
+  const activeView = state.view === "room-detail" ? (state.role === "landlord" ? "properties" : state.role === "admin" ? "moderation" : "discover") : state.view === "detail" ? (state.role === "landlord" ? "listings" : state.role === "admin" ? "moderation" : "discover") : state.view;
+  $("#sidebar-nav").innerHTML = navigation.map(([id, label, glyph], index) => `${index === 0 ? `<div class="nav-group-title">Điều hướng</div>` : ""}<button type="button" class="nav-link ${activeView === id ? "active" : ""}" data-action="navigate" data-id="${id}">${icon(glyph)}<span>${label}</span></button>`).join("");
+  $("#mobile-nav").innerHTML = navigation.map(([id, label, glyph]) => `<button type="button" class="nav-link ${activeView === id ? "active" : ""}" data-action="navigate" data-id="${id}">${icon(glyph)}<span>${label}</span></button>`).join("");
   const me = userId();
   $("#sidebar-account").innerHTML = `<div class="account-row">${avatar(me)}<div class="account-copy"><strong>${esc(person(me).name)}</strong><small>${roleLabel}</small></div></div>`;
   $("#topbar-role-switch").innerHTML = [["tenant", "Người thuê", "Thuê"], ["landlord", "Chủ trọ", "Chủ"], ["admin", "Quản trị", "QT"]].map(([role, label, short]) => `<button type="button" class="${state.role === role ? "active" : ""}" data-action="switch-role" data-id="${role}" data-short="${short}">${label}</button>`).join("");
   const currentNav = navigation.find(([id]) => id === state.view);
-  $("#topbar-title").textContent = state.view === "detail" ? "Chi tiết phòng" : currentNav ? currentNav[1] : "Trọday";
+  $("#topbar-title").textContent = state.view === "room-detail" ? "Chi tiết phòng" : state.view === "detail" ? "Chi tiết bài đăng" : currentNav ? currentNav[1] : "Trọday";
   $("#notification-dot").style.display = state.notifications.some((item) => item.userId === me && !item.read) ? "block" : "none";
 }
 
@@ -210,7 +211,7 @@ function render() {
   renderShell();
   const view = state.view;
   const renderer = {
-    discover: renderDiscover, detail: renderDetail, favorites: renderFavorites,
+    discover: renderDiscover, detail: renderDetail, "room-detail": renderRoomDetail, favorites: renderFavorites,
     dashboard: renderDashboard, properties: renderProperties, services: renderServices,
     listings: renderListings, chats: renderChats, viewings: renderViewings,
     contracts: renderContracts, residents: renderResidents, invoices: renderInvoices,
@@ -265,7 +266,7 @@ function renderDetail() {
   }).filter(Boolean);
   const backView = state.role === "admin" ? "moderation" : state.role === "landlord" ? "listings" : "discover";
   const returnChat = visibleConversations().find((c) => c.id === state.sharedPostReturn && c.type === "ROOMMATE");
-  return head(r.title, `${r.code} · ${h.address}`, `${returnChat ? button(`${icon("arrow-left")} Quay lại tin nhắn`, "return-shared-chat", returnChat.id) : button(`${icon("arrow-left")} Danh sách`, "navigate", backView)}${state.role === "tenant" && p ? button(`${icon("heart")} ${saved ? "Bỏ lưu" : "Lưu tin"}`, "favorite", p.id) : ""}`) +
+  return head(esc(r.title), `${esc(r.code)} · ${esc(h.address)}`, `${returnChat ? button(`${icon("arrow-left")} Quay lại tin nhắn`, "return-shared-chat", returnChat.id) : state.postReturnRoom === r.id ? button("Quay lại chi tiết phòng", "room-detail", r.id) : button(`${icon("arrow-left")} Danh sách`, "navigate", backView)}${button("Chi tiết phòng", "room-detail", r.id)}${state.role === "tenant" && p ? button(`${icon("heart")} ${saved ? "Bỏ lưu" : "Lưu tin"}`, "favorite", p.id) : ""}`) +
     `<div class="detail-layout"><div><img class="detail-image" src="${esc(r.photo)}" alt="${esc(r.title)}"><div class="detail-info"><div><span class="muted tiny">Diện tích</span><strong>${r.area} m²</strong></div><div><span class="muted tiny">Sức chứa</span><strong>${r.capacity} người</strong></div><div><span class="muted tiny">Khoảng cách</span><strong>${r.distance} km</strong></div></div><div class="section-bar"><h2>Về phòng này</h2></div><p class="muted" style="font-size:13px;line-height:1.6">${esc(r.description)}</p><div class="section-bar"><h2>Tiện ích</h2></div><div class="amenity-list">${r.amenities.map((x) => `<span>${esc(x)}</span>`).join("")}</div><div class="section-bar"><h2>Dịch vụ áp dụng</h2></div><div class="stack tight">${services.length ? services.map((x) => `<div class="list-row"><strong>${esc(x)}</strong></div>`).join("") : `<span class="muted tiny">Chủ trọ chưa cập nhật dịch vụ.</span>`}</div></div><aside class="detail-sidebar"><div class="price">${shortMoney(r.price)} <small>/tháng</small></div><p class="muted tiny">Cọc ${money(r.deposit)} · ${chip(r.status === "AVAILABLE" ? "Còn phòng" : "Đã giữ chỗ", r.status === "AVAILABLE" ? "green" : "yellow")}</p><div class="list-row"><div>${avatar(h.ownerId)}</div><div style="flex:1"><strong>${esc(owner.name)}</strong><small>Chủ trọ · ${esc(h.name)}</small></div></div>${state.role === "tenant" ? `<div class="stack" style="margin-top:16px">${p ? button(`${icon("message-circle")} Nhắn tin về tin này`, "chat-post", p.id, "primary") : ""}${r.postStatus === "APPROVED" ? button(`${icon("calendar-plus")} Đề nghị lịch xem`, "request-post-viewing", p.id, "", r.status !== "AVAILABLE" || hasLiveRoomContract(r.id) || roomLoad(r.id) ? 'disabled title="Phòng hiện chưa thể hẹn xem"' : "") : ""}${r.postStatus === "APPROVED" ? button(`${icon("share-2")} Chia sẻ cho bạn ghép`, "share-post", p.id) : ""}${p ? button(`${icon("flag")} Báo cáo tin`, "report-post", p.id) : ""}</div>` : ""}</aside></div>`;
 }
 
@@ -456,11 +457,12 @@ function renderDashboard() {
 }
 
 function renderProperties() {
-  const ownHouses = state.houses.filter((h) => h.ownerId === "quan");
+  const ownHouses = state.houses.filter((h) => state.role === "landlord" && h.ownerId === userId());
   const selected = ownHouses.find((h) => h.id === state.houseSelection) || ownHouses[0];
+  if (!selected) return head("Nhà & phòng") + empty("Chưa có nhà trọ", "Chưa có nhà trọ thuộc tài khoản này.");
   const rooms = state.rooms.filter((r) => r.houseId === selected.id);
   return head("Nhà & phòng", `${ownHouses.length} nhà trọ · ${rooms.length} phòng`, button(`${icon("plus")} Thêm phòng`, "open-room", "", "primary")) +
-    `<div class="filter-bar"><label class="field" style="max-width:330px">Nhà trọ<select id="house-select" data-change="house">${ownHouses.map((h) => `<option value="${h.id}" ${selected.id === h.id ? "selected" : ""}>${esc(h.name)}</option>`).join("")}</select></label></div><div class="flow-banner"><div><strong>${esc(selected.name)}</strong><small>${esc(selected.address)}</small></div>${chip(`${rooms.length} phòng`, "green")}</div><div class="table-surface table-scroll"><table><thead><tr><th>Phòng</th><th>Diện tích</th><th>Sức chứa</th><th>Giá thuê</th><th>Tình trạng</th><th></th></tr></thead><tbody>${rooms.map((r) => `<tr><td><div class="room-row"><img src="${esc(r.photo)}" alt=""><div><span class="cell-title">${esc(r.code)}</span><span class="cell-sub">${esc(r.title)}</span></div></div></td><td>${r.area} m²</td><td>${r.capacity} người</td><td>${money(r.price)}</td><td>${chip(r.status === "AVAILABLE" ? "Còn phòng" : r.status === "OCCUPIED" ? "Đang ở" : r.status === "RESERVED" ? "Đã giữ" : "Bảo trì", r.status === "AVAILABLE" ? "green" : "yellow")}</td><td class="actions-cell">${button("Sửa", "edit-room", r.id, "small")}</td></tr>`).join("")}</tbody></table></div>`;
+    `<div class="filter-bar"><label class="field" style="max-width:330px">Nhà trọ<select id="house-select" data-change="house">${ownHouses.map((h) => `<option value="${h.id}" ${selected.id === h.id ? "selected" : ""}>${esc(h.name)}</option>`).join("")}</select></label></div><div class="flow-banner"><div><strong>${esc(selected.name)}</strong><small>${esc(selected.address)}</small></div>${chip(`${rooms.length} phòng`, "green")}</div><div class="table-surface table-scroll"><table><thead><tr><th>Phòng</th><th>Diện tích</th><th>Sức chứa</th><th>Giá thuê</th><th>Tình trạng</th><th></th></tr></thead><tbody>${rooms.map((r) => `<tr data-room-id="${esc(r.id)}"><td><div class="room-row"><img src="${esc(r.photo)}" alt=""><div><span class="cell-title">${esc(r.code)}</span><span class="cell-sub">${state.posts.filter((p) => p.roomId === r.id).length} bài · ${pendingPostCount(r.id)}/3 chờ duyệt</span></div></div></td><td>${r.area} m²</td><td>${r.capacity} người</td><td>${money(r.price)}</td><td>${chip(r.status === "AVAILABLE" ? "Còn phòng" : r.status === "OCCUPIED" ? "Đang ở" : r.status === "RESERVED" ? "Đã giữ" : "Bảo trì", r.status === "AVAILABLE" ? "green" : "yellow")}</td><td class="actions-cell"><div class="table-actions">${button("Xem chi tiết", "room-detail", r.id, "small")}${button("Sửa", "edit-room", r.id, "small")}</div></td></tr>`).join("")}</tbody></table></div>`;
 }
 
 function renderServices() {
@@ -475,6 +477,32 @@ function renderServices() {
 
 const POST_LABEL = { NONE: ["Chưa đăng tin", "gray"], DRAFT: ["Bản nháp", "gray"], PENDING_REVIEW: ["Chờ duyệt", "yellow"], APPROVED: ["Đã duyệt", "green"], REJECTED: ["Bị từ chối", "red"], HIDDEN: ["Đã ẩn", "gray"] };
 function ownsListingRoom(r) { return state.role === "landlord" && r && house(r.houseId)?.ownerId === userId(); }
+const MAX_PENDING_POSTS = 3;
+function pendingPostCount(roomId, exceptPostId = "") { return state.posts.filter((p) => p.roomId === roomId && p.status === "PENDING_REVIEW" && p.id !== exceptPostId).length; }
+function canReadRoom(r) { return !!r && (ownsListingRoom(r) || state.role === "admin" || !!publishedPost(r.id)); }
+function listingQuotaMessage(r, p = null) {
+  const count = pendingPostCount(r.id), blocked = p?.status !== "PENDING_REVIEW" && count >= MAX_PENDING_POSTS;
+  return `${roomName(r.id)}: ${count}/${MAX_PENDING_POSTS} bài chờ duyệt. ${blocked ? "Đã đủ 3 bài chờ; cần duyệt hoặc từ chối một bài trước khi gửi thêm." : p?.status === "PENDING_REVIEW" ? "Sửa bài đang chờ không chiếm thêm lượt." : "Có thể gửi bài mới."} Tổng số bài đăng của phòng không giới hạn.`;
+}
+function updateListingQuota(form) {
+  const r = room(form.elements.roomId.value), p = post(form.elements.postId.value);
+  if (!r) return;
+  form.querySelector('[data-listing-quota]').textContent = listingQuotaMessage(r, p);
+  form.querySelector('button[type="submit"]').disabled = p?.status !== "PENDING_REVIEW" && pendingPostCount(r.id) >= MAX_PENDING_POSTS;
+}
+function renderRoomDetail() {
+  const r = room(state.selectedRoom);
+  if (!canReadRoom(r)) return head("Chi tiết phòng") + empty("Không thể xem phòng", "Phòng không tồn tại hoặc bạn không có quyền xem.");
+  const own = ownsListingRoom(r), internal = own || state.role === "admin", h = house(r.houseId);
+  const related = state.posts.filter((p) => p.roomId === r.id && canReadPost(p));
+  const status = { AVAILABLE: ["Còn phòng", "green"], RESERVED: ["Đã giữ chỗ", "yellow"], OCCUPIED: ["Đang ở", "gray"], MAINTENANCE: ["Bảo trì", "red"] };
+  const backView = state.role === "landlord" ? "properties" : state.role === "admin" ? "moderation" : "discover";
+  return head(`Phòng ${esc(r.code)}`, `${esc(h.name)} · ${esc(h.address)}`, button("Quay lại danh sách", "navigate", backView) + (own ? button("Sửa phòng", "edit-room", r.id) : "")) +
+    `<div class="split-grid"><section><img class="detail-image" src="${esc(r.photo)}" alt="Phòng ${esc(r.code)}"><div class="detail-info"><div><span class="muted tiny">Diện tích</span><strong>${r.area} m²</strong></div><div><span class="muted tiny">Sức chứa</span><strong>${r.capacity} người</strong></div><div><span class="muted tiny">Tình trạng</span><strong>${chip(...(status[r.status] || [r.status, "gray"]))}</strong></div></div></section><section class="flat-surface"><h2>Thông tin phòng</h2><p>Giá thuê: <strong>${money(r.price)}/tháng</strong></p><p>Tiền cọc: ${money(r.deposit)}</p><p>Chủ trọ: ${esc(person(h.ownerId).name)}</p><div class="amenity-list">${r.amenities.map((x) => `<span>${esc(x)}</span>`).join("")}</div><p class="muted tiny">Các bài đăng dùng chung tình trạng phòng, sức chứa, lịch xem và hợp đồng.</p></section></div>` +
+    `<div class="section-bar"><h2>Bài đăng liên quan · ${related.length}</h2>${own ? button("Tạo bài cho phòng này", "create-room-post", r.id, "primary", pendingPostCount(r.id) >= MAX_PENDING_POSTS ? 'disabled title="Đã đủ 3 bài chờ duyệt"' : "") : ""}</div>` +
+    (internal ? `<p class="muted tiny" data-room-quota>${esc(listingQuotaMessage(r))}</p>` : "") +
+    (related.length ? `<div class="stack">${related.map((p) => `<article class="list-row" data-related-post-id="${esc(p.id)}"><div><strong>${esc(p.title)}</strong><small>${esc(p.id)} · ${chip(...POST_LABEL[p.status])}</small>${internal && p.rejectionReason ? `<small>${esc(p.rejectionReason)}</small>` : ""}</div><div class="table-actions">${button("Xem bài", "room-post-detail", p.id, "small")}${own ? button("Sửa bài", "edit-listing", p.id, "small") : ""}</div></article>`).join("")}</div>` : empty("Chưa có bài đăng liên quan", own ? "Tạo bài mới cho phòng này." : "Chưa có bài đăng công khai."));
+}
 function renderListings() {
   const own = state.posts.filter(ownsPost);
   return head("Tin đăng", `${own.length} bài đăng · Một phòng có thể có nhiều tin`, button(`${icon("plus")} Tạo tin đăng`, "open-listing", "", "primary")) + (own.length ? `<div class="table-surface table-scroll"><table><thead><tr><th>Bài đăng</th><th>Phòng</th><th>Giá / tháng</th><th>Kiểm duyệt</th><th></th></tr></thead><tbody>${own.map((p) => { const r = room(p.roomId); return `<tr data-post-id="${esc(p.id)}"><td><div class="room-row"><img src="${esc(p.photo)}" alt=""><div><span class="cell-title">${esc(p.title)}</span><span class="cell-sub">${esc(p.id)}</span></div></div></td><td>${esc(roomName(r.id))}<span class="cell-sub">${chip(r.status, r.status === "AVAILABLE" ? "green" : "gray")}</span></td><td>${money(r.price)}</td><td>${chip(...POST_LABEL[p.status])}${p.rejectionReason ? `<span class="cell-sub">${esc(p.rejectionReason)}</span>` : ""}</td><td><div class="table-actions">${button("Xem tin", "post-detail", p.id, "small")}${button("Sửa tin", "edit-listing", p.id, "small")}${p.status === "APPROVED" ? button("Ẩn tin", "hide-listing", p.id, "small") : ""}</div></td></tr>`; }).join("")}</tbody></table></div>` : empty("Chưa có bài đăng", "Tạo tin mới cho một phòng đang quản lý."));
@@ -869,13 +897,16 @@ function openRoom(id = "") {
   const r = id ? room(id) : null;
   modal(r ? "Sửa phòng" : "Thêm phòng", `<form data-form="room"><input type="hidden" name="roomId" value="${esc(id)}"><div class="form-grid"><label class="field">Mã phòng<input name="code" value="${esc(r?.code || "")}" required></label><label class="field">Diện tích m²<input type="number" name="area" min="1" step="0.1" value="${r?.area || ""}" required></label><label class="field">Giá thuê<input type="number" name="price" min="0" value="${r?.price || ""}" required></label><label class="field">Tiền cọc<input type="number" name="deposit" min="0" value="${r?.deposit || ""}" required></label><label class="field">Tối đa người<input type="number" name="capacity" min="1" value="${r?.capacity || 2}" required></label><label class="field">Trạng thái<select name="status">${[["AVAILABLE", "Còn phòng"], ["RESERVED", "Đã giữ"], ["OCCUPIED", "Đang ở"], ["MAINTENANCE", "Bảo trì"]].map(([v, label]) => `<option value="${v}" ${r?.status === v ? "selected" : ""}>${label}</option>`).join("")}</select></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Lưu phòng</button></div></form>`);
 }
-function openListing(id = "") {
+function openListing(id = "", roomId = "") {
   if (state.role !== "landlord") return;
   const own = state.rooms.filter(ownsListingRoom), p = id ? post(id) : null;
   if (!own.length) { modal("Chưa có phòng để đăng tin", '<p>Bạn chưa có phòng nào trong nhà trọ của mình. Hãy thêm phòng ở mục Nhà &amp; phòng trước khi đăng tin.</p>'); return; }
   if (id && !ownsPost(p)) { flash("Bạn chỉ được sửa tin của phòng mình quản lý."); return; }
-  const r = p ? room(p.roomId) : own[0];
-  modal(p ? "Sửa tin đăng" : "Tạo tin đăng", `<form data-form="listing"><input type="hidden" name="listingMode" value="${p ? "EDIT" : "CREATE"}"><input type="hidden" name="postId" value="${esc(p?.id || "")}"><input type="hidden" name="originalPostStatus" value="${esc(p?.status || "")}"><input type="hidden" name="originalVersion" value="${p?.version || 0}"><p class="muted tiny">Một phòng có thể có nhiều bài đăng và nhiều tin chờ duyệt. Mỗi tin có nội dung, ảnh và kết quả duyệt riêng.</p><div class="form-grid"><label class="field full">Phòng${p ? `<input type="hidden" name="roomId" value="${esc(r.id)}"><input value="${esc(roomName(r.id))}" disabled>` : `<select name="roomId" required>${own.map((x) => `<option value="${esc(x.id)}">${esc(roomName(x.id))}</option>`).join("")} </select>`}</label><label class="field full">Tiêu đề<input name="title" value="${esc(p?.title || "")}" required maxlength="200"></label><label class="field full">Nội dung<textarea name="description" required>${esc(p?.description || "")}</textarea></label><label class="field full">Ảnh tin<input name="photo" type="text" value="${esc(p?.photo || r.photo)}" required maxlength="2000"><small class="muted tiny">URL ảnh HTTP/HTTPS hoặc ảnh mẫu đi kèm.</small></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Gửi duyệt tin</button></div></form>`);
+  if (roomId && !own.some((r) => r.id === roomId)) { flash("Phòng không thuộc quyền quản lý của bạn."); return; }
+  const r = p ? room(p.roomId) : own.find((r) => r.id === roomId) || own[0];
+  state.listingReturnRoom = state.view === "room-detail" && state.selectedRoom === r.id ? r.id : null;
+  const blocked = p?.status !== "PENDING_REVIEW" && pendingPostCount(r.id) >= MAX_PENDING_POSTS;
+  modal(p ? "Sửa tin đăng" : "Tạo tin đăng", `<form data-form="listing"><input type="hidden" name="listingMode" value="${p ? "EDIT" : "CREATE"}"><input type="hidden" name="postId" value="${esc(p?.id || "")}"><input type="hidden" name="originalPostStatus" value="${esc(p?.status || "")}"><input type="hidden" name="originalVersion" value="${p?.version || 0}"><p class="muted tiny" data-listing-quota>${esc(listingQuotaMessage(r, p))}</p><div class="form-grid"><label class="field full">Phòng${p ? `<input type="hidden" name="roomId" value="${esc(r.id)}"><input value="${esc(roomName(r.id))}" disabled>` : `<select name="roomId" data-change="listing-room" required>${own.map((x) => `<option value="${esc(x.id)}" ${x.id === r.id ? "selected" : ""}>${esc(roomName(x.id))} · ${pendingPostCount(x.id)}/3 chờ</option>`).join("")}</select>`}</label><label class="field full">Tiêu đề<input name="title" value="${esc(p?.title || "")}" required maxlength="200"></label><label class="field full">Nội dung<textarea name="description" required>${esc(p?.description || "")}</textarea></label><label class="field full">Ảnh tin<input name="photo" type="text" value="${esc(p?.photo || r.photo)}" required maxlength="2000"><small class="muted tiny">URL ảnh HTTP/HTTPS hoặc ảnh mẫu đi kèm.</small></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit" ${blocked ? "disabled" : ""}>Gửi duyệt tin</button></div></form>`);
 }
 
 function openInvoice(id = "") {
@@ -936,8 +967,9 @@ function handleAction(action, id) {
     case "read-notification": item = byId(state.notifications, id); if (item) item.read = true; save(); openNotifications(); renderShell(); refreshIcons(); return;
     case "favorite": if (state.role !== "tenant" || !canReadPost(post(id))) return; state.favorites = state.favorites.includes(id) ? state.favorites.filter((x) => x !== id) : [...state.favorites, id]; finish(state.favorites.includes(id) ? "Đã lưu tin đăng." : "Đã bỏ lưu tin đăng."); return;
     case "clear-filters": state.filters = structuredClone(seed.filters); finish("Đã xóa bộ lọc."); return;
-    case "post-detail": if (!canReadPost(post(id))) { flash("Tin phòng không còn hiển thị."); return; } state.sharedPostReturn = null; state.selectedPost = id; state.selectedRoom = post(id).roomId; state.view = "detail"; save(); render(); window.scrollTo(0, 0); return;
-    case "room-detail": state.sharedPostReturn = null; state.selectedPost = publishedPost(id)?.id || null; if (!state.selectedPost && state.role === "tenant") { flash("Phòng chưa có tin công khai."); return; } state.selectedRoom = id; state.view = "detail"; save(); render(); window.scrollTo(0, 0); return;
+    case "room-post-detail":
+    case "post-detail": if (!canReadPost(post(id))) { flash("Tin phòng không còn hiển thị."); return; } state.postReturnRoom = action === "room-post-detail" ? post(id).roomId : null; state.sharedPostReturn = null; state.selectedPost = id; state.selectedRoom = post(id).roomId; state.view = "detail"; save(); render(); window.scrollTo(0, 0); return;
+    case "room-detail": if (!canReadRoom(room(id))) { flash("Phòng không tồn tại hoặc bạn không có quyền xem."); return; } state.sharedPostReturn = null; state.selectedPost = null; state.selectedRoom = id; state.view = "room-detail"; save(); render(); window.scrollTo(0, 0); return;
     case "share-post": openSharePost(id); return;
     case "shared-post-detail": {
       const c = visibleConversations().find((x) => x.type === "ROOMMATE" && x.messages.some((m) => m.id === id && m.messageType === "POST_SHARE"));
@@ -1048,6 +1080,7 @@ function handleAction(action, id) {
     case "toggle-service": item = byId(state.services, id); if (item) { item.active = !item.active; finish(item.active ? "Đã bật dịch vụ." : "Đã ngừng dịch vụ. Hóa đơn cũ được giữ nguyên."); } return;
     case "override-service": openOverride(id); return;
     case "open-listing": openListing(); return;
+    case "create-room-post": if (ownsListingRoom(room(id))) openListing("", id); return;
     case "edit-listing": openListing(id); return;
     case "approve-listing":
     case "restore-listing": {
@@ -1417,13 +1450,16 @@ function handleForm(form) {
       if (!ownsListingRoom(r) || !["CREATE", "EDIT"].includes(mode)) { flash("Chỉ được đăng tin cho phòng mình quản lý."); return; }
       if (mode === "EDIT" && (!ownsPost(p) || p.roomId !== r.id || p.status !== value("originalPostStatus") || p.version !== Number(value("originalVersion")))) { flash("Tin hoặc trạng thái đã thay đổi. Hãy mở lại form."); return; }
       if (mode === "CREATE" && value("postId")) { flash("Form tạo tin không hợp lệ."); return; }
+      if ((mode === "CREATE" || p.status !== "PENDING_REVIEW") && pendingPostCount(r.id) >= MAX_PENDING_POSTS) { flash("Mỗi phòng có tối đa 3 bài chờ duyệt. Hãy chờ một bài được duyệt hoặc từ chối trước khi gửi thêm."); return; }
       const photo = value("photo"); let validPhoto = /^assets\/r[1-6]\.(png|webp)$/.test(photo);
       try { validPhoto ||= ["http:", "https:"].includes(new URL(photo).protocol); } catch {}
       if (!value("title") || value("title").length > 200 || !value("description") || !validPhoto || photo.length > 2000) { flash("Cần tiêu đề, nội dung và ảnh HTTP/HTTPS hoặc ảnh mẫu hợp lệ."); return; }
       const attrs = { title: value("title"), description: value("description"), photo, status: "PENDING_REVIEW", updatedAt: new Date().toISOString(), rejectionReason: "", hiddenReason: "", reviewedBy: null, reviewedAt: null };
       if (mode === "EDIT") Object.assign(p, attrs, { version: p.version + 1 });
       else state.posts.push({ id: `post-${Date.now()}-${state.posts.length}`, roomId: r.id, ...attrs, version: 1, createdAt: new Date().toISOString() });
-      state.view = "listings"; finish("Đã gửi bài đăng chờ duyệt; các tin khác của phòng được giữ nguyên."); return;
+      if (state.listingReturnRoom === r.id) { state.selectedRoom = r.id; state.selectedPost = null; state.view = "room-detail"; }
+      else state.view = "listings";
+      finish("Đã gửi bài đăng chờ duyệt; các tin khác của phòng được giữ nguyên."); return;
     }
 
     case "template": {
@@ -1540,6 +1576,7 @@ document.addEventListener("keydown", (event) => {
 });
 document.addEventListener("change", (event) => {
   const target = event.target;
+  if (target.dataset.change === "listing-room") { updateListingQuota(target.form); return; }
 
 
   if (target.dataset.change === "chat-context") { selectChatContext(target.value); $("#chat-room-context")?.focus({ preventScroll: true }); return; }

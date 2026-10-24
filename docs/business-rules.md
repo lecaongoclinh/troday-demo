@@ -6,7 +6,7 @@ Wireframe đã mô phỏng các thực thể chính của v5, nhưng trước b�
 
 Các luồng giao diện nằm trong `app.js` và dữ liệu mô phỏng trên `localStorage`. **SQL v5 đã được sửa** để hỗ trợ các nghiệp vụ mới, gồm lịch sử đại diện và các thủ tục giao dịch. Đã chuẩn bị cả bản tạo mới và migration từ v5 gốc. Chỉ kiểm tra trên MySQL tạm riêng; chưa chạy migration hoặc ghi vào CSDL hiện có của người dùng.
 
-Đây là file tổng hợp chung cho các logic đang có, các thay đổi vừa thực hiện và phần còn cần triển khai. SQL tạo mới là `database/schema.sql`; nâng cấp theo thứ tự `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` → `20261025_contract_viewing_cleanup.sql` → `20261025_multiple_room_posts.sql` trong `database/migrations/`. Mỗi migration chạy một lần, theo thứ tự này thay vì bảng chữ cái. Hệ thống có **41 bảng** sau cập nhật. API vẫn cần tích hợp các stored procedure; wireframe HTML chưa kết nối trực tiếp MySQL.
+Đây là file tổng hợp chung cho các logic đang có, các thay đổi vừa thực hiện và phần còn cần triển khai. SQL tạo mới là `database/schema.sql`; nâng cấp theo thứ tự `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` → `20261025_contract_viewing_cleanup.sql` → `20261025_multiple_room_posts.sql` → `20261025_post_review_quota.sql` trong `database/migrations/`. Mỗi migration chạy một lần, theo thứ tự này thay vì bảng chữ cái. Hệ thống có **41 bảng** sau cập nhật. API vẫn cần tích hợp các stored procedure; wireframe HTML chưa kết nối trực tiếp MySQL.
 
 ## 1. Danh mục logic nghiệp vụ đang có
 
@@ -36,6 +36,8 @@ Ký hiệu: **Có** = đang được mô phỏng bằng code; **Sửa** = đã c
 | PH-05 | Không có người đang ở nhưng có hợp đồng mở thì phòng được giữ (`RESERVED`); hết người và không còn hợp đồng mở thì còn trống (`AVAILABLE`). Bảo trì được giữ khi không có lượt ở/hợp đồng mở. | Sửa |
 | PH-06 | Trạng thái hiển thị của phòng không thay thế danh sách lượt cư trú. Không tự cho phòng trống chỉ vì đại diện rời. | Sửa |
 | PH-07 | Không cho chủ trọ đặt tay phòng đang có lượt ở thành “Còn phòng”. | Sửa |
+| PH-08 | Danh sách Nhà & phòng có “Xem chi tiết”: diện tích, giá, cọc, sức chứa, tình trạng, tiện ích và bài đăng liên quan theo đúng phòng. Chủ trọ/quản trị thấy cả bài chưa công khai; người thuê chỉ thấy bài đã duyệt. | Mới |
+| PH-09 | Trong chi tiết phòng, chủ trọ xem bộ đếm bài chờ `n/3`, tạo bài với phòng đã chọn sẵn hoặc sửa bài; tạo/sửa xong trở về danh sách liên quan của phòng. Mở một bài có thể quay lại chi tiết phòng. | Mới |
 
 ### 1.3. Tin đăng, tìm kiếm và lưu tin
 
@@ -47,13 +49,14 @@ Ký hiệu: **Có** = đang được mô phỏng bằng code; **Sửa** = đã c
 | TD-04 | Chủ trọ tạo/sửa nội dung tin và gửi về `PENDING_REVIEW`; quản trị duyệt, từ chối có lý do hoặc hiện lại tin đã ẩn. | Có |
 | TD-05 | Kiểm duyệt tin và tình trạng phòng là hai thông tin riêng. Tin được duyệt không đồng nghĩa phòng còn trống. | Có |
 | TD-06 | UI tách `state.rooms` và `state.posts`. Phòng giữ dữ liệu vật lý/giá/sức chứa/trạng thái; mỗi bài có ID riêng, `roomId`, tiêu đề, nội dung, ảnh, trạng thái và phiên bản nội dung. SQL đã có `rooms` và `posts` riêng. | Sửa |
-| TD-07 | Một phòng có nhiều bài đăng, nhiều tin `PENDING_REVIEW` và nhiều tin `APPROVED` đồng thời; hiện không đặt hạn mức theo phòng. Tạo bài mới luôn tạo bản ghi riêng, không ghi đè bài cũ. | Sửa |
+| TD-07 | Một phòng có tổng bài và số bài `APPROVED` không giới hạn; tối đa 3 bài `PENDING_REVIEW` đồng thời. Tạo mới luôn tạo bản ghi riêng. Khi đủ 3, chặn bài mới và gửi lại bài đang ở trạng thái khác; sửa bài đang chờ không chiếm thêm lượt. | Sửa |
 | TD-08 | Chủ trọ chọn bất kỳ phòng có sẵn thuộc mình, kể cả đã có bài chờ duyệt/đã duyệt. Chỉ yêu cầu thêm phòng khi chưa có phòng thật. Không cần tạo thêm phòng hoặc ẩn bài cũ để đăng bài khác. | Sửa |
 | TD-09 | Sửa đúng ID bài và giữ nguyên phòng; kiểm tra lại quyền, trạng thái và phiên bản đã mở. Sửa/gửi lại đưa riêng bài đó về `PENDING_REVIEW`, không đổi nội dung/kết quả duyệt bài khác. Tạo bài mới bắt đầu tiêu đề/nội dung trống, không tự sao chép bài cùng phòng. | Sửa |
 | TD-10 | Form hiện hỗ trợ một ảnh URL HTTP/HTTPS hoặc ảnh mẫu đi kèm. Đường dẫn ảnh mẫu tương đối không còn bị trường `type=url` chặn khi lưu. SQL đã có `post_images` cho nhiều ảnh nhưng UI chưa triển khai nhiều ảnh. | Sửa / Có một phần |
 | TD-11 | Quản trị duyệt/từ chối/hiện lại theo ID bài; từ chối có lý do. Chủ trọ có thể ẩn bài của mình kèm lý do. Ẩn hoặc từ chối một bài không tác động các bài khác cùng phòng. | Mới |
 | TD-12 | Khám phá, lưu tin, chia sẻ, chi tiết và báo cáo dùng ID bài đăng, không dùng ID phòng thay thế. Nhiều bài được duyệt của cùng phòng có thể cùng xuất hiện; ẩn bài đã chia sẻ không được tự mở bài khác cùng phòng. | Mới |
 | TD-13 | Mọi bài của cùng phòng dùng chung tình trạng còn phòng, giá hiện tại và sức chứa. Nhiều bài không tạo thêm chỗ hoặc thêm hợp đồng mở; lịch xem vẫn chống trùng và xử lý theo phòng. | Mới |
+| TD-14 | Giới hạn chờ được kiểm tra lại khi submit, không chỉ khóa nút. Duyệt/từ chối hoặc chuyển khỏi `PENDING_REVIEW` giải phóng lượt của đúng phòng. CSDL dùng UNIQUE/CHECK/trigger và `sp_submit_post` để không vượt 3 kể cả gửi đồng thời. | Mới |
 
 Luồng hiện tại luôn chọn phòng đang có để tạo bài mới. Giới hạn cũ “tối đa một tin chờ duyệt hoặc đã duyệt/phòng” đã được bỏ khỏi SQL và UI qua migration `20261025_multiple_room_posts.sql`; chi tiết ở mục 4.11. Lỗi chọn phòng và mô hình một bài/phòng của các bản trước không còn là quy tắc nghiệp vụ hiện hành.
 
@@ -305,6 +308,7 @@ Các thủ tục công khai dưới đây tự mở giao dịch `READ COMMITTED`
 | Thủ tục | Công việc |
 | --- | --- |
 | `sp_schedule_viewing` | Chủ trọ tạo lịch sau tin nhắn người thuê về đúng phòng; nhận giờ UTC và thời lượng 30/60/90/120 phút, kiểm tra phòng/trùng giờ, trả ID lịch qua OUT. |
+| `sp_submit_post` | Chủ trọ tạo/gửi lại bài, kiểm tra quyền và phiên bản, áp dụng giới hạn 3 bài chờ/phòng trong giao dịch; trả ID bài qua OUT. |
 | `sp_request_viewing` | Người thuê gửi đề nghị, chống gửi trùng, trả ID đề nghị qua OUT; chưa tạo lịch chính thức. |
 | `sp_review_viewing_proposal` | Chủ trọ chấp nhận/từ chối; chấp nhận tạo và liên kết lịch trong cùng giao dịch, trả ID lịch qua OUT. |
 | `sp_withdraw_viewing_proposal` | Người thuê rút đề nghị đang chờ; lưu người và thời điểm rút. |
@@ -322,7 +326,7 @@ Các thủ tục công khai dưới đây tự mở giao dịch `READ COMMITTED`
 | `sp_apply_contract_change` | Áp dụng yêu cầu đã duyệt và được đại diện hiện tại xác nhận: gia hạn, kết thúc hoặc đổi phòng. Khóa hai phòng theo thứ tự ID khi đổi phòng. |
 | `sp_set_room_capacity` | Chủ trọ đổi sức chứa sau khi kiểm tra cả người ở, người dự kiến và chỗ giữ. |
 
-Chữ ký nằm trong ba nguồn SQL ở `database/source/`; phiên bản hiện tại của `sp_create_rental_contract` nằm trong `contract-viewing-cleanup.sql`, thay bản ban đầu khi tạo mới/nâng cấp. Có thể kiểm tra bằng `SHOW CREATE PROCEDURE`. Worker dùng riêng `sp_expire_viewing_proposals()` để cập nhật đề nghị quá giờ; không cấp thủ tục này cho người dùng cuối. Với `sp_create_rental_contract`, JSON thành viên phụ dùng `full_name`, `tenant_id` (tùy chọn), `identity_number` và `date_of_birth`; không gửi trực tiếp các khóa JavaScript của prototype.
+Chữ ký nằm trong bốn nguồn SQL ở `database/source/`; phiên bản hiện tại của `sp_create_rental_contract` nằm trong `contract-viewing-cleanup.sql`, còn `sp_submit_post` nằm trong `post-review-quota.sql`. Có thể kiểm tra bằng `SHOW CREATE PROCEDURE`. Worker dùng riêng `sp_expire_viewing_proposals()` để cập nhật đề nghị quá giờ; không cấp thủ tục này cho người dùng cuối. Với `sp_create_rental_contract`, JSON thành viên phụ dùng `full_name`, `tenant_id` (tùy chọn), `identity_number` và `date_of_birth`; không gửi trực tiếp các khóa JavaScript của prototype.
 
 Ví dụ cấu trúc lời gọi cho backend, với các ID thực tế do API tra cứu:
 
@@ -341,7 +345,7 @@ Gia hạn cần `proposed_revision_id` đã xác nhận. Đổi phòng cần `pr
 ### 4.7. Chạy bản tạo mới hoặc migration
 
 1. Chưa có CSDL v5: chạy toàn bộ `database/schema.sql`. File tự tạo và chọn CSDL; nếu tên đó đã tồn tại thì dừng để tránh nhầm với nâng cấp.
-2. Đã có v5 gốc 39 bảng: sao lưu, dừng ghi và chạy năm file trong `database/migrations/` theo thứ tự: `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` → `20261025_contract_viewing_cleanup.sql` → `20261025_multiple_room_posts.sql`, mỗi file một lần. Đã nâng cấp một phần thì chỉ chạy các file còn thiếu theo thứ tự này. Đã có xử lý lịch/hợp đồng thì chỉ cần migration nhiều bài đăng. Không chạy migration trên CSDL vừa tạo bằng schema mới.
+2. Đã có v5 gốc 39 bảng: sao lưu, dừng ghi và chạy sáu file theo thứ tự ở đầu tài liệu. Đã nâng cấp một phần thì chỉ chạy các file còn thiếu theo thứ tự này. Đã có bản nhiều bài đăng thì chỉ cần `20261025_post_review_quota.sql`. Nếu dữ liệu cũ vượt 3 bài chờ/phòng, preflight dừng trước DDL để quản trị duyệt/từ chối; không tự xóa hay thay quyết định bài. Không chạy migration trên CSDL vừa tạo bằng schema mới.
 3. Preflight từ chối trường hợp phòng vượt sức chứa, hợp đồng đóng nhưng còn lượt ở mở, hợp đồng hoạt động không có đại diện đang ở, hoặc nhiều hợp đồng mở trên cùng phòng. Cần đối soát các hàng đó, không tự xóa người hoặc đoán ngày ra.
 4. Nếu script báo đã nâng cấp/đang dở, không dùng `--force` hoặc chạy lại bỏ qua lỗi. DDL MySQL có implicit commit, nên lỗi sau một số lệnh DDL cần kiểm tra trạng thái và phục hồi/hoàn tất theo bản sao lưu. [Tài liệu MySQL về implicit commit](https://dev.mysql.com/doc/refman/8.0/en/implicit-commit.html).
 5. Sau nâng cấp, API gọi các thủ tục đúng quyền; thiết lập múi giờ UTC cho mọi kết nối, còn ngày cư trú truyền vào là ngày Việt Nam. Các SQL trong `tests/fixtures/` chỉ phục vụ kiểm thử.
@@ -440,7 +444,7 @@ Wireframe hiển thị số lịch sắp tới/đề nghị chờ trong form l�
 
 ### 4.11. Nhiều bài đăng cho cùng một phòng
 
-**Giới hạn hiện hành:** một phòng có nhiều bài đăng và có thể đồng thời có nhiều tin `DRAFT`, `PENDING_REVIEW`, `APPROVED`, `REJECTED` hoặc `HIDDEN`. Chưa đặt hạn mức số tin chờ duyệt/đã duyệt theo phòng. Không còn quy tắc tổng chờ duyệt + đã duyệt bằng 1. Nếu sau này cần hạn mức thì bổ sung chính sách và kiểm tra giao dịch ở backend; không tự mặc định 3 tin/phòng.
+**Giới hạn hiện hành:** tổng bài của một phòng không giới hạn; chỉ `PENDING_REVIEW` bị giới hạn tối đa 3 đồng thời. Số bài `DRAFT/APPROVED/REJECTED/HIDDEN` không bị giới hạn này. Mỗi bài vẫn độc lập, không còn quy tắc tổng chờ duyệt + đã duyệt bằng 1. Cách bảo đảm 3 bài chờ và màn hình chi tiết phòng nằm ở mục 4.12.
 
 **SQL:** bỏ unique `uq_posts_live_room` và cột sinh `posts.live_room_id`, thêm chỉ mục thường `ix_posts_room_status(room_id,status)`. Giữ `posts.id`, `room_id`, các FK chủ trọ/nhà/phòng và `uq_posts_id_room(id,room_id)` để hội thoại vẫn tham chiếu đúng bài và đúng phòng. Không sửa unique hợp đồng `uq_contract_live_room`; một phòng vẫn chỉ có một hợp đồng mở. Tổng số bảng giữ 41. Migration `20261025_multiple_room_posts.sql` chạy sau bản xử lý lịch/hợp đồng, không xóa hoặc thay ID bài đăng, ảnh, yêu thích, tin nhắn hay hội thoại cũ. Không chạy migration cũ lại trên schema tạo mới.
 
@@ -453,6 +457,20 @@ Wireframe hiển thị số lịch sắp tới/đề nghị chờ trong form l�
 **Dùng chung phòng:** duyệt bài không giữ phòng hoặc tăng sức chứa. Các lịch từ nhiều bài của cùng phòng vẫn chống giao nhau theo `room_id`; giới hạn một đề nghị chờ mỗi người/phòng vẫn áp dụng xuyên bài. Gửi hợp đồng từ một bài giữ phòng chung và hủy lịch sắp tới/đóng đề nghị chờ từ tất cả bài của phòng đó theo mục 4.10. Các bài không tự mất quyết định duyệt khi giữ phòng; tình trạng cho thuê hiển thị từ phòng/hợp đồng hiện tại. `posts.availability_status` là thông tin xác nhận tin theo hạn hiện có, không thay trạng thái chiếm phòng. API phải đọc cùng dữ liệu phòng, không chỉ dựa vào bài `APPROVED/OPEN` để nhận lịch mới.
 
 **Dữ liệu demo đã lưu:** lần mở đầu tự tạo bài riêng từ thông tin bài đang gộp trong phòng cũ; chuyển ID tin đã lưu, tin chia sẻ, ngữ cảnh chat và nguồn lịch sang bài tương ứng. Giữ hợp đồng, người ở, hóa đơn và lịch sử; không bắt xóa localStorage. Dữ liệu đã có `state.posts` không được chuyển lại hoặc tạo bài trùng khi tải lại. Báo cáo cũ thiếu ID bài được giữ để đối soát, không tự suy đoán bài đích từ tên phòng.
+
+### 4.12. Tối đa 3 bài chờ duyệt và chi tiết phòng có bài liên quan
+
+Giới hạn áp dụng riêng cho số bài `PENDING_REVIEW` của một phòng. Tạo bài mới, gửi lại bài bị từ chối/ẩn hoặc sửa bài đã duyệt để gửi duyệt lại đều cần một lượt chờ còn trống. Sửa nội dung bài đang chờ giữ nguyên lượt; duyệt/từ chối hoặc chuyển khỏi trạng thái chờ giải phóng lượt ngay khi giao dịch thành công. Phòng khác có hạn mức riêng. Tổng bài và số bài đã duyệt không bị giới hạn: một phòng có thể có 20 bài đã duyệt và 3 bài chờ. Duyệt bài không giữ phòng hoặc tăng sức chứa.
+
+**CSDL có thay đổi:** thêm `posts.pending_review_slot` (TINYINT, nội bộ, không nhập từ người dùng). CHECK yêu cầu bài chờ có slot 1–3, các trạng thái khác có slot NULL; UNIQUE `(room_id,pending_review_slot)` bảo đảm một phòng không có bài chờ thứ tư, kể cả ghi đồng thời. Trigger tự cấp slot khi vào trạng thái chờ, giữ slot khi sửa bài đang chờ và xóa slot khi rời trạng thái chờ. Không tạo thêm bảng, tổng vẫn 41. Không cần đổi quan hệ phòng/bài để hiển thị danh sách liên quan vì đã có `posts.room_id` và `ix_posts_room_status`.
+
+API gửi bài qua `sp_submit_post(post_id, room_id, actor_id, title, content, expected_version, OUT result_id)` trong `database/source/post-review-quota.sql`. Tạo mới truyền `post_id = NULL`; sửa/gửi lại truyền ID và phiên bản đã đọc. Thủ tục dùng `READ COMMITTED`, khóa phòng trước rồi bài, kiểm tra chủ trọ còn hoạt động, nội dung và phiên bản, tạo/cập nhật cùng giao dịch. Hết lượt thì rollback, giữ nguyên nội dung/trạng thái bài cũ. UNIQUE/CHECK vẫn giữ giới hạn cứng với ghi trực tiếp hoặc snapshot cũ; API dùng thủ tục để đọc sau khi khóa phòng. Các helper `_v5_*` chỉ dùng nội bộ. Phần ảnh vẫn thuộc `post_images`, cần tích hợp ở API; wireframe chưa kết nối MySQL.
+
+Migration `20261025_post_review_quota.sql` chạy sau `20261025_multiple_room_posts.sql`. Preflight dừng nếu đã áp dụng/đang dở hoặc có phòng trên 3 bài chờ; không tự xóa hay từ chối bài để giảm số lượng. Quản trị đối soát rồi duyệt/từ chối đủ bài trước khi chạy lại. Có thể tìm dữ liệu cần xử lý bằng `SELECT room_id,COUNT(*) FROM posts WHERE status='PENDING_REVIEW' GROUP BY room_id HAVING COUNT(*)>3;`. Với dữ liệu hợp lệ, migration cấp slot theo ngày tạo/ID, giữ nguyên ID, nội dung, trạng thái và các tham chiếu bài cũ. Schema tạo mới đã chứa đầy đủ cột/ràng buộc/trigger/thủ tục, không chạy migration thêm lần nữa.
+
+**Wireframe:** form tạo/gửi lại hiển thị `n/3`, khóa nút gửi nếu bài cần thêm lượt khi đã đủ 3; đổi phòng cập nhật bộ đếm/nút gửi. Handler kiểm tra lại lúc submit để chặn form cũ hoặc thao tác gọi trực tiếp. Sửa bài đang chờ vẫn gửi được khi đủ 3. Các bài demo cũ vượt hạn mức được giữ để quản trị xử lý, không tự loại bài; bộ đếm phản ánh số thực tế.
+
+**Chi tiết phòng:** từ Nhà & phòng bấm “Xem chi tiết” để mở màn hình phòng riêng, gồm diện tích, giá/cọc, sức chứa, tình trạng, chủ trọ, tiện ích và bài liên quan theo đúng `room_id`. Chủ trọ sở hữu phòng và quản trị thấy tất cả trạng thái; người thuê hoặc người xem công khai chỉ thấy bài `APPROVED`, không lộ tiêu đề/lý do từ chối/số bài chưa công khai. Phòng không có bài công khai chỉ chủ trọ của phòng hoặc quản trị được xem. Chủ trọ tạo bài với phòng chọn sẵn, sửa bài, mở bài rồi quay lại phòng. Tạo/sửa từ chi tiết phòng thành công quay lại danh sách liên quan của phòng; hết lượt thì không thêm bài hoặc ghi đè bài khác. Chi tiết bài đăng và chi tiết phòng dùng hai màn hình khác nhau. Các hành vi phòng, lịch và hợp đồng vẫn dùng chung như mục 4.10–4.11.
 
 ## 5. Backend cần làm thêm cho các luồng còn lại
 
@@ -480,12 +498,14 @@ Sửa các lỗi trên không đồng nghĩa wireframe đã thay thế backend h
 
 Chạy `npm test` trong thư mục wireframe. Bộ kiểm thử gọi các handler thực tế với đồng hồ cố định, bao phủ sức chứa, giữ chỗ, trạng thái hợp đồng, vào ở theo nhóm/từng người, chuyển phòng không cập nhật dở dang, lịch UTC+7 và hủy/rút ý định.
 
-**78/78 tình huống JavaScript đạt.** Các luồng hợp đồng, người ở, sức chứa, đại diện, lịch và chat cũ vẫn đạt. Phần tin đăng kiểm tra nhiều tin chờ trên phòng đã có tin duyệt, không ghi đè phòng/bài khác, duyệt/từ chối/ẩn độc lập, quyền, phiên bản form cũ, ảnh, khám phá/lưu/chi tiết/chia sẻ/báo cáo theo ID bài, nguồn đề nghị từ bài khác cùng phòng và chuyển dữ liệu cũ một lần. Phần giữ phòng tiếp tục kiểm tra đóng đúng lịch/đề nghị, giữ lịch sử, thông báo, submit lặp và hủy hợp đồng không phục hồi lịch cũ.
+**85/85 tình huống JavaScript đạt.** Các luồng cũ vẫn đạt. Phần mới kiểm tra chặn bài chờ thứ tư, sửa bài đang chờ lúc đủ 3, không ghi đè bài đã duyệt khi gửi lại thất bại, giải phóng lượt sau duyệt/từ chối, hạn mức từng phòng, tổng bài không giới hạn và form cũ. Chi tiết phòng kiểm tra dữ liệu vật lý/danh sách đúng phòng, tạo bài chọn sẵn phòng và trở lại danh sách, mở bài/quay lại phòng, quyền chủ trọ/quản trị/người thuê và phòng chưa có bài công khai.
 
 `npm run test:browser` cũng đạt với Chrome chạy theo giờ Los Angeles: thao tác nút/form thật cho các luồng cũ và gửi/chấp nhận/từ chối/rút đề nghị, tạo lịch trực tiếp sau chat, cảnh báo trước gửi hợp đồng, hủy lịch/đóng đề nghị và thông báo hai bên, xác nhận giữ phòng, hủy hợp đồng và đặt lịch mới. Có kiểm tra UTC+7, trạng thái chung giữa chat/Lịch xem, tải lại localStorage, chia sẻ tin, sửa/gửi lại tin của phòng hiện có và bố cục di động; không có lỗi JavaScript. Cần Node 22+, Chrome tại đường dẫn mặc định hoặc `CHROME_PATH`.
 
-`npm run test:database`: **44/44 kiểm tra tích hợp đạt trên MySQL 8.0.42**, gồm tạo mới 41 bảng, nâng cấp qua năm migration và tính tương đương cột/FK/chỉ mục bài đăng/nội dung thủ tục tạo hợp đồng. Nhiều tin chờ duyệt/đã duyệt cùng phòng hoạt động trên cả schema mới và schema nâng cấp; sửa trạng thái một bài giữ các bài còn lại. Có kiểm tra yêu thích riêng từng bài, hội thoại đúng bài/phòng, bài gốc bị ẩn không dùng bài khác để duyệt lịch, trùng giờ xuyên bài và hợp đồng đóng lịch từ tất cả bài cùng phòng. Các kiểm tra cũ về người ở, đại diện, sức chứa, giao dịch đồng thời và rollback do lỗi thông báo vẫn đạt. Migration từ chối sai thứ tự/chạy lại; public procedure không làm mất giao dịch bên gọi khi bị gọi lồng.
+`npm run test:database`: **48/48 kiểm tra tích hợp đạt trên MySQL 8.0.42**, gồm tạo mới 41 bảng, nâng cấp qua sáu migration và tính tương đương cột/FK/chỉ mục bài đăng/nội dung thủ tục tạo hợp đồng. Hai phiên gửi cùng tranh lượt chờ thứ ba chỉ một thành công. Có kiểm tra sửa bài đang chờ, gửi lại bài đã duyệt thất bại không ghi đè, duyệt/từ chối giải phóng slot, ghi trực tiếp không vượt/giả slot, quyền và phiên bản. Migration từ chối dữ liệu cũ có 4 bài chờ trước DDL, giữ nguyên bài, rồi cấp đúng slot khi đã xử lý về 3; từ chối sai thứ tự/chạy lại. Các kiểm tra người ở, đại diện, lịch/hợp đồng dùng chung phòng, giao dịch đồng thời và rollback vẫn đạt.
 
-`npm run db:check` xác nhận SQL tạo mới và các migration sinh ra đồng bộ với ba nguồn trong `database/source/`. Các kiểm tra chỉ dùng instance tạm có thư mục dữ liệu/cổng riêng và dữ liệu fixture; chưa xác nhận dữ liệu hoặc triển khai trên CSDL hiện có của người dùng.
+`npm run db:check` xác nhận SQL tạo mới và các migration sinh ra đồng bộ với bốn nguồn trong `database/source/`. Các kiểm tra chỉ dùng instance tạm có thư mục dữ liệu/cổng riêng và dữ liệu fixture; chưa xác nhận dữ liệu hoặc triển khai trên CSDL hiện có của người dùng.
 
 Kiểm thử Chrome cũng tạo hai bài mới cho cùng phòng, duyệt một bài/từ chối bài kia, sửa và ẩn độc lập, xem hai thẻ công khai, lưu/chia sẻ/báo cáo đúng bài và xác nhận thẻ chia sẻ của bài bị ẩn không bị thay bằng bài khác cùng phòng. Các biểu mẫu được thử trên bố cục di động.
+
+Chrome kiểm tra thêm Nhà & phòng → chi tiết phòng → bài liên quan → quay lại phòng, tạo đủ 3 bài chờ từ chi tiết phòng, khóa gửi thêm, sửa bài đang chờ, đổi phòng cập nhật hạn mức, duyệt giải phóng lượt và người thuê không thấy bài chưa công khai. Giao diện không tràn ngang trên màn hình di động, không có lỗi JavaScript.
