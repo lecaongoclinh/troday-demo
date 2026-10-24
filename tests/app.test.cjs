@@ -464,8 +464,8 @@ test("sharing a post opens the connected chat, preserves drafts and creates no r
   d.state.chatDrafts["lan:" + c.id] = "Mình đang so sánh hai phòng";
   const before = JSON.stringify({ contracts: d.state.contracts, joins: d.state.joinRequests, viewings: d.state.viewings });
   d.action("share-post", ""); assert.match(d.node("#dialog-body").innerHTML, /data-form="share-post"/);
-  d.submit("share-post", { inviteId: "rm1", postId: "r2", note: '<b>Thử xem phòng này</b>' });
-  assert.equal(c.messages.at(-1).messageType, "POST_SHARE"); assert.equal(c.messages.at(-1).sharedPostId, "r2");
+  d.submit("share-post", { inviteId: "rm1", postId: "p-r2", note: '<b>Thử xem phòng này</b>' });
+  assert.equal(c.messages.at(-1).messageType, "POST_SHARE"); assert.equal(c.messages.at(-1).sharedPostId, "p-r2");
   assert.equal(c.messages.at(-1).roomId, null); assert.equal(d.state.chatContext, null);
   assert.equal(d.state.chatDrafts["lan:" + c.id], "Mình đang so sánh hai phòng");
   assert.equal(JSON.stringify({ contracts: d.state.contracts, joins: d.state.joinRequests, viewings: d.state.viewings }), before);
@@ -482,30 +482,30 @@ test("sharing rechecks connection and publication before changing any conversati
     if (kind === "pending") invite.status = "PENDING";
     if (kind === "ended") invite.endedAt = "2026-10-25T01:00:00Z";
     if (kind === "foreign") { invite.senderId = "mai"; invite.receiverId = "ngoc"; }
-    if (kind === "unpublished") byId(d.state.rooms, "r2").postStatus = "REJECTED";
+    if (kind === "unpublished") byId(d.state.posts, "p-r2").status = "REJECTED";
     if (kind === "landlord") d.state.role = "landlord";
     const before = JSON.stringify(d.state.conversations);
-    d.submit("share-post", { inviteId: "rm1", postId: kind === "missing" ? "gone" : "r2" });
+    d.submit("share-post", { inviteId: "rm1", postId: kind === "missing" ? "gone" : "p-r2" });
     assert.equal(JSON.stringify(d.state.conversations), before, kind);
   }
 });
 
 test("shared posts hide unavailable listings and keep live availability without losing the message", () => {
   const d = demo(); d.state.role = "tenant"; d.action("accept-roommate", "rm1");
-  d.submit("share-post", { inviteId: "rm1", postId: "r2" });
+  d.submit("share-post", { inviteId: "rm1", postId: "p-r2" });
   const c = byId(d.state.conversations, d.state.selectedConversation); const id = c.messages[0].id;
-  byId(d.state.rooms, "r2").postStatus = "REJECTED"; d.api.render();
+  byId(d.state.posts, "p-r2").status = "REJECTED"; d.api.render();
   assert.match(d.node("#app-main").innerHTML, /Tin phòng không còn hiển thị/);
   assert.doesNotMatch(d.node("#app-main").innerHTML, /Phòng ban công thoáng|shared-post-detail/);
   d.action("shared-post-detail", id); assert.equal(d.state.view, "chats");
-  byId(d.state.rooms, "r2").postStatus = "APPROVED"; byId(d.state.rooms, "r2").status = "MAINTENANCE"; d.api.render();
+  byId(d.state.posts, "p-r2").status = "APPROVED"; byId(d.state.rooms, "r2").status = "MAINTENANCE"; d.api.render();
   assert.match(d.node("#app-main").innerHTML, /Đang bảo trì/); assert.equal(c.messages.length, 1);
 });
 
 test("a shared post opens its detail and returns to the same roommate conversation", () => {
   const d = demo(); d.state.role = "tenant"; d.action("accept-roommate", "rm1");
   const id = d.state.selectedConversation; const count = d.state.conversations.length;
-  d.submit("share-post", { inviteId: "rm1", postId: "r4" });
+  d.submit("share-post", { inviteId: "rm1", postId: "p-r4" });
   d.action("shared-post-detail", byId(d.state.conversations, id).messages[0].id);
   assert.equal(d.state.view, "detail"); assert.equal(d.state.selectedRoom, "r4");
   assert.match(d.node("#app-main").innerHTML, /Quay lại tin nhắn/);
@@ -516,77 +516,121 @@ test("a shared post opens its detail and returns to the same roommate conversati
 test("sharing from a room detail can select a different accepted roommate", () => {
   const d = demo(); d.state.role = "tenant"; d.action("accept-roommate", "rm1"); d.action("accept-roommate", "rm2");
   const maiChat = d.state.selectedConversation;
-  d.action("room-detail", "r1"); d.action("share-post", "r1");
+  d.action("room-detail", "r1"); d.action("share-post", "p-r1");
   assert.match(d.node("#dialog-body").innerHTML, /Lê Gia Bảo/); assert.match(d.node("#dialog-body").innerHTML, /Phạm Thu Mai/);
   assert.doesNotMatch(d.node("#dialog-body").innerHTML, /value="r6"/);
-  d.submit("share-post", { inviteId: "rm1", postId: "r1" });
+  d.submit("share-post", { inviteId: "rm1", postId: "p-r1" });
   assert.equal(byId(d.state.conversations, maiChat).messages.length, 0);
   assert.equal(byId(d.state.conversations, d.state.selectedConversation).roommateRequestId, "rm1");
 });
 
-test("listing creation explains that all five existing rooms already have live posts", () => {
-  const d = demo(); const before = JSON.stringify(d.state.rooms);
-  d.action("open-listing", "");
-  const html = d.node("#dialog-body").innerHTML;
-  assert.match(html, /5 phòng/); assert.match(html, /Các phòng đã có tin đăng/);
-  assert.equal(html.split('data-action="edit-listing"').length - 1, 5);
-  assert.doesNotMatch(html, /Hãy thêm một phòng mới|Chưa có phòng để đăng tin/);
-  assert.equal(JSON.stringify(d.state.rooms), before);
+const listingValues = (extra = {}) => ({ listingMode: "CREATE", roomId: "r1", title: "Tin mới cho phòng", description: "Nội dung độc lập", photo: "assets/r1.webp", ...extra });
+const editValues = (p, extra = {}) => listingValues({ listingMode: "EDIT", postId: p.id, roomId: p.roomId, originalPostStatus: p.status, originalVersion: String(p.version), title: p.title, description: p.description, photo: p.photo, ...extra });
+
+test("all existing rooms remain selectable even when they already have approved or pending posts", () => {
+  const d = demo(); d.action("open-listing", ""); const html = d.node("#dialog-body").innerHTML;
+  assert.match(html, /data-form="listing"/); assert.match(html, /option value="r1"/); assert.match(html, /option value="r6"/);
+  assert.doesNotMatch(html, /option value="r4"/); assert.match(html, /nhiều bài đăng và nhiều tin chờ duyệt/);
 });
 
 test("a landlord with no rooms gets an accurate empty state", () => {
-  const d = demo(); d.state.rooms = d.state.rooms.filter((r) => r.houseId !== "h1");
-  d.action("open-listing", "");
-  assert.match(d.node("#dialog-body").innerHTML, /Chưa có phòng để đăng tin/);
-  assert.doesNotMatch(d.node("#dialog-body").innerHTML, /đều đã có tin/);
+  const d = demo(); d.state.rooms = d.state.rooms.filter((r) => r.houseId !== "h1"); d.action("open-listing", "");
+  assert.match(d.node("#dialog-body").innerHTML, /Bạn chưa có phòng/);
+  assert.doesNotMatch(d.node("#dialog-body").innerHTML, /data-form="listing"/);
 });
 
-test("existing unlisted, draft, rejected and hidden rooms can submit without creating another room", () => {
-  for (const status of [undefined, "DRAFT", "REJECTED", "HIDDEN"]) {
-    const d = demo(); const r = byId(d.state.rooms, "r1"); r.postStatus = status;
-    const count = d.state.rooms.length; d.action("open-listing", "");
-    assert.match(d.node("#dialog-body").innerHTML, /data-form="listing"/);
-    assert.match(d.node("#dialog-body").innerHTML, /option value="r1"/);
-    assert.doesNotMatch(d.node("#dialog-body").innerHTML, /option value="r2"|option value="r4"/);
-    d.submit("listing", { listingMode: "CREATE", roomId: "r1", originalPostStatus: status || "NONE", title: "Tin của phòng đang có", description: "Thông tin phòng hiện có", photo: "assets/r1.webp" });
-    assert.equal(r.postStatus, "PENDING_REVIEW"); assert.equal(r.title, "Tin của phòng đang có");
-    assert.equal(d.state.rooms.length, count); assert.equal(d.state.view, "listings");
+test("one room accepts many pending posts without overwriting existing posts or the physical room", () => {
+  const d = demo(), before = JSON.stringify(d.state.rooms), original = JSON.stringify(byId(d.state.posts,"p-r1")), count = d.state.posts.length;
+  for (let n=0;n<5;n++) d.submit("listing",listingValues({ title: `Bài độc lập ${n}` }));
+  assert.equal(d.state.posts.length,count+5); assert.equal(new Set(d.state.posts.map((p) => p.id)).size,count+5);
+  assert.equal(d.state.posts.filter((p) => p.roomId === "r1" && p.status === "PENDING_REVIEW").length,5);
+  assert.equal(JSON.stringify(byId(d.state.posts,"p-r1")),original); assert.equal(JSON.stringify(d.state.rooms),before);
+});
+
+test("editing a post keeps its room fixed and changes only that post", () => {
+  const d=demo(), p=byId(d.state.posts,"p-r1"); d.submit("listing",listingValues()); const sibling=JSON.stringify(d.state.posts.at(-1));
+  d.action("edit-listing",p.id); assert.match(d.node("#dialog-body").innerHTML,/name="postId" value="p-r1"/);
+  d.submit("listing",editValues(p,{title:"Nội dung cập nhật"}));
+  assert.equal(p.title,"Nội dung cập nhật"); assert.equal(p.status,"PENDING_REVIEW"); assert.equal(p.version,2);
+  assert.equal(JSON.stringify(d.state.posts.at(-1)),sibling); assert.equal(byId(d.state.rooms,"r1").title,"Studio sáng, đầy đủ nội thất");
+});
+
+test("listing submit rejects foreign rooms, changed targets and stale status or content version", () => {
+  for (const kind of ["foreign","room-change","missing","status","version"]) {
+    const d=demo(), p=byId(d.state.posts,"p-r1"), values=editValues(p,{title:"Must not overwrite"});
+    if(kind==="foreign") values.roomId="r4";
+    if(kind==="room-change") values.roomId="r2";
+    if(kind==="missing") values.postId="gone";
+    if(kind==="status") values.originalPostStatus="DRAFT";
+    if(kind==="version") values.originalVersion="0";
+    const before=JSON.stringify({posts:d.state.posts,rooms:d.state.rooms}); d.submit("listing",values);
+    assert.equal(JSON.stringify({posts:d.state.posts,rooms:d.state.rooms}),before);
   }
 });
 
-test("editing an approved listing keeps the room fixed and accepts its bundled photo", () => {
-  const d = demo(); const r = byId(d.state.rooms, "r1"); const count = d.state.rooms.length;
-  d.action("edit-listing", "r1");
-  assert.match(d.node("#dialog-body").innerHTML, /name="editingRoomId" value="r1"/);
-  assert.doesNotMatch(d.node("#dialog-body").innerHTML, /<select name="roomId"|type="url"/);
-  d.submit("listing", { listingMode: "EDIT", editingRoomId: "r1", roomId: "r1", originalPostStatus: "APPROVED", title: "Thông tin được cập nhật", description: r.description, photo: r.photo });
-  assert.equal(r.postStatus, "PENDING_REVIEW"); assert.equal(r.title, "Thông tin được cập nhật");
-  assert.equal(d.state.rooms.length, count);
+test("post images accept bundled and HTTP URLs, rejecting invalid sources before changing the post", () => {
+  const d=demo(), p=byId(d.state.posts,"p-r1");
+  for(const photo of ["javascript:alert(1)","data:text/html,test","file:///secret","assets/missing.webp"]) {
+    const before=JSON.stringify(p); d.submit("listing",editValues(p,{photo})); assert.equal(JSON.stringify(p),before);
+  }
+  d.submit("listing",editValues(p,{photo:"https://example.com/room.jpg"})); assert.equal(p.photo,"https://example.com/room.jpg");
 });
 
-test("listing submit rejects duplicate live posts, foreign rooms, changed targets and stale status", () => {
-  for (const kind of ["duplicate", "foreign", "tenant", "changed-target", "stale"]) {
-    const d = demo(); const r = byId(d.state.rooms, kind === "foreign" ? "r4" : "r1");
-    const values = { listingMode: "EDIT", editingRoomId: r.id, roomId: r.id, originalPostStatus: "APPROVED", title: "Must not overwrite", description: "Content", photo: "https://example.com/photo.jpg" };
-    if (kind === "duplicate") values.listingMode = "CREATE";
-    if (kind === "tenant") d.state.role = "tenant";
-    if (kind === "changed-target") values.editingRoomId = "r2";
-    if (kind === "stale") values.originalPostStatus = "DRAFT";
-    const before = JSON.stringify(d.state.rooms); d.submit("listing", values);
-    assert.equal(JSON.stringify(d.state.rooms), before, kind);
-  }
+test("approval, rejection and hiding target one post and enforce owner or administrator permissions", () => {
+  const d=demo(); d.submit("listing",listingValues()); const first=d.state.posts.at(-1);
+  d.submit("listing",listingValues({title:"Bài thứ hai"})); const second=d.state.posts.at(-1);
+  d.action("approve-listing",first.id); assert.equal(first.status,"PENDING_REVIEW");
+  d.state.role="admin"; d.action("approve-listing",first.id); assert.equal(first.status,"APPROVED"); assert.equal(second.status,"PENDING_REVIEW");
+  d.submit("moderation-reason",{kind:"reject-listing",targetId:second.id,reason:""}); assert.equal(second.status,"PENDING_REVIEW");
+  d.submit("moderation-reason",{kind:"reject-listing",targetId:second.id,reason:"Cần sửa ảnh"}); assert.equal(second.status,"REJECTED");
+  d.state.role="tenant"; d.submit("moderation-reason",{kind:"hide-listing",targetId:first.id,reason:"Hide"}); assert.equal(first.status,"APPROVED");
+  d.state.role="landlord"; d.submit("moderation-reason",{kind:"hide-listing",targetId:first.id,reason:"Chủ trọ tạm ẩn"}); assert.equal(first.status,"HIDDEN");
+  assert.equal(byId(d.state.posts,"p-r1").status,"APPROVED");
 });
 
-test("listing images accept HTTP links but reject unsupported image URLs before writing", () => {
-  const d = demo(); const r = byId(d.state.rooms, "r1");
-  const values = { listingMode: "EDIT", editingRoomId: "r1", roomId: "r1", originalPostStatus: "APPROVED", title: "Updated title", description: "Updated content" };
-  for (const photo of ["javascript:alert(1)", "file:///private.jpg", "not-an-image-link", ""]) {
-    const before = JSON.stringify(r); d.submit("listing", { ...values, photo });
-    assert.equal(JSON.stringify(r), before);
-  }
-  d.submit("listing", { ...values, photo: "https://example.com/room.jpg" });
-  assert.equal(r.photo, "https://example.com/room.jpg"); assert.equal(r.postStatus, "PENDING_REVIEW");
+test("discovery, favorites and detail distinguish two approved posts for the same room", () => {
+  const d=demo(); d.submit("listing",listingValues({title:"Bài thứ hai cùng phòng"})); const second=d.state.posts.at(-1);
+  d.state.role="admin"; d.action("approve-listing",second.id); d.state.role="tenant"; d.state.view="discover"; d.api.render();
+  assert.match(d.node("#app-main").innerHTML,/Bài thứ hai cùng phòng/);
+  d.action("favorite",second.id); d.action("favorite","p-r1");
+  assert.ok(d.state.favorites.includes(second.id)); assert.ok(d.state.favorites.includes("p-r1"));
+  d.action("post-detail",second.id); assert.equal(d.state.selectedPost,second.id); assert.equal(d.state.selectedRoom,"r1");
+  second.status="HIDDEN"; d.api.render(); assert.doesNotMatch(d.node("#app-main").innerHTML,/Bài thứ hai cùng phòng/);
+  d.action("post-detail","p-r1"); assert.match(d.node("#app-main").innerHTML,/Studio sáng/);
 });
+
+test("sharing and reporting use exact post IDs rather than the shared room ID", () => {
+  const d=demo(); d.submit("listing",listingValues({title:"Tin phòng riêng"})); const second=d.state.posts.at(-1);
+  second.status="APPROVED"; d.state.role="tenant"; d.action("accept-roommate","rm1");
+  d.submit("share-post",{inviteId:"rm1",postId:second.id}); const c=byId(d.state.conversations,d.state.selectedConversation);
+  const message=c.messages.at(-1); assert.equal(message.sharedPostId,second.id);
+  d.action("shared-post-detail",message.id); assert.equal(d.state.selectedPost,second.id);
+  d.action("report-post",second.id); assert.match(d.node("#dialog-body").innerHTML,new RegExp(`name="postId" value="${second.id}"`));
+  d.submit("report-post",{postId:second.id,reason:"Kiểm tra tin"}); assert.equal(d.state.reports.at(-1).postId,second.id);
+  second.status="HIDDEN"; d.action("chat-roommate","rm1"); assert.match(d.node("#app-main").innerHTML,/shared-post-unavailable/);
+  assert.equal(byId(d.state.posts,"p-r1").status,"APPROVED");
+});
+
+test("a proposal from a second post keeps its provenance and cannot be approved through a hidden sibling", () => {
+  const d=demo(); d.submit("listing",listingValues({title:"Tin khác cùng P101"})); const second=d.state.posts.at(-1); second.status="APPROVED";
+  d.state.role="tenant"; d.action("request-post-viewing",second.id);
+  d.submit("viewing-request",{conversationId:d.state.selectedConversation,roomId:"r1",postId:second.id,date:"2026-10-24",time:"12:00",duration:"60",clientRequestKey:"00000000-0000-4000-8000-000000000099"});
+  const p=d.state.viewingProposals.at(-1); assert.equal(p.postId,second.id);
+  second.status="HIDDEN"; d.state.role="landlord"; const count=d.state.viewings.length; d.action("accept-viewing-proposal",p.id);
+  assert.equal(p.status,"PENDING"); assert.equal(d.state.viewings.length,count);
+  second.status="APPROVED"; d.action("accept-viewing-proposal",p.id); assert.equal(p.status,"ACCEPTED");
+  assert.equal(d.state.viewings.at(-1).postId,second.id);
+});
+
+test("old saved room-based posts, favorites and shared messages migrate once without losing rental data", () => {
+  const d=demo(), old=structuredClone(d.state), contractSnapshot=JSON.stringify(old.contracts);
+  for(const r of old.rooms) { const p=old.posts.find((x)=>x.roomId===r.id); if(p) Object.assign(r,{title:p.title,description:p.description,photo:p.photo,postStatus:p.status}); }
+  delete old.posts; old.favorites=["r2"]; old.conversations.push({id:"legacy-shared",type:"ROOMMATE",users:["lan","bao"],messages:[{messageType:"POST_SHARE",sharedPostId:"r2",text:"Old share"}]});
+  const reloaded=demo(old); assert.equal(reloaded.state.posts.length,6); assert.equal(reloaded.state.favorites[0],"p-r2");
+  assert.equal(byId(reloaded.state.conversations,"legacy-shared").messages[0].sharedPostId,"p-r2");
+  assert.equal(JSON.stringify(reloaded.state.contracts),contractSnapshot); assert.equal(demo(reloaded.state).state.posts.length,6);
+});
+
 
 const proposalValues = (extra = {}) => ({ conversationId: "c1", roomId: "r1", date: "2026-10-24", time: "10:30", duration: "60", notes: "Gặp tại cổng", clientRequestKey: "00000000-0000-4000-8000-000000000001", ...extra });
 function requestViewing(d, extra) { d.state.role = "tenant"; d.submit("viewing-request", proposalValues(extra)); return d.state.viewingProposals.at(-1); }
@@ -638,7 +682,7 @@ test("pending proposals do not hold time slots and approval rechecks overlapping
 
 test("approval rechecks publication, room occupancy, participants and account status atomically", () => {
   const changes = [
-    (d) => { byId(d.state.rooms, "r1").postStatus = "HIDDEN"; },
+    (d) => { byId(d.state.posts, "p-r1").status = "HIDDEN"; },
     (d) => { byId(d.state.rooms, "r1").status = "MAINTENANCE"; },
     (d) => { byId(d.state.conversations, "c1").users = ["quan", "bao"]; },
     (d) => { d.state.lockedUsers = ["lan"]; },

@@ -12,6 +12,7 @@ Dữ liệu mẫu lưu trong `localStorage`; nhập `__troday.reset()` ở conso
 - [Nâng cấp chia sẻ tin phòng](database/migrations/20261025_chat_post_sharing.sql): thêm tin nhắn tham chiếu bài đăng, chạy sau bản nâng cấp nghiệp vụ.
 - [Nâng cấp đề nghị lịch xem](database/migrations/20261025_viewing_proposals.sql): người thuê đề nghị, chủ trọ duyệt; vẫn giữ chủ trọ tự tạo lịch sau trao đổi.
 - [Nâng cấp xử lý lịch khi giữ phòng](database/migrations/20261025_contract_viewing_cleanup.sql): gửi hợp đồng đồng thời hủy lịch sắp tới, đóng đề nghị chờ và tạo thông báo.
+- [Nâng cấp nhiều bài đăng cùng phòng](database/migrations/20261025_multiple_room_posts.sql): bỏ giới hạn một tin hoạt động; cho phép nhiều tin chờ duyệt/đã duyệt của cùng phòng.
 
 ## Cấu trúc thư mục
 
@@ -29,7 +30,8 @@ database/
     20261024_v5_workflows.sql   Nâng cấp một lần từ v5 gốc
     20261025_chat_post_sharing.sql  Thêm chia sẻ tin phòng trong chat
     20261025_viewing_proposals.sql  Thêm đề nghị và duyệt lịch xem
-    20261025_contract_viewing_cleanup.sql  Xử lý lịch khi gửi hợp đồng (chạy cuối)
+    20261025_contract_viewing_cleanup.sql  Xử lý lịch khi gửi hợp đồng
+    20261025_multiple_room_posts.sql  Cho phép nhiều bài đăng cùng phòng (chạy cuối)
   source/
     workflows.sql              Nguồn chung của view, trigger và procedure
     viewing-proposals.sql      Nguồn đề nghị lịch và tạo lịch trực tiếp
@@ -52,8 +54,8 @@ SQL triển khai nằm trong `database/`. Hai SQL trong `tests/fixtures/` cần 
 Chọn **một** cách phù hợp:
 
 - **Tạo mới:** chạy `database/schema.sql`. File tự tạo và chọn CSDL `room_rental_v5_20261023`; nếu tên này đã tồn tại thì dừng. Tên CSDL được giữ nguyên để tương thích v5.
-- **Nâng cấp v5 gốc:** sao lưu, dừng ghi rồi chạy `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` → `20261025_contract_viewing_cleanup.sql` trong `database/migrations/`, mỗi file **một lần**. Hai file cùng ngày không chạy theo thứ tự tên: migration xử lý lịch/hợp đồng phải chạy cuối. Script kiểm tra điều kiện trước DDL. Nếu có lỗi thì dừng và xử lý nguyên nhân; không dùng `--force` hoặc bỏ qua lỗi để chạy tiếp. MySQL DDL không rollback toàn bộ như giao dịch dữ liệu.
-- **Đã nâng cấp một phần:** chỉ chạy các migration còn thiếu theo thứ tự trên. Nếu đã có đề nghị lịch xem thì chỉ chạy `20261025_contract_viewing_cleanup.sql`; không chạy lại migration cũ.
+- **Nâng cấp v5 gốc:** sao lưu, dừng ghi rồi chạy `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` → `20261025_contract_viewing_cleanup.sql` → `20261025_multiple_room_posts.sql` trong `database/migrations/`, mỗi file **một lần**. Các file cùng ngày chạy theo thứ tự này, không theo bảng chữ cái. Script kiểm tra điều kiện trước DDL. Nếu có lỗi thì dừng và xử lý nguyên nhân; không dùng `--force` hoặc bỏ qua lỗi để chạy tiếp. MySQL DDL không rollback toàn bộ như giao dịch dữ liệu.
+- **Đã nâng cấp một phần:** chỉ chạy các migration còn thiếu theo thứ tự trên. Đã có bản xử lý lịch khi gửi hợp đồng thì chỉ chạy `20261025_multiple_room_posts.sql`; không chạy lại migration cũ.
 
 Không chạy migration ngay sau bản tạo mới trên cùng CSDL. Chưa áp dụng các script này lên CSDL hiện có của người dùng.
 
@@ -84,6 +86,8 @@ Bộ kiểm thử MySQL khởi tạo instance tạm có thư mục dữ liệu v
 ## Phạm vi mô phỏng
 
 Wireframe có tìm phòng, tin đăng, chat, lịch xem, hợp đồng, bàn giao đại diện, quản lý người ở, đổi phòng, hóa đơn, dịch vụ và quản trị. Danh sách quy tắc chi tiết tập trung trong [tài liệu nghiệp vụ](docs/business-rules.md).
+
+Mỗi phòng có thể có nhiều bài đăng, nhiều tin chờ duyệt và nhiều tin đã duyệt; hiện không đặt hạn mức số tin theo phòng. Chủ trọ tạo bài mới từ bất kỳ phòng có sẵn của mình; mỗi bài có ID, nội dung, ảnh và kết quả duyệt riêng. Khám phá, lưu tin, chi tiết, báo cáo và chia sẻ dùng ID bài đăng. Giá thuê, sức chứa, trạng thái phòng, lịch xem và hợp đồng vẫn dùng chung phòng. Dữ liệu demo cũ được tách sang `state.posts` và chuyển tham chiếu khi mở, không cần xóa localStorage. CSDL vẫn 41 bảng; migration chỉ đổi chỉ mục/cột sinh trên `posts`.
 
 Ở phần ở ghép, có thể xem hồ sơ người gửi trước khi phản hồi lời mời. Chấp nhận kết nối sẽ mở cuộc chat giữa hai người, không tự tạo yêu cầu thuê chung hay giữ chỗ. CSDL v5 đã hỗ trợ hội thoại `ROOMMATE`; không cần thêm bảng cho luồng này.
 

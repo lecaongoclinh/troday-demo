@@ -73,6 +73,7 @@ async function runTests(query, { schema, upgrade, viewingUpgrade, cleanupUpgrade
   const fixture = fs.readFileSync(path.join(root, "tests", "fixtures", "workflow-data.sql"), "utf8");
   const original = fs.readFileSync(path.join(root, "tests", "fixtures", "v5-original-schema.sql"), "utf8");
   const sharingUpgrade = fs.readFileSync(path.join(root, "database", "migrations", "20261025_chat_post_sharing.sql"), "utf8");
+  const postsUpgrade = fs.readFileSync(path.join(root, "database", "migrations", "20261025_multiple_room_posts.sql"), "utf8");
   let checks = 0;
   const check = async (label, body) => { await body(); checks++; console.log(`PASS ${checks}: ${label}`); };
   const setup = async (name, old = false) => {
@@ -238,6 +239,7 @@ DELIMITER ;`, core);
     await query(sharingUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
     await query(viewingUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
     await query(cleanupUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
+    await query(postsUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
     assert.equal(await query("SELECT content,shared_post_id FROM chat_messages WHERE id=7000;", upgraded), "Existing conversation\tNULL");
     assert.equal(await query("SELECT event_type,started_at,consent_method,is_current FROM contract_representative_history;", upgraded), "LEGACY_BASELINE\tNULL\tLEGACY_UNKNOWN\t1");
     assert.equal(await query("SELECT COUNT(*) FROM invoices;", upgraded), "1");
@@ -251,6 +253,8 @@ DELIMITER ;`, core);
     assert.equal(await keys(core), await keys(upgraded));
     const creationRoutine = (database) => query("SELECT routine_definition,routine_comment FROM information_schema.routines WHERE routine_schema=DATABASE() AND routine_name='sp_create_rental_contract';", database);
     assert.equal(await creationRoutine(core), await creationRoutine(upgraded));
+    const postIndexes = (database) => query("SELECT index_name,non_unique,seq_in_index,column_name FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='posts' ORDER BY index_name,seq_in_index;", database);
+    assert.equal(await postIndexes(core), await postIndexes(upgraded));
     await query(upgrade.replaceAll("room_rental_v5_20261023", upgraded), undefined, /already applied or incomplete/);
   });
   const invalid = await setup("rr_v5_invalid_upgrade_test", true);
@@ -450,5 +454,42 @@ DELIMITER ;`, cleanup);
     if (proposalState==='ACCEPTED') assert.equal(await query(`SELECT v.status FROM room_viewing_requests v JOIN room_viewing_proposals p ON p.scheduled_viewing_id=v.id WHERE p.id=${nextProposal};`, cleanup), "CANCELLED");
     assert.equal(await query("SELECT status FROM rooms WHERE id=4;", cleanup), "RESERVED");
   });
-  console.log(`${checks} MySQL integration checks passed; migrations, concurrent approvals, contract reservation cleanup, notifications and rollback verified.`);
+  const multiple = await setup("rr_v5_multiple_posts_test");
+  await check("one room can have several pending and approved posts on fresh and migrated databases", async () => {
+    for (const database of [multiple,upgraded]) {
+      await query("INSERT INTO posts(id,landlord_id,house_id,room_id,title,status) VALUES(801,1,1,4,'Second room post','PENDING_REVIEW'),(802,1,1,4,'Third room post','PENDING_REVIEW'),(803,1,1,4,'Fourth room post','APPROVED');", database);
+      assert.equal(await query("SELECT COUNT(*) FROM posts WHERE room_id=4 AND status='PENDING_REVIEW';", database), "2");
+      await query("UPDATE posts SET status='APPROVED' WHERE id=801; UPDATE posts SET status='REJECTED',rejection_reason='Revise content' WHERE id=802;", database);
+      assert.equal(await query("SELECT status FROM posts WHERE id=803;", database), "APPROVED");
+      assert.equal(await query("SELECT status FROM posts WHERE id=802;", database), "REJECTED");
+      assert.equal(await query("SELECT COUNT(*) FROM posts WHERE room_id=4;", database), "4");
+      assert.equal(await query("SELECT title FROM posts WHERE id=1;", database), "New rental fixture");
+    }
+  });
+  await check("post references remain exact while time conflicts are checked across all posts of the same room", async () => {
+    await query("INSERT INTO conversations(id,type,room_id,post_id) VALUES(801,'ROOM_INQUIRY',4,801); INSERT INTO conversation_participants(conversation_id,user_id,joined_at) VALUES(801,1,UTC_TIMESTAMP(6)),(801,6,UTC_TIMESTAMP(6)); INSERT INTO chat_messages(conversation_id,sender_id,client_message_key,message_type,content,sent_at) VALUES(801,6,UUID(),'TEXT','About the second post',UTC_TIMESTAMP(6)); INSERT INTO favorite_posts(user_id,post_id) VALUES(6,1),(6,801); CALL sp_schedule_viewing(1,4,5,1,UTC_TIMESTAMP()+INTERVAL 3 DAY,60,NULL,@v);", multiple);
+    await query("SELECT starts_at INTO @start FROM room_viewing_requests WHERE room_id=4 AND status='SCHEDULED'; CALL sp_request_viewing(801,4,6,@start,30,NULL,UUID(),@p);", multiple, /overlaps/);
+    assert.equal(await query("SELECT COUNT(*) FROM favorite_posts WHERE user_id=6;", multiple), "2");
+    await query("UPDATE posts SET status='HIDDEN' WHERE id=801;", multiple);
+    await query("CALL sp_request_viewing(801,4,6,UTC_TIMESTAMP()+INTERVAL 4 DAY,30,NULL,UUID(),@p);", multiple, /correct published room conversation/);
+    await query("CALL sp_request_viewing(1,4,5,UTC_TIMESTAMP()+INTERVAL 4 DAY,30,NULL,UUID(),@p);", multiple);
+    await query("UPDATE posts SET status='APPROVED' WHERE id=801; CALL sp_request_viewing(801,4,6,UTC_TIMESTAMP()+INTERVAL 5 DAY,30,NULL,UUID(),@p); CALL sp_review_viewing_proposal(@p,1,'ACCEPT',NULL,@v);", multiple);
+  });
+  await check("a contract holds the shared room and cancels future activity from every post", async () => {
+    await query("CALL sp_create_rental_contract(400,1,'MULTIPLE-POSTS',DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR),DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR)+INTERVAL 1 YEAR,4000000,4000000,'Agreed terms',NULL,JSON_ARRAY(),@contract);", multiple);
+    assert.equal(await query("SELECT COUNT(*) FROM room_viewing_requests WHERE room_id=4 AND status='SCHEDULED';", multiple), "0");
+    assert.equal(await query("SELECT COUNT(*) FROM room_viewing_requests WHERE room_id=4 AND status='CANCELLED';", multiple), "2");
+    assert.equal(await query("SELECT COUNT(*) FROM room_viewing_proposals WHERE room_id=4 AND status='PENDING';", multiple), "0");
+    assert.equal(await query("SELECT status FROM posts WHERE id=1;", multiple), "APPROVED");
+    assert.equal(await query("SELECT status FROM posts WHERE id=801;", multiple), "APPROVED");
+    await query("CALL sp_request_viewing(801,4,6,UTC_TIMESTAMP()+INTERVAL 6 DAY,30,NULL,UUID(),@p);", multiple, /occupied or reserved/);
+    assert.equal(await query("SELECT status FROM rooms WHERE id=4;", multiple), "RESERVED");
+  });
+  await check("multiple-post migration preserves ownership constraints and rejects wrong order or repeated execution", async () => {
+    await query("INSERT INTO posts(landlord_id,house_id,room_id,title,status) VALUES(6,1,4,'Foreign landlord','PENDING_REVIEW');", multiple, /fk_posts_house_owner/);
+    await query(postsUpgrade.replaceAll("room_rental_v5_20261023", invalid), undefined, /contract viewing cleanup before/);
+    await query(postsUpgrade.replaceAll("room_rental_v5_20261023", upgraded), undefined, /already applied or incomplete/);
+    assert.equal(await query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='posts' AND column_name='live_room_id';", multiple), "0");
+  });
+  console.log(`${checks} MySQL integration checks passed; migrations, multiple independent posts, room-level viewing conflicts, contract holds and rollback verified.`);
 }

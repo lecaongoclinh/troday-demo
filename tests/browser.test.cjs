@@ -156,8 +156,8 @@ async function main() {
 
     // Share a live listing with a connected roommate, without changing rental state or the draft.
     await evaluate(`document.querySelector('#chat-message').value = 'Mình đang so sánh phòng'; document.querySelector('#chat-message').dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('[data-action="share-post"]').click()`);
-    assert.equal(await evaluate(`document.querySelector('#app-dialog').open && !Array.from(document.querySelector('[name="postId"]').options).some(o => o.value === 'r6')`), true);
-    await evaluate(`document.querySelector('[name="postId"]').value = 'r2'; document.querySelector('[name="note"]').value = 'Cùng xem phòng này nhé'; document.querySelector('form[data-form="share-post"]').requestSubmit()`);
+    assert.equal(await evaluate(`document.querySelector('#app-dialog').open && !Array.from(document.querySelector('[name="postId"]').options).some(o => o.value === 'p-r6')`), true);
+    await evaluate(`document.querySelector('[name="postId"]').value = 'p-r2'; document.querySelector('[name="note"]').value = 'Cùng xem phòng này nhé'; document.querySelector('form[data-form="share-post"]').requestSubmit()`);
     assert.equal(await evaluate(`document.querySelector('#chat-message').value`), "Mình đang so sánh phòng");
     assert.equal(await evaluate(`document.querySelector('.shared-post-card').textContent.includes('P204') && __troday.getState().conversations.find(c => c.id === ${JSON.stringify(roommateChatId)}).messages.at(-1).messageType === 'POST_SHARE'`), true);
     assert.equal(await evaluate(`JSON.stringify({ contracts: __troday.getState().contracts, joins: __troday.getState().joinRequests, rooms: __troday.getState().rooms })`), beforeConnection);
@@ -182,9 +182,9 @@ async function main() {
     assert.equal(await evaluate(`document.querySelector('.chat-shell').classList.contains('thread-open') && document.querySelector('[role="log"]').textContent.includes('Chào Bảo')`), true);
     assert.equal(await evaluate(`document.querySelectorAll('.shared-post-card').length === 1 && document.documentElement.scrollWidth <= window.innerWidth`), true);
     assert.equal(await evaluate(`document.querySelector('.chat-pane-body').scrollWidth <= document.querySelector('.chat-pane-body').clientWidth`), true);
-    await evaluate(`__troday.getState().rooms.find(r => r.id === 'r2').postStatus = 'REJECTED'; __troday.action('chat-roommate', 'rm1')`);
+    await evaluate(`__troday.getState().posts.find(p => p.id === 'p-r2').status = 'REJECTED'; __troday.action('chat-roommate', 'rm1')`);
     assert.equal(await evaluate(`Boolean(document.querySelector('.shared-post-unavailable')) && !document.querySelector('[data-action="shared-post-detail"]') && !document.querySelector('[role="log"]').textContent.includes('Phòng ban công thoáng')`), true);
-    await evaluate(`__troday.getState().rooms.find(r => r.id === 'r2').postStatus = 'APPROVED'; __troday.action('chat-roommate', 'rm1')`);
+    await evaluate(`__troday.getState().posts.find(p => p.id === 'p-r2').status = 'APPROVED'; __troday.action('chat-roommate', 'rm1')`);
     assert.equal(await evaluate(`document.querySelector('.chat-composer').getBoundingClientRect().bottom <= window.innerHeight`), true);
     await evaluate(`document.querySelector('[data-action="roommate-profile"]').click()`);
     assert.equal(await evaluate(`document.querySelector('#dialog-body').textContent.includes('Lê Gia Bảo')`), true);
@@ -200,23 +200,32 @@ async function main() {
     await evaluate(`document.querySelector('[data-action="edit-roommate-profile"]').click()`);
     assert.equal(await evaluate(`Boolean(document.querySelector('form[data-form="roommate-profile"]'))`), true);
 
-    // Existing rooms must not be mistaken for a missing-room prerequisite.
+    // Multiple independent posts can target the same existing room.
     await evaluate(`document.querySelector('#dialog-body [data-action="close-dialog"]').click(); __troday.reset(); __troday.action('switch-role', 'landlord'); __troday.action('navigate', 'listings'); document.querySelector('[data-action="open-listing"]').click()`);
-    assert.equal(await evaluate(`document.querySelector('#app-dialog').open && document.querySelector('#dialog-body').textContent.includes('5 phòng') && document.querySelectorAll('#dialog-body [data-action="edit-listing"]').length === 5`), true);
-    assert.equal(await evaluate(`document.querySelector('#dialog-body').textContent.includes('Hãy thêm một phòng mới')`), false);
-    await evaluate(`document.querySelector('#dialog-body [data-action="edit-listing"][data-id="r1"]').click()`);
-    assert.equal(await evaluate(`document.querySelector('[name="roomId"]').value === 'r1' && document.querySelector('form[data-form="listing"]').checkValidity()`), true);
-    await evaluate(`document.querySelector('[name="title"]').value = 'Tin cập nhật cho P101'; document.querySelector('form[data-form="listing"]').requestSubmit()`);
-    assert.equal(await evaluate(`!document.querySelector('#app-dialog').open && __troday.getState().rooms.find(r => r.id === 'r1').postStatus === 'PENDING_REVIEW' && __troday.getState().rooms.filter(r => r.houseId === 'h1').length === 5`), true);
+    assert.equal(await evaluate(`document.querySelector('[name="roomId"]').options.length === 5 && Array.from(document.querySelector('[name="roomId"]').options).some(o=>o.value==='r1') && !Array.from(document.querySelector('[name="roomId"]').options).some(o=>o.value==='r4')`), true);
+    await evaluate(`document.querySelector('[name="roomId"]').value='r1'; document.querySelector('[name="title"]').value='Bài mới cho P101'; document.querySelector('[name="description"]').value='Thông tin của riêng bài mới'; document.querySelector('form[data-form="listing"]').requestSubmit()`);
+    const secondPost = await evaluate(`__troday.getState().posts.at(-1).id`);
+    assert.equal(await evaluate(`__troday.getState().posts.find(p=>p.id==='p-r1').status==='APPROVED' && __troday.getState().posts.at(-1).status==='PENDING_REVIEW' && __troday.getState().rooms.filter(r=>r.houseId==='h1').length===5`),true);
+    await evaluate(`document.querySelector('[data-action="open-listing"]').click(); document.querySelector('[name="roomId"]').value='r1'; document.querySelector('[name="title"]').value='Bài thứ ba P101'; document.querySelector('[name="description"]').value='Nội dung khác'; document.querySelector('form[data-form="listing"]').requestSubmit()`);
+    const thirdPost = await evaluate(`__troday.getState().posts.at(-1).id`);
+    assert.equal(await evaluate(`__troday.getState().posts.filter(p=>p.roomId==='r1' && p.status==='PENDING_REVIEW').length`),2);
+    await evaluate(`__troday.action('switch-role','admin'); __troday.action('navigate','moderation'); document.querySelector('[data-action="approve-listing"][data-id="${secondPost}"]').click(); document.querySelector('[data-action="reject-listing"][data-id="${thirdPost}"]').click(); document.querySelector('[name="reason"]').value='Cần bổ sung ảnh'; document.querySelector('form[data-form="moderation-reason"]').requestSubmit()`);
+    assert.equal(await evaluate(`__troday.getState().posts.find(p=>p.id==='${secondPost}').status==='APPROVED' && __troday.getState().posts.find(p=>p.id==='${thirdPost}').status==='REJECTED' && __troday.getState().posts.find(p=>p.id==='p-r1').status==='APPROVED'`),true);
+    await evaluate(`__troday.action('switch-role','landlord'); __troday.action('navigate','listings'); document.querySelector('[data-action="edit-listing"][data-id="${secondPost}"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('[name="roomId"]').value==='r1' && document.querySelector('[name="photo"]').value==='assets/r1.webp' && document.querySelector('form[data-form="listing"]').checkValidity()`),true);
+    await evaluate(`document.querySelector('[name="title"]').value='Tin P101 được cập nhật'; document.querySelector('form[data-form="listing"]').requestSubmit(); __troday.action('switch-role','admin'); __troday.action('navigate','moderation'); document.querySelector('[data-action="approve-listing"][data-id="${secondPost}"]').click(); __troday.action('switch-role','tenant'); __troday.action('navigate','discover')`);
+    assert.equal(await evaluate(`Boolean(document.querySelector('.property-card[data-post-id="p-r1"]')) && Boolean(document.querySelector('.property-card[data-post-id="${secondPost}"]')) && document.documentElement.scrollWidth<=window.innerWidth`),true);
+    await evaluate(`document.querySelector('[data-action="favorite"][data-id="${secondPost}"]').click(); document.querySelector('[data-action="favorite"][data-id="p-r1"]').click(); document.querySelector('[data-action="post-detail"][data-id="${secondPost}"]').click()`);
+    assert.equal(await evaluate(`__troday.getState().favorites.includes('${secondPost}') && __troday.getState().favorites.includes('p-r1') && __troday.getState().selectedPost==='${secondPost}' && __troday.getState().selectedRoom==='r1' && document.querySelector('#app-main').textContent.includes('Thông tin của riêng bài mới')`),true);
+    await evaluate(`document.querySelector('[data-action="report-post"]').click(); document.querySelector('[name="reason"]').value='Kiểm tra bài riêng này'; document.querySelector('form[data-form="report-post"]').requestSubmit()`);
+    assert.equal(await evaluate(`__troday.getState().reports.at(-1).postId`),secondPost);
+    await evaluate(`__troday.action('accept-roommate','rm1'); document.querySelector('[data-action="share-post"]').click(); document.querySelector('[name="postId"]').value='${secondPost}'; document.querySelector('form[data-form="share-post"]').requestSubmit()`);
+    const exactPostChat = await evaluate(`__troday.getState().selectedConversation`);
+    await evaluate(`document.querySelector('[data-action="shared-post-detail"]').click()`);
+    assert.equal(await evaluate(`__troday.getState().selectedPost==='${secondPost}' && document.querySelector('#app-main').textContent.includes('Tin P101 được cập nhật')`),true);
+    await evaluate(`__troday.action('switch-role','landlord'); __troday.action('hide-listing','${secondPost}'); document.querySelector('[name="reason"]').value='Tạm ẩn bài này'; document.querySelector('form[data-form="moderation-reason"]').requestSubmit(); __troday.action('switch-role','tenant'); __troday.action('navigate','chats'); __troday.action('select-chat','${exactPostChat}')`);
+    assert.equal(await evaluate(`Boolean(document.querySelector('.shared-post-unavailable')) && __troday.getState().posts.find(p=>p.id==='p-r1').status==='APPROVED' && !document.querySelector('[role="log"]').textContent.includes('Tin P101 được cập nhật')`),true);
 
-    // Rejected/hidden rooms can be resubmitted; choosing a room loads its own fields.
-    await evaluate(`__troday.getState().rooms.find(r => r.id === 'r1').postStatus = 'REJECTED'; __troday.getState().rooms.find(r => r.id === 'r2').postStatus = 'HIDDEN'; __troday.action('navigate', 'listings')`);
-    assert.equal(await evaluate(`document.querySelector('#app-main').textContent.includes('Bị từ chối') && document.querySelector('#app-main').textContent.includes('Đã ẩn')`), true);
-    await evaluate(`document.querySelector('[data-action="open-listing"]').click(); document.querySelector('[name="roomId"]').value = 'r2'; document.querySelector('[name="roomId"]').dispatchEvent(new Event('change', { bubbles: true }))`);
-    assert.equal(await evaluate(`document.querySelector('[name="title"]').value === __troday.getState().rooms.find(r => r.id === 'r2').title && document.querySelector('[name="photo"]').value === 'assets/r2.webp' && document.querySelector('[name="originalPostStatus"]').value === 'HIDDEN'`), true);
-    assert.equal(await evaluate(`Array.from(document.querySelector('[name="roomId"]').options).every(o => ['r1','r2'].includes(o.value)) && document.documentElement.scrollWidth <= window.innerWidth`), true);
-    await evaluate(`document.querySelector('form[data-form="listing"]').requestSubmit()`);
-    assert.equal(await evaluate(`!document.querySelector('#app-dialog').open && __troday.getState().rooms.find(r => r.id === 'r2').postStatus === 'PENDING_REVIEW' && __troday.getState().rooms.filter(r => r.houseId === 'h1').length === 5`), true);
     // Tenant requests and owner-created appointments coexist, using actual mobile forms.
     await evaluate(`__troday.reset(); __troday.action('open-viewing-request', 'r1')`);
     assert.equal(await evaluate(`document.querySelector('form[data-form="viewing-request"]').checkValidity() && document.querySelector('[name="time"]').value === '10:30'`), true);
