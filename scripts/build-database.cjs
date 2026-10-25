@@ -7,6 +7,8 @@ const migrationPath = path.join(root, "database", "migrations", "20261024_v5_wor
 const viewingMigrationPath = path.join(root, "database", "migrations", "20261025_viewing_proposals.sql");
 const cleanupMigrationPath = path.join(root, "database", "migrations", "20261025_contract_viewing_cleanup.sql");
 const quotaMigrationPath = path.join(root, "database", "migrations", "20261025_post_review_quota.sql");
+const houseMigrationPath = path.join(root, "database", "migrations", "20261025_house_right_verification.sql");
+const houseMarker = "-- BEGIN HOUSE RIGHTS OBJECTS 20261025";
 const marker = "-- BEGIN V5 WORKFLOW OBJECTS 20261024";
 function build() {
   let schema = fs.readFileSync(schemaPath, "utf8").replaceAll("\r\n", "\n");
@@ -14,6 +16,7 @@ function build() {
   const proposals = fs.readFileSync(path.join(root, "database", "source", "viewing-proposals.sql"), "utf8").replaceAll("\r\n", "\n").trimEnd() + "\n";
   const cleanup = fs.readFileSync(path.join(root, "database", "source", "contract-viewing-cleanup.sql"), "utf8").replaceAll("\r\n", "\n").trimEnd() + "\n";
   const quota = fs.readFileSync(path.join(root, "database", "source", "post-review-quota.sql"), "utf8").replaceAll("\r\n", "\n").trimEnd() + "\n";
+  const houseRights = fs.readFileSync(path.join(root, "database", "source", "house-rights.sql"), "utf8").replaceAll("\r\n", "\n").trimEnd() + "\n";
   schema = schema.split(marker)[0].trimEnd() + "\n";
   for (const name of ["trg_viewings_before_update", "trg_contracts_before_insert", "trg_contracts_before_update"]) {
     schema = schema.replace(new RegExp("CREATE TRIGGER `" + name + "`[\\s\\S]*?END\\$\\$\\s*", "g"), "");
@@ -158,15 +161,39 @@ ALTER TABLE posts ADD UNIQUE KEY uq_posts_pending_slot(room_id,pending_review_sl
   ADD CONSTRAINT ck_posts_pending_slot CHECK ((status='PENDING_REVIEW' AND pending_review_slot IS NOT NULL AND pending_review_slot BETWEEN 1 AND 3) OR (status<>'PENDING_REVIEW' AND pending_review_slot IS NULL));
 
 ${quota}`;
-  return { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade };
+  const houseRightsUpgrade = `-- Run once AFTER 20261025_post_review_quota.sql. Back up and stop writers first.
+-- No fabricated approvals: old houses become unverified; existing leases/history remain intact.
+-- Deploy public queries using v_public_house_posts together with this migration.
+USE room_rental_v5_20261023;
+SET time_zone = '+00:00';
+DELIMITER $$
+DROP PROCEDURE IF EXISTS _v5_preflight_house_rights$$
+CREATE PROCEDURE _v5_preflight_house_rights()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='posts' AND column_name='pending_review_slot') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Apply post review quota before house rights verification';
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='rental_house_verifications')
+    OR EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rental_houses' AND column_name='verification_version') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='House rights migration already applied or incomplete; do not rerun blindly';
+  END IF;
+END$$
+CALL _v5_preflight_house_rights()$$
+DROP PROCEDURE _v5_preflight_house_rights$$
+DELIMITER ;
+
+${houseRights}`;
+  schema += "\n" + houseMarker + "\n" + houseRights;
+  return { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade, houseRightsUpgrade };
 }
 if (require.main === module) {
-  const { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade } = build();
+  const { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade, houseRightsUpgrade } = build();
   if (process.argv.includes("--print-fresh")) process.stdout.write(schema);
   else if (process.argv.includes("--print-upgrade")) process.stdout.write(upgrade);
   else if (process.argv.includes("--check")) {
+    if (!fs.existsSync(houseMigrationPath) || fs.readFileSync(houseMigrationPath, "utf8").replaceAll("\r\n", "\n") !== houseRightsUpgrade) throw new Error("House rights migration differs from shared source; rebuild it");
     if (fs.readFileSync(schemaPath, "utf8").replaceAll("\r\n", "\n") !== schema || fs.readFileSync(migrationPath, "utf8").replaceAll("\r\n", "\n") !== upgrade || fs.readFileSync(viewingMigrationPath, "utf8").replaceAll("\r\n", "\n") !== viewingUpgrade || fs.readFileSync(cleanupMigrationPath, "utf8").replaceAll("\r\n", "\n") !== cleanupUpgrade || fs.readFileSync(quotaMigrationPath, "utf8").replaceAll("\r\n", "\n") !== quotaUpgrade) throw new Error("SQL bundles differ from shared workflow source; rebuild them");
     console.log("Fresh schema and migration match the shared workflow definitions.");
-  } else { fs.writeFileSync(schemaPath, schema); fs.writeFileSync(migrationPath, upgrade); fs.writeFileSync(viewingMigrationPath, viewingUpgrade); fs.writeFileSync(cleanupMigrationPath, cleanupUpgrade); fs.writeFileSync(quotaMigrationPath, quotaUpgrade); }
+  } else { fs.writeFileSync(schemaPath, schema); fs.writeFileSync(migrationPath, upgrade); fs.writeFileSync(viewingMigrationPath, viewingUpgrade); fs.writeFileSync(cleanupMigrationPath, cleanupUpgrade); fs.writeFileSync(quotaMigrationPath, quotaUpgrade); fs.writeFileSync(houseMigrationPath, houseRightsUpgrade); }
 }
 module.exports = { build };

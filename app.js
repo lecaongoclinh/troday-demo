@@ -139,6 +139,7 @@ function normalizeListingData(data) {
   }
   for (const r of data.rooms) { delete r.postStatus; delete r.rejectionReason; }
 }
+seedHouseVerificationExamples(seed);
 normalizeListingData(seed);
 const storageKey = "troday-wireframe-v5-20261023";
 let state;
@@ -154,6 +155,7 @@ if (!state.lanActiveContractSeeded) {
     state.contracts.push(structuredClone(seed.contracts.find((c) => c.id === "k4")));
   }
 }
+normalizeHouseData(state, seed);
 normalizeListingData(state);
 state.chatDrafts ||= {};
 state.chatContexts ||= {};
@@ -174,10 +176,11 @@ const $ = (selector) => document.querySelector(selector);
 const byId = (items, id) => items.find((item) => item.id === id);
 const room = (id) => byId(state.rooms, id);
 const post = (id) => byId(state.posts, id);
-const publishedPost = (roomId) => state.posts.find((p) => p.roomId === roomId && p.status === "APPROVED");
+const isPublicPost = (p) => !!p && p.status === "APPROVED" && houseRightsGate(p.roomId);
+const publishedPost = (roomId) => state.posts.find((p) => p.roomId === roomId && isPublicPost(p));
 const listingView = (p) => ({ ...room(p.roomId), title: p.title, description: p.description, photo: p.photo, postStatus: p.status, postId: p.id });
 const ownsPost = (p) => !!p && ownsListingRoom(room(p.roomId));
-const canReadPost = (p) => !!p && !!room(p.roomId) && (p.status === "APPROVED" || state.role === "admin" || ownsPost(p));
+const canReadPost = (p) => !!p && !!room(p.roomId) && (isPublicPost(p) || state.role === "admin" || ownsPost(p));
 const house = (id) => byId(state.houses, id);
 const contract = (id) => byId(state.contracts, id);
 const userId = () => ({ tenant: "lan", landlord: "quan", admin: "admin" })[state.role];
@@ -195,11 +198,110 @@ const head = (title, subtitle = "", actions = "") => `<div class="page-heading">
 const empty = (title, message) => `<div class="empty-state">${icon("inbox")}<div><strong>${title}</strong><p>${message}</p></div></div>`;
 const roomName = (id) => { const r = room(id); return r ? `${r.code} · ${house(r.houseId).name}` : "Phòng trọ"; };
 const totalInvoice = (invoice) => invoice.items.reduce((sum, item) => sum + (item.type === "DISCOUNT" ? -1 : 1) * item.quantity * item.price, 0);
+let announcedNotifications = new Set(state.notifications.map((n) => `${n.userId}:${n.id}`));
+let notificationPopupIds = [];
+const notificationPopupTimers = new Map();
+const sharedArrayKeys = ["houses", "houseVerifications", "houseVerificationDocuments", "houseProofFiles", "rooms", "posts", "favorites", "services", "roomServices", "conversations", "viewings", "viewingProposals", "contracts", "changeRequests", "joinRequests", "roommateInvites", "invoices", "verifications", "reports", "templates", "audit", "notifications", "reviews", "lockedUsers"];
+const sharedObjectKeys = ["roommateProfile", "roommateProfileDraft", "roommateProfiles", "nameOverrides"];
 
 function save() { try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { /* Private browsing may disable local storage. */ } }
 function flash(message) { const toast = $("#toast"); toast.textContent = message; toast.classList.add("show"); clearTimeout(flash.timer); flash.timer = setTimeout(() => toast.classList.remove("show"), 2800); }
-function closeDialog() { if ($("#app-dialog").open) $("#app-dialog").close(); }
+function chatNotificationConversation(n) {
+  const c = byId(state.conversations, n.conversationId);
+  const message = c?.messages.find((m) => m.id === n.messageId);
+  if (!c || n.userId !== userId() || !c.users.includes(userId()) || !message || message.senderId !== n.senderId || message.senderId === userId()) return null;
+  return c.type !== "ROOMMATE" || acceptedRoommateInvite(byId(state.roommateInvites, c.roommateRequestId)) ? c : null;
+}
+function readingConversation(id) {
+  return state.view === "chats" && state.selectedConversation === id && !$("#app-dialog").open
+    && document.visibilityState !== "hidden" && document.hasFocus?.() !== false
+    && (!window.matchMedia?.("(max-width: 650px)").matches || state.chatMobileOpen);
+}
+function renderNotificationPopups() {
+  const container = $("#notification-popups");
+  const list = notificationPopupIds.map((id) => byId(state.notifications, id)).filter((n) => n && n.userId === userId() && !n.read);
+  container.innerHTML = list.map((n) => `<article class="notification-popup" data-popup-notification="${esc(n.id)}">${n.type === "CHAT_MESSAGE" ? avatar(n.senderId) : `<span class="notification-popup-icon">${icon("bell")}</span>`}<button type="button" class="notification-popup-open" data-action="open-notification" data-id="${esc(n.id)}"><strong>${n.type === "CHAT_MESSAGE" ? `Tin nhắn mới từ ${esc(person(n.senderId).name)}` : "Thông báo mới"}</strong><span>${esc(n.preview || n.text)}</span><small>${n.type === "CHAT_MESSAGE" ? "Mở cuộc trò chuyện" : "Xem thông báo"}</small></button>${button(icon("x"), "dismiss-notification", n.id, "notification-popup-close", 'aria-label="Đóng thông báo"')}</article>`).join("");
+  container.classList.toggle("has-popups", list.length > 0);
+  if (list.length) container.showPopover?.(); else container.hidePopover?.();
+  refreshIcons();
+}
+function dismissNotificationPopup(id) {
+  clearTimeout(notificationPopupTimers.get(id)); notificationPopupTimers.delete(id);
+  notificationPopupIds = notificationPopupIds.filter((value) => value !== id);
+  renderNotificationPopups();
+}
+function resetNotificationDelivery() {
+  for (const timer of notificationPopupTimers.values()) clearTimeout(timer);
+  notificationPopupTimers.clear(); notificationPopupIds = [];
+  announcedNotifications = new Set(state.notifications.map((n) => `${n.userId}:${n.id}`));
+  renderNotificationPopups();
+}
+function syncIncomingNotifications() {
+  const mine = state.notifications.filter((n) => n.userId === userId());
+  let readChanged = false;
+  for (const n of mine) {
+    if (!n.read && n.type === "CHAT_MESSAGE" && chatNotificationConversation(n) && readingConversation(n.conversationId)) { n.read = true; readChanged = true; }
+  }
+  if (readChanged) { save(); renderShell(); }
+  for (const id of [...notificationPopupIds]) {
+    const n = byId(state.notifications, id);
+    if (!n || n.userId !== userId() || n.read || n.type === "CHAT_MESSAGE" && !chatNotificationConversation(n)) dismissNotificationPopup(id);
+  }
+  if (document.visibilityState === "hidden") return;
+  for (const n of mine) {
+    const key = `${n.userId}:${n.id}`;
+    if (announcedNotifications.has(key)) continue;
+    announcedNotifications.add(key);
+    if (n.read || n.type === "CHAT_MESSAGE" && !chatNotificationConversation(n)) continue;
+    notificationPopupIds.unshift(n.id);
+    if (notificationPopupIds.length > 3) dismissNotificationPopup(notificationPopupIds[notificationPopupIds.length - 1]);
+    notificationPopupTimers.set(n.id, setTimeout(() => dismissNotificationPopup(n.id), 8000));
+    renderNotificationPopups();
+  }
+}
+function notifyChatMessage(c, message) {
+  if (!c.users.includes(message.senderId)) return;
+  const preview = sharedPostPreview(message).slice(0, 180);
+  for (const recipient of c.users.filter((id) => id !== message.senderId)) {
+    const id = `n-message-${c.id}-${message.id}-${recipient}`;
+    if (!state.notifications.some((n) => n.id === id)) state.notifications.push({ id, userId: recipient, type: "CHAT_MESSAGE", conversationId: c.id, messageId: message.id, senderId: message.senderId, preview, text: `${person(message.senderId).name}: ${preview}`, read: false, createdAt: new Date().toISOString() });
+  }
+}
+function openNotification(id) {
+  const n = byId(state.notifications, id);
+  if (!n || n.userId !== userId()) return;
+  const c = n.type === "CHAT_MESSAGE" && chatNotificationConversation(n);
+  if (n.type === "CHAT_MESSAGE" && !c) { dismissNotificationPopup(id); flash("Cuộc trò chuyện không còn khả dụng."); return; }
+  n.read = true; dismissNotificationPopup(id); closeDialog(); save();
+  if (c) {
+    if (c.type === "ROOMMATE") openRoommateChat(c.roommateRequestId);
+    else { state.view = "chats"; handleAction("select-chat", c.id); }
+  } else { openNotifications(); renderShell(); }
+}
+function receiveSharedState(event) {
+  if (event.key !== storageKey || !event.newValue || event.storageArea && event.storageArea !== localStorage) return;
+  let incoming;
+  try { incoming = JSON.parse(event.newValue); } catch { return; }
+  if (!incoming || !Array.isArray(incoming.conversations) || !Array.isArray(incoming.notifications)) return;
+  const changed = new Set();
+  for (const key of [...sharedArrayKeys, ...sharedObjectKeys]) {
+    if (!Object.hasOwn(incoming, key)) continue;
+    if (sharedArrayKeys.includes(key) ? !Array.isArray(incoming[key]) : incoming[key] !== null && (typeof incoming[key] !== "object" || Array.isArray(incoming[key]))) continue;
+    if (JSON.stringify(state[key]) !== JSON.stringify(incoming[key])) { state[key] = incoming[key]; changed.add(key); }
+  }
+  if (!changed.size) return;
+  // Shared data is refreshed without replacing this tab's role, page, drafts or dialogs.
+  if (state.view === "chats" && ["conversations", "roommateInvites", "viewings", "viewingProposals", "posts"].some((key) => changed.has(key))) {
+    const composer = document.activeElement?.id === "chat-message" ? document.activeElement : null;
+    const selection = composer && [composer.selectionStart, composer.selectionEnd];
+    render();
+    if (selection) { $("#chat-message")?.focus({ preventScroll: true }); $("#chat-message")?.setSelectionRange?.(...selection); }
+  }
+  else { renderShell(); syncIncomingNotifications(); }
+}
+function closeDialog() { clearHouseProofPreview(); if ($("#app-dialog").open) $("#app-dialog").close(); }
 function modal(title, body) {
+  clearHouseProofPreview();
   $("#dialog-body").innerHTML = `<div class="dialog-header"><h2>${title}</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="Đóng" title="Đóng">${icon("x")}</button></div><div class="dialog-content">${body}</div>`;
   if (!$("#app-dialog").open) $("#app-dialog").showModal(); refreshIcons();
 }
@@ -219,7 +321,13 @@ function renderShell() {
   $("#topbar-role-switch").innerHTML = [["tenant", "Người thuê", "Thuê"], ["landlord", "Chủ trọ", "Chủ"], ["admin", "Quản trị", "QT"]].map(([role, label, short]) => `<button type="button" class="${state.role === role ? "active" : ""}" data-action="switch-role" data-id="${role}" data-short="${short}">${label}</button>`).join("");
   const currentNav = navigation.find(([id]) => id === state.view);
   $("#topbar-title").textContent = state.view === "room-detail" ? "Chi tiết phòng" : state.view === "detail" ? "Chi tiết bài đăng" : currentNav ? currentNav[1] : "Trọday";
-  $("#notification-dot").style.display = state.notifications.some((item) => item.userId === me && !item.read) ? "block" : "none";
+  const unreadCount = state.notifications.filter((item) => item.userId === me && !item.read).length;
+  const notificationButton = $('[data-action="notifications"]');
+  notificationButton.classList.toggle("has-unread", unreadCount > 0);
+  notificationButton.ariaLabel = unreadCount ? `Thông báo: ${unreadCount} chưa đọc` : "Thông báo";
+  notificationButton.title = unreadCount ? `Bạn có ${unreadCount} thông báo chưa đọc` : "Thông báo";
+  $("#notification-count").textContent = unreadCount > 99 ? "99+" : String(unreadCount);
+  $("#notification-count").hidden = unreadCount === 0;
 }
 
 function render() {
@@ -241,6 +349,7 @@ function render() {
   const main = $("#app-main");
   main.classList.toggle("chat-view", view === "chats");
   main.innerHTML = renderer();
+  syncIncomingNotifications();
   refreshIcons();
   if (view === "chats") { syncChatComposer(); const pane = $(".chat-pane-body"); if (pane) pane.scrollTop = pane.scrollHeight; }
 }
@@ -253,7 +362,7 @@ function roomCard(r) {
 
 function renderDiscover() {
   const f = state.filters;
-  const visible = state.posts.filter((p) => p.status === "APPROVED" && room(p.roomId)).map(listingView).filter((r) => {
+  const visible = state.posts.filter(isPublicPost).map(listingView).filter((r) => {
     if (r.status === "OCCUPIED") return false;
     const h = house(r.houseId);
     const text = `${r.title} ${r.code} ${h.name} ${h.area} ${h.address}`.toLocaleLowerCase("vi-VN");
@@ -299,7 +408,7 @@ function chatPeerTag(conversation) {
 function acceptedRoommateInvite(invite) {
   return state.role === "tenant" && invite?.status === "ACCEPTED" && !invite.endedAt && invite.senderId !== invite.receiverId && [invite.senderId, invite.receiverId].includes(userId());
 }
-function shareablePost(id) { const p = post(id); return p?.status === "APPROVED" && room(p.roomId) ? listingView(p) : null; }
+function shareablePost(id) { const p = post(id); return isPublicPost(p) ? listingView(p) : null; }
 function sharedPostPreview(message) {
   return message?.messageType === "POST_SHARE" ? `Đã chia sẻ: ${shareablePost(message.sharedPostId)?.title || "Tin phòng không còn hiển thị"}` : message?.text || "Bắt đầu cuộc trò chuyện";
 }
@@ -312,7 +421,7 @@ function sharedPostCard(message) {
 function openSharePost(id = "") {
   if (state.role !== "tenant") return;
   const invites = state.roommateInvites.filter(acceptedRoommateInvite);
-  const posts = state.posts.filter((p) => p.status === "APPROVED" && room(p.roomId) && (!id || p.id === id)).map(listingView);
+  const posts = state.posts.filter((p) => isPublicPost(p) && (!id || p.id === id)).map(listingView);
   if (!invites.length) { flash("Bạn cần có kết nối đã chấp nhận để chia sẻ tin phòng."); return; }
   if (!posts.length) { flash("Không có tin phòng đang hiển thị để chia sẻ."); return; }
   const current = byId(state.conversations, state.selectedConversation);
@@ -507,24 +616,8 @@ function renderDashboard() {
     `<div class="kpi-grid"><div class="kpi"><span class="kpi-label">Tổng số phòng</span><div class="kpi-value">${ownRooms.length}</div><div class="kpi-foot">${state.houses.filter((h) => h.ownerId === "quan").length} nhà trọ</div></div><div class="kpi"><span class="kpi-label">Đang có người ở</span><div class="kpi-value">${occupied.length}</div><div class="kpi-foot">${ownRooms.length - occupied.length} phòng chưa có người ở</div></div><div class="kpi"><span class="kpi-label">Lịch xem sắp tới</span><div class="kpi-value">${scheduled.length}</div><div class="kpi-foot">Cần xác nhận người đến xem</div></div><div class="kpi"><span class="kpi-label">Hóa đơn chưa thu</span><div class="kpi-value">${unpaid.length}</div><div class="kpi-foot">${shortMoney(unpaid.reduce((sum, i) => sum + totalInvoice(i), 0))}</div></div></div><div class="split-grid"><div><div class="section-bar"><h2>Lịch xem gần nhất</h2>${button("Xem tất cả", "navigate", "viewings", "small")}</div><div class="flat-surface" style="padding:0 15px">${scheduled.length ? scheduled.map((v) => `<div class="list-row"><div><strong>${esc(roomName(v.roomId))}</strong><small>${esc(person(v.tenantId).name)} · ${dateLabel(v.date)} ${v.time}</small></div>${chip("Đã hẹn", "yellow")}</div>`).join("") : empty("Chưa có lịch sắp tới", "")}</div></div><div><div class="section-bar"><h2>Cần xử lý</h2></div><div class="subtle-panel"><div class="list-row"><div><strong>Hợp đồng chờ xác nhận</strong><small>${state.contracts.filter((c) => c.ownerId === "quan" && c.status === "PENDING_CONFIRMATION").length} hợp đồng</small></div>${button("Mở", "navigate", "contracts", "small")}</div><div class="list-row"><div><strong>Yêu cầu người ở ghép</strong><small>${state.joinRequests.filter((x) => x.status === "PENDING_LANDLORD").length} yêu cầu</small></div>${button("Mở", "navigate", "residents", "small")}</div><div class="list-row"><div><strong>Dịch vụ của nhà</strong><small>Giá theo từng nhà và phòng</small></div>${button("Mở", "navigate", "services", "small")}</div></div></div></div>`;
 }
 
-function renderProperties() {
-  const ownHouses = state.houses.filter((h) => state.role === "landlord" && h.ownerId === userId());
-  const selected = ownHouses.find((h) => h.id === state.houseSelection) || ownHouses[0];
-  if (!selected) return head("Nhà & phòng") + empty("Chưa có nhà trọ", "Chưa có nhà trọ thuộc tài khoản này.");
-  const rooms = state.rooms.filter((r) => r.houseId === selected.id);
-  return head("Nhà & phòng", `${ownHouses.length} nhà trọ · ${rooms.length} phòng`, button(`${icon("plus")} Thêm phòng`, "open-room", "", "primary")) +
-    `<div class="filter-bar"><label class="field" style="max-width:330px">Nhà trọ<select id="house-select" data-change="house">${ownHouses.map((h) => `<option value="${h.id}" ${selected.id === h.id ? "selected" : ""}>${esc(h.name)}</option>`).join("")}</select></label></div><div class="flow-banner"><div><strong>${esc(selected.name)}</strong><small>${esc(selected.address)}</small></div>${chip(`${rooms.length} phòng`, "green")}</div><div class="table-surface table-scroll"><table><thead><tr><th>Phòng</th><th>Diện tích</th><th>Sức chứa</th><th>Giá thuê</th><th>Tình trạng</th><th></th></tr></thead><tbody>${rooms.map((r) => `<tr data-room-id="${esc(r.id)}"><td><div class="room-row"><img src="${esc(r.photo)}" alt=""><div><span class="cell-title">${esc(r.code)}</span><span class="cell-sub">${state.posts.filter((p) => p.roomId === r.id).length} bài · ${pendingPostCount(r.id)}/3 chờ duyệt</span></div></div></td><td>${r.area} m²</td><td>${r.capacity} người</td><td>${money(r.price)}</td><td>${chip(r.status === "AVAILABLE" ? "Còn phòng" : r.status === "OCCUPIED" ? "Đang ở" : r.status === "RESERVED" ? "Đã giữ" : "Bảo trì", r.status === "AVAILABLE" ? "green" : "yellow")}</td><td class="actions-cell"><div class="table-actions">${button("Xem chi tiết", "room-detail", r.id, "small")}${button("Sửa", "edit-room", r.id, "small")}</div></td></tr>`).join("")}</tbody></table></div>`;
-}
-
-function renderServices() {
-  const ownHouses = state.houses.filter((h) => h.ownerId === "quan");
-  const selected = ownHouses.find((h) => h.id === state.houseSelection) || ownHouses[0];
-  const services = state.services.filter((s) => s.houseId === selected.id);
-  const rooms = state.rooms.filter((r) => r.houseId === selected.id);
-  const selectedRoom = rooms.find((r) => r.id === state.roomSelection) || rooms[0];
-  return head("Dịch vụ", "Cấu hình theo nhà, áp dụng riêng cho từng phòng", button(`${icon("plus")} Thêm dịch vụ`, "open-service", "", "primary")) +
-    `<div class="filter-bar"><label class="field" style="max-width:330px">Nhà trọ<select data-change="house">${ownHouses.map((h) => `<option value="${h.id}" ${selected.id === h.id ? "selected" : ""}>${esc(h.name)}</option>`).join("")}</select></label></div><div class="service-grid"><section><div class="section-bar" style="margin-top:0"><h2>Dịch vụ của ${esc(selected.name)}</h2></div><div class="table-surface table-scroll"><table><thead><tr><th>Dịch vụ</th><th>Giá mặc định</th><th>Cách tính</th><th>Trạng thái</th><th></th></tr></thead><tbody>${services.map((s) => `<tr><td class="cell-title">${esc(s.name)}</td><td>${money(s.price)}/${esc(s.unit)}</td><td>${s.method === "METERED" ? "Theo đồng hồ" : s.method === "PER_PERSON" ? "Theo người" : "Theo phòng"}</td><td>${chip(s.active ? "Đang dùng" : "Ngừng dùng", s.active ? "green" : "gray")}</td><td class="actions-cell"><div class="table-actions">${button("Sửa", "edit-service", s.id, "small")}${button(s.active ? "Ngừng" : "Bật", "toggle-service", s.id, "small")}</div></td></tr>`).join("")}</tbody></table></div></section><section><div class="section-bar" style="margin-top:0"><h2>Áp dụng cho phòng</h2></div><label class="field" style="margin-bottom:9px">Phòng<select data-change="room">${rooms.map((r) => `<option value="${r.id}" ${selectedRoom.id === r.id ? "selected" : ""}>${esc(r.code)} · ${esc(r.title)}</option>`).join("")}</select></label><div class="flat-surface" style="padding:5px 14px">${services.map((s) => { const applied = state.roomServices.find((x) => x.roomId === selectedRoom.id && x.serviceId === s.id); return `<div class="checkbox-row"><input type="checkbox" id="apply-${s.id}" data-change="room-service" data-id="${s.id}" ${applied?.active ? "checked" : ""} ${!s.active ? "disabled" : ""}><div><label for="apply-${s.id}"><strong>${esc(s.name)}</strong></label><small>${applied?.override != null ? `Giá riêng ${money(applied.override)}` : `Theo nhà ${money(s.price)}`} / ${esc(s.unit)}</small></div>${applied?.active ? button("Giá riêng", "override-service", s.id, "small") : ""}</div>`; }).join("")}</div></section></div>`;
-}
+function renderProperties() { return renderHouseProperties(); }
+function renderServices() { return renderHouseServices(); }
 
 const POST_LABEL = { NONE: ["Chưa đăng tin", "gray"], DRAFT: ["Bản nháp", "gray"], PENDING_REVIEW: ["Chờ duyệt", "yellow"], APPROVED: ["Đã duyệt", "green"], REJECTED: ["Bị từ chối", "red"], HIDDEN: ["Đã ẩn", "gray"] };
 function ownsListingRoom(r) { return state.role === "landlord" && r && house(r.houseId)?.ownerId === userId(); }
@@ -680,7 +773,7 @@ function renderRoommates() {
 
 function renderVerifications() {
   return head("Xác minh hồ sơ", `${state.verifications.filter((x) => x.status === "PENDING").length} hồ sơ chờ duyệt`) +
-    `<div class="table-surface table-scroll"><table><thead><tr><th>Người gửi</th><th>Loại hồ sơ</th><th>Ngày gửi</th><th>Trạng thái</th><th></th></tr></thead><tbody>${state.verifications.map((v) => `<tr><td class="cell-title">${esc(person(v.userId).name)}</td><td>${esc(v.type)}</td><td>${dateLabel(v.date)}</td><td>${chip(v.status === "PENDING" ? "Chờ duyệt" : v.status === "APPROVED" ? "Đã duyệt" : "Từ chối", v.status === "PENDING" ? "yellow" : v.status === "APPROVED" ? "green" : "red")}</td><td class="actions-cell">${v.status === "PENDING" ? `<div class="table-actions">${button("Duyệt", "approve-verification", v.id, "small primary")}${button("Từ chối", "reject-verification", v.id, "small")}</div>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
+    `<div class="table-surface table-scroll"><table><thead><tr><th>Người gửi</th><th>Loại hồ sơ</th><th>Ngày gửi</th><th>Trạng thái</th><th></th></tr></thead><tbody>${state.verifications.map((v) => `<tr><td class="cell-title">${esc(person(v.userId).name)}</td><td>${esc(v.type)}</td><td>${dateLabel(v.date)}</td><td>${chip(v.status === "PENDING" ? "Chờ duyệt" : v.status === "APPROVED" ? "Đã duyệt" : "Từ chối", v.status === "PENDING" ? "yellow" : v.status === "APPROVED" ? "green" : "red")}</td><td class="actions-cell">${v.status === "PENDING" ? `<div class="table-actions">${button("Duyệt", "approve-verification", v.id, "small primary")}${button("Từ chối", "reject-verification", v.id, "small")}</div>` : ""}</td></tr>`).join("")}</tbody></table></div>` + renderHouseVerificationQueue();
 }
 
 function renderModeration() {
@@ -827,7 +920,7 @@ function closeStays(c, date, reason) {
 function conversationPost(c, roomId, explicitId = "") {
   if (!c || c.type === "ROOMMATE") return null;
   const ids = c.postIds || [];
-  const choices = state.posts.filter((p) => p.roomId === roomId && p.status === "APPROVED" && (!explicitId || p.id === explicitId) && (ids.includes(p.id) || !ids.length && chatRoomChoices(c).includes(roomId)));
+  const choices = state.posts.filter((p) => p.roomId === roomId && isPublicPost(p) && (!explicitId || p.id === explicitId) && (ids.includes(p.id) || !ids.length && chatRoomChoices(c).includes(roomId)));
   return choices.find((p) => p.id === c.postContexts?.[roomId]) || choices[0] || null;
 }
 function viewingConversationValid(c, r, tenantId, ownerId, postId = "") {
@@ -914,7 +1007,7 @@ function openAppointment(mode = "DIRECT", roomId = "", postId = "") {
   let c;
   if (request && roomId) {
     const r = room(roomId);
-    if (!r || !(postId ? post(postId)?.status === "APPROVED" && post(postId).roomId === roomId : publishedPost(roomId)) || r.status !== "AVAILABLE" || hasLiveRoomContract(r.id) || roomLoad(r.id)) { flash("Phòng hiện không thể đề nghị xem."); return; }
+    if (!r || !(postId ? isPublicPost(post(postId)) && post(postId).roomId === roomId : publishedPost(roomId)) || r.status !== "AVAILABLE" || hasLiveRoomContract(r.id) || roomLoad(r.id)) { flash("Phòng hiện không thể đề nghị xem."); return; }
     const owner = house(r.houseId).ownerId;
     c = visibleConversations().find((x) => x.type !== "ROOMMATE" && x.users.includes(owner) && x.users.length === 2);
     if (!c) { c = { id: `c-inquiry-${Date.now()}-${state.conversations.length}`, type: "ROOM_INQUIRY", users: [userId(), owner], messages: [] }; state.conversations.push(c); }
@@ -940,6 +1033,8 @@ function openAppointment(mode = "DIRECT", roomId = "", postId = "") {
 }
 
 function openContract(viewingId) {
+  const viewing = byId(state.viewings, viewingId);
+  if (!viewing || !houseRightsGate(viewing.roomId)) { flash("Cần xác minh quyền cho thuê trước khi lập hợp đồng mới."); return; }
   if (state.role !== "landlord") return;
   const v = byId(state.viewings, viewingId);
   if (!v || v.ownerId !== userId() || (state.lockedUsers || []).includes(userId()) || v.status !== "COMPLETED" || v.decision !== "AGREED") { flash("Cần xác nhận đã xem và người thuê đồng ý trước."); return; }
@@ -962,6 +1057,7 @@ function openMoveIn(id) {
   const [contractId, memberId] = id.split(":");
   const c = contract(contractId);
   if (!ownsContract(c) || !["CONFIRMED", "ACTIVE"].includes(c.status)) return;
+  if (c.status !== "ACTIVE" && c.source !== "PAPER_IMPORT" && !houseRightsGate(c.roomId)) { flash("Cần xác minh quyền cho thuê trước khi kích hoạt hợp đồng mới."); return; }
   const planned = c.members.filter((m) => m.status === "PLANNED");
   if (!planned.length) { flash("Không còn thành viên dự kiến vào ở."); return; }
   modal("Xác nhận thành viên vào ở", `<form data-form="move-in"><input type="hidden" name="contractId" value="${c.id}"><p>${esc(roomName(c.roomId))}. Chọn những người đã thực tế chuyển vào. Khi kích hoạt hợp đồng phải có đại diện.</p><div class="stack">${planned.map((m) => `<label class="list-row"><span><input type="checkbox" name="memberIds" value="${esc(m.id)}" ${!memberId || m.id === memberId ? "checked" : ""}> ${esc(m.name)}${representative(c)?.id === m.id ? " (đại diện)" : ""}</span></label>`).join("")}</div><label class="field">Ngày thực tế chuyển vào<input type="date" name="date" value="${todayISO()}" min="${c.start}" max="${todayISO() < c.end ? todayISO() : c.end}" required></label><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Xác nhận những người đã chọn</button></div></form>`);
@@ -997,16 +1093,19 @@ function openReviewChange(id) {
 
 function openService(id = "") {
   const item = id ? byId(state.services, id) : null;
-  modal(item ? "Sửa dịch vụ" : "Thêm dịch vụ", `<form data-form="service"><input type="hidden" name="serviceId" value="${esc(id)}"><div class="form-grid"><label class="field full">Tên dịch vụ<input name="name" value="${esc(item?.name || "")}" required maxlength="100"></label><label class="field">Đơn vị<input name="unit" value="${esc(item?.unit || "")}" placeholder="kWh, m³, phòng..." required></label><label class="field">Giá mặc định<input type="number" name="price" value="${item?.price ?? 0}" min="0" required></label><label class="field full">Cách tính<select name="method">${[["METERED", "Theo đồng hồ"], ["PER_PERSON", "Theo người"], ["PER_ROOM", "Theo phòng"]].map(([v, label]) => `<option value="${v}" ${item?.method === v ? "selected" : ""}>${label}</option>`).join("")}</select></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Lưu dịch vụ</button></div></form>`);
+  if (!canManageHouse(house(item?.houseId || state.houseSelection))) return;
+  modal(item ? "Sửa dịch vụ" : "Thêm dịch vụ", `<form data-form="service"><input type="hidden" name="serviceId" value="${esc(id)}"><input type="hidden" name="houseId" value="${esc(item?.houseId || state.houseSelection)}"><div class="form-grid"><label class="field full">Tên dịch vụ<input name="name" value="${esc(item?.name || "")}" required maxlength="100"></label><label class="field">Đơn vị<input name="unit" value="${esc(item?.unit || "")}" placeholder="kWh, m³, phòng..." required></label><label class="field">Giá mặc định<input type="number" name="price" value="${item?.price ?? 0}" min="0" required></label><label class="field full">Cách tính<select name="method">${[["METERED", "Theo đồng hồ"], ["PER_PERSON", "Theo người"], ["PER_ROOM", "Theo phòng"]].map(([v, label]) => `<option value="${v}" ${item?.method === v ? "selected" : ""}>${label}</option>`).join("")}</select></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Lưu dịch vụ</button></div></form>`);
 }
 function openOverride(id) {
   const item = state.roomServices.find((x) => x.roomId === state.roomSelection && x.serviceId === id);
   const s = byId(state.services, id);
+  if (!s || !canManageHouse(house(s.houseId)) || room(state.roomSelection)?.houseId !== s.houseId) return;
   modal("Giá riêng cho phòng", `<form data-form="override-service"><input type="hidden" name="serviceId" value="${id}"><p>${esc(s.name)} · ${esc(roomName(state.roomSelection))}</p><label class="field">Giá riêng, để trống để kế thừa giá nhà<input type="number" name="price" min="0" value="${item?.override ?? ""}" placeholder="${s.price}"></label><div class="form-actions">${button("Hủy", "close-dialog")}<button type="submit" class="button primary">Lưu giá</button></div></form>`);
 }
 function openRoom(id = "") {
   const r = id ? room(id) : null;
-  modal(r ? "Sửa phòng" : "Thêm phòng", `<form data-form="room"><input type="hidden" name="roomId" value="${esc(id)}"><div class="form-grid"><label class="field">Mã phòng<input name="code" value="${esc(r?.code || "")}" required></label><label class="field">Diện tích m²<input type="number" name="area" min="1" step="0.1" value="${r?.area || ""}" required></label><label class="field">Giá thuê<input type="number" name="price" min="0" value="${r?.price || ""}" required></label><label class="field">Tiền cọc<input type="number" name="deposit" min="0" value="${r?.deposit || ""}" required></label><label class="field">Tối đa người<input type="number" name="capacity" min="1" value="${r?.capacity || 2}" required></label><label class="field">Trạng thái<select name="status">${[["AVAILABLE", "Còn phòng"], ["RESERVED", "Đã giữ"], ["OCCUPIED", "Đang ở"], ["MAINTENANCE", "Bảo trì"]].map(([v, label]) => `<option value="${v}" ${r?.status === v ? "selected" : ""}>${label}</option>`).join("")}</select></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Lưu phòng</button></div></form>`);
+  if (!canManageHouse(house(r?.houseId || state.houseSelection))) return;
+  modal(r ? "Sửa phòng" : "Thêm phòng", `<form data-form="room"><input type="hidden" name="roomId" value="${esc(id)}"><input type="hidden" name="houseId" value="${esc(r?.houseId || state.houseSelection)}"><div class="form-grid"><label class="field">Mã phòng<input name="code" value="${esc(r?.code || "")}" required></label><label class="field">Diện tích m²<input type="number" name="area" min="1" step="0.1" value="${r?.area || ""}" required></label><label class="field">Giá thuê<input type="number" name="price" min="0" value="${r?.price || ""}" required></label><label class="field">Tiền cọc<input type="number" name="deposit" min="0" value="${r?.deposit || ""}" required></label><label class="field">Tối đa người<input type="number" name="capacity" min="1" value="${r?.capacity || 2}" required></label><label class="field">Trạng thái<select name="status">${[["AVAILABLE", "Còn phòng"], ["RESERVED", "Đã giữ"], ["OCCUPIED", "Đang ở"], ["MAINTENANCE", "Bảo trì"]].map(([v, label]) => `<option value="${v}" ${r?.status === v ? "selected" : ""}>${label}</option>`).join("")}</select></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Lưu phòng</button></div></form>`);
 }
 function openListing(id = "", roomId = "") {
   if (state.role !== "landlord") return;
@@ -1055,8 +1154,10 @@ function editRoommateProfile() {
   modal(ownProfile ? "Sửa hồ sơ ở ghép" : "Tạo hồ sơ ở ghép", `<form data-form="roommate-profile"><p>Chia sẻ thông tin này để người khác hiểu nhu cầu ở ghép của bạn.</p><input type="hidden" name="currentRoomTenantId" value="${esc(current?.memberId || "")}"><div class="form-grid"><label class="field full">Tình trạng chỗ ở${housingField}</label><label class="field full" data-roommate-external ${external ? "" : "hidden"}>Thông tin chỗ ở ngoài hệ thống (không bắt buộc)<textarea name="externalContext" maxlength="1000" placeholder="Ví dụ: Đang thuê ở Cầu Giấy, muốn tìm bạn cùng chuyển phòng." ${external ? "" : "disabled"}>${esc(external ? p.externalContext || "" : "")}</textarea></label><label class="field full">Khu vực mong muốn<input name="location" value="${esc(p.location || "")}" placeholder="Ví dụ: Cầu Giấy, Thanh Xuân" maxlength="500" required></label><label class="field">Ngân sách từ (đ/tháng)<input type="number" name="budgetMin" min="0" step="1" value="${esc(p.budgetMin ?? "")}" required></label><label class="field">Đến (đ/tháng)<input type="number" name="budgetMax" min="0" step="1" value="${esc(p.budgetMax ?? "")}" required></label><label class="field full">Thói quen / mong muốn<textarea name="habits" maxlength="2000" placeholder="Ví dụ: Không hút thuốc, giữ vệ sinh chung, giờ giấc ổn định." required>${esc(p.habits || "")}</textarea></label><label class="field full">Sẵn sàng từ<input type="date" name="available" value="${esc(p.available || "")}" required></label></div><p class="muted tiny">Tạo hồ sơ để kết nối và trao đổi. Việc thuê chung cần được thỏa thuận riêng.</p><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">${ownProfile ? "Lưu thay đổi" : "Tạo hồ sơ"}</button></div></form>`);
 }
 function openNotifications() {
-  const list = state.notifications.filter((n) => n.userId === userId());
-  modal("Thông báo", `<div class="stack">${list.length ? list.map((n) => `<div class="list-row"><div><strong>${esc(n.text)}</strong><small>${n.read ? "Đã đọc" : "Chưa đọc"}</small></div>${!n.read ? button("Đã đọc", "read-notification", n.id, "small") : ""}</div>`).join("") : `<div class="muted tiny">Không có thông báo.</div>`}</div>`);
+  const list = state.notifications.filter((n) => n.userId === userId()).reverse().sort((a, b) => Number(!!a.read) - Number(!!b.read));
+  const unreadCount = list.filter((n) => !n.read).length;
+  const summary = unreadCount ? `Bạn có ${unreadCount} thông báo chưa đọc.` : list.length ? "Bạn đã đọc tất cả thông báo." : "Thông báo mới sẽ xuất hiện tại đây.";
+  modal("Thông báo", `<p class="notification-summary" role="status">${summary}</p><div class="notification-list">${list.length ? list.map((n) => `<div class="notification-item${n.read ? "" : " unread"}" data-notification-id="${esc(n.id)}"><div class="notification-copy"><strong>${esc(n.text)}</strong><small>${n.read ? "Đã đọc" : chip("Mới", "red")}</small>${n.type === "CHAT_MESSAGE" && chatNotificationConversation(n) ? button("Mở tin nhắn", "open-notification", n.id, "small") : ""}</div>${!n.read ? button("Đã đọc", "read-notification", n.id, "small", 'aria-label="Đánh dấu thông báo đã đọc"') : ""}</div>`).join("") : '<p class="muted tiny">Chưa có thông báo.</p>'}</div>`);
 }
 
 function openTemplate() {
@@ -1077,13 +1178,28 @@ function handleAction(action, id) {
   let item;
   switch (action) {
     case "navigate": changeView(id); return;
+    case "open-house": openHouseEditor(); return;
+    case "edit-house": openHouseEditor(id); return;
+    case "submit-house-proof": openHouseProofForm(id); return;
+    case "review-house-verification": openHouseVerification(id); return;
+    case "house-verification-history": openHouseVerificationHistory(id); return;
+    case "view-house-proof": return openHouseProofDocument(id);
+    case "approve-house-verification": openHouseVerificationDecision(id, "APPROVE"); return;
+    case "reject-house-verification": openHouseVerificationDecision(id, "REJECT"); return;
+    case "revoke-house-verification": openHouseVerificationDecision(id, "REVOKE"); return;
+    case "withdraw-house-verification": withdrawHouseVerification(id); return;
+    case "house-services": if (canManageHouse(house(id))) { state.houseSelection = id; state.roomSelection = state.rooms.find((r) => r.houseId === id)?.id || ""; changeView("services"); } return;
     case "roommate-tab":
       if (state.role !== "tenant" || state.view !== "roommates" || !ROOMMATE_TABS.some(([tab]) => tab === id)) return;
       state.roommateTab = id; save(); render(); $(`#roommate-tab-${id}`)?.focus({ preventScroll: true }); return;
     case "switch-role": switchRole(id); return;
     case "close-dialog": closeDialog(); return;
     case "notifications": openNotifications(); return;
-    case "read-notification": item = byId(state.notifications, id); if (item) item.read = true; save(); openNotifications(); renderShell(); refreshIcons(); return;
+    case "open-notification": openNotification(id); return;
+    case "dismiss-notification": dismissNotificationPopup(id); return;
+    case "read-notification":
+      item = byId(state.notifications, id); if (!item || item.userId !== userId()) return;
+      item.read = true; save(); openNotifications(); renderShell(); syncIncomingNotifications(); refreshIcons(); return;
     case "favorite": if (state.role !== "tenant" || !canReadPost(post(id))) return; state.favorites = state.favorites.includes(id) ? state.favorites.filter((x) => x !== id) : [...state.favorites, id]; finish(state.favorites.includes(id) ? "Đã lưu tin đăng." : "Đã bỏ lưu tin đăng."); return;
     case "clear-filters": state.filters = structuredClone(seed.filters); finish("Đã xóa bộ lọc."); return;
     case "room-post-detail":
@@ -1105,7 +1221,7 @@ function handleAction(action, id) {
     case "chat-room": {
       if (state.role !== "tenant") return;
       const p = action === "chat-post" ? post(id) : publishedPost(id);
-      if (!p || p.status !== "APPROVED") { flash("Tin phòng không còn hiển thị."); return; }
+      if (!isPublicPost(p)) { flash("Tin phòng không còn hiển thị."); return; }
       const roomId = p.roomId, owner = house(room(roomId).houseId).ownerId;
       let c = state.conversations.find((x) => x.type !== "ROOMMATE" && x.users.length === 2 && x.users.includes(userId()) && x.users.includes(owner));
       if (!c) { c = { id: `c${Date.now()}-${state.conversations.length}`, type: "ROOM_INQUIRY", users: [userId(), owner], messages: [] }; state.conversations.push(c); }
@@ -1127,7 +1243,7 @@ function handleAction(action, id) {
     case "clear-context": selectChatContext(null); return;
     case "tab": state.tab = id; save(); render(); return;
     case "open-appointment": openAppointment(); return;
-    case "request-post-viewing": { const p = post(id); if (p?.status === "APPROVED") openAppointment("REQUEST", p.roomId, p.id); return; }
+    case "request-post-viewing": { const p = post(id); if (isPublicPost(p)) openAppointment("REQUEST", p.roomId, p.id); return; }
     case "open-viewing-request": openAppointment("REQUEST", id); return;
     case "accept-viewing-proposal": acceptViewingProposal(id); return;
     case "reject-viewing-proposal": {
@@ -1182,6 +1298,7 @@ function handleAction(action, id) {
     case "open-feedback": openFeedback(id); return;
     case "confirm-contract": {
       item = contract(id); if (!item || item.status !== "PENDING_CONFIRMATION" || item.tenantId !== userId()) return;
+      if (item.source !== "PAPER_IMPORT" && !houseRightsGate(item.roomId)) { flash("Quyền cho thuê cần được xác minh lại trước khi xác nhận hợp đồng mới."); return; }
       item.status = "CONFIRMED"; item.revisionStatus = "CONFIRMED"; item.revisions[item.revisions.length - 1].status = "CONFIRMED";
       finish("Đã xác nhận phiên bản hợp đồng. Chờ chủ trọ xác nhận vào ở."); return;
     }
@@ -1221,7 +1338,7 @@ function handleAction(action, id) {
     case "edit-room": openRoom(id); return;
     case "open-service": openService(); return;
     case "edit-service": openService(id); return;
-    case "toggle-service": item = byId(state.services, id); if (item) { item.active = !item.active; finish(item.active ? "Đã bật dịch vụ." : "Đã ngừng dịch vụ. Hóa đơn cũ được giữ nguyên."); } return;
+    case "toggle-service": item = byId(state.services, id); if (item && canManageHouse(house(item.houseId))) { item.active = !item.active; finish(item.active ? "Đã bật dịch vụ." : "Đã ngừng dịch vụ. Hóa đơn cũ được giữ nguyên."); } return;
     case "override-service": openOverride(id); return;
     case "open-listing": openListing(); return;
     case "create-room-post": if (ownsListingRoom(room(id))) openListing("", id); return;
@@ -1230,6 +1347,7 @@ function handleAction(action, id) {
     case "restore-listing": {
       item = post(id);
       if (state.role !== "admin" || !item || item.status !== (action === "approve-listing" ? "PENDING_REVIEW" : "HIDDEN")) return;
+      if (!houseRightsGate(item.roomId)) { flash("Cần duyệt quyền cho thuê của nhà trước khi công khai tin."); return; }
       Object.assign(item, { status: "APPROVED", reviewedBy: userId(), reviewedAt: new Date().toISOString(), rejectionReason: "" });
       logAudit("APPROVE_POST", `Tin ${item.id} · ${roomName(item.roomId)}`, "Nội dung hợp lệ"); finish("Tin đã được duyệt."); return;
     }
@@ -1291,6 +1409,7 @@ function applyChange(id) {
   if (error) { flash(error); return; }
   if (request.effective < c.start || c.members.some((m) => m.status === "ACTIVE" && m.moveIn > request.effective)) { flash("Ngày hiệu lực không được trước ngày vào ở của thành viên."); return; }
   if (request.type === "RENEWAL") {
+    if (!houseRightsGate(c.roomId)) { flash("Cần xác minh quyền cho thuê trước khi gia hạn hợp đồng."); return; }
     request.newEnd ||= renewalEndDate(c);
     c.end = request.newEnd; c.revisionNo += 1; c.revisionStatus = "CONFIRMED";
     c.revisions.push({ version: c.revisionNo, status: "CONFIRMED", start: c.start, end: c.end, changeRequestId: request.id });
@@ -1298,6 +1417,7 @@ function applyChange(id) {
     closeStays(c, request.effective, "Kết thúc hợp đồng theo thỏa thuận."); c.status = "TERMINATED"; syncRoomStatus(c.roomId);
   } else if (request.type === "TRANSFER") {
     const target = room(request.targetRoomId);
+    if (!houseRightsGate(request.targetRoomId)) { flash("Cần xác minh quyền cho thuê của nhà có phòng đích."); return; }
     if (!target || target.id === c.roomId || house(target.houseId).ownerId !== c.ownerId || target.status !== "AVAILABLE" || hasLiveRoomContract(target.id) || roomLoad(target.id) > 0) { flash("Phòng đích không còn trống hoặc không thuộc chủ trọ."); return; }
     const moving = c.members.filter((m) => ["ACTIVE", "PLANNED"].includes(m.status));
     if (moving.length > target.capacity) { flash("Phòng đích không đủ sức chứa cho toàn bộ thành viên. Chưa thay đổi hợp đồng nguồn."); return; }
@@ -1405,13 +1525,17 @@ function handleForm(form) {
       state.filters = { query: value("query"), area: value("area"), maxPrice: value("maxPrice"), minArea: value("minArea"), amenity: value("amenity"), distance: value("distance") };
       save(); render(); return;
     }
+    case "house": saveHouseForm(form); return;
+    case "house-verification": return submitHouseVerification(form);
+    case "house-verification-decision": decideHouseVerification(form); return;
     case "share-post": {
       const invite = byId(state.roommateInvites, value("inviteId"));
       const r = shareablePost(value("postId"));
       const note = value("note");
       if (!acceptedRoommateInvite(invite) || !r || note.length > 2000) { flash("Kết nối hoặc tin phòng đã thay đổi. Hãy chọn lại trước khi chia sẻ."); return; }
       const c = roommateConversation(invite);
-      c.messages.push({ id: `share-${Date.now()}-${c.messages.length}`, senderId: userId(), messageType: "POST_SHARE", sharedPostId: r.postId, roomId: null, text: note, time: vietnamTime(Date.now()) });
+      const message = { id: `share-${c.id}-${Date.now()}-${c.messages.length}`, senderId: userId(), messageType: "POST_SHARE", sharedPostId: r.postId, roomId: null, text: note, time: vietnamTime(Date.now()) };
+      c.messages.push(message); notifyChatMessage(c, message);
       openRoommateChat(invite.id); return;
     }
     case "chat-message": {
@@ -1426,7 +1550,8 @@ function handleForm(form) {
       const r = c.type === "ROOMMATE" ? null : room(state.chatContext);
       if (r && !c.users.includes(house(r.houseId).ownerId)) { flash("Phòng này không thuộc chủ trọ trong hội thoại."); return; }
       const now = new Date();
-      c.messages.push({ id: `m${Date.now()}`, senderId: userId(), roomId: r?.id || null, postId: r ? conversationPost(c, r.id)?.id || null : null, text, time: vietnamTime(now.getTime()) });
+      const message = { id: `m-${c.id}-${Date.now()}-${c.messages.length}`, senderId: userId(), roomId: r?.id || null, postId: r ? conversationPost(c, r.id)?.id || null : null, text, time: vietnamTime(now.getTime()) };
+      c.messages.push(message); notifyChatMessage(c, message);
       delete state.chatDrafts[chatDraftKey(c.id)];
       save(); render();
       $(".chat-pane-body .message-row:last-of-type")?.scrollIntoView?.({ block: "nearest" });
@@ -1482,6 +1607,7 @@ function handleForm(form) {
     }
     case "create-contract": {
       const v = byId(state.viewings, value("viewingId"));
+      if (!v || !houseRightsGate(v.roomId)) { flash("Cần xác minh quyền cho thuê trước khi tạo hợp đồng mới."); return; }
       if (!v || state.role !== "landlord" || v.ownerId !== userId() || (state.lockedUsers || []).some((id) => [userId(), v.tenantId].includes(id)) || v.status !== "COMPLETED" || v.decision !== "AGREED" || liveViewingContract(v.id)) { flash("Chưa đủ điều kiện tạo hợp đồng hoặc lịch xem đã có hợp đồng."); return; }
       if (value("end") < value("start")) { flash("Ngày kết thúc phải sau ngày bắt đầu."); return; }
       if (state.contracts.some((c) => c.roomId === v.roomId && ["PENDING_CONFIRMATION", "CONFIRMED", "ACTIVE"].includes(c.status))) { flash("Phòng đã có hợp đồng còn hiệu lực."); return; }
@@ -1505,6 +1631,7 @@ function handleForm(form) {
     }
     case "resend-contract": {
       const c = contract(value("contractId")); if (!c || c.status !== "DRAFT") return;
+      if (!ownsContract(c) || !houseRightsGate(c.roomId)) { flash("Cần xác minh quyền cho thuê trước khi gửi hợp đồng mới."); return; }
       if (value("end") < c.start) { flash("Ngày kết thúc không hợp lệ."); return; }
       c.end = value("end"); c.rent = Number(value("rent")); c.terms = value("terms"); c.status = "PENDING_CONFIRMATION"; c.revisionStatus = "PENDING_CONFIRMATION"; c.revisions[c.revisions.length - 1].status = "PENDING_CONFIRMATION";
       finish("Đã gửi phiên bản mới cho đại diện."); return;
@@ -1512,6 +1639,7 @@ function handleForm(form) {
     case "move-in": {
       const c = contract(value("contractId")); const date = value("date");
       if (!ownsContract(c) || !["CONFIRMED", "ACTIVE"].includes(c.status) || !["CONFIRMED", "IMPORTED"].includes(c.revisionStatus)) { flash("Hợp đồng chưa được xác nhận hoặc đã kết thúc."); return; }
+      if (c.status !== "ACTIVE" && c.source !== "PAPER_IMPORT" && !houseRightsGate(c.roomId)) { flash("Cần xác minh quyền cho thuê trước khi kích hoạt hợp đồng mới."); return; }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < c.start || date > c.end || date > todayISO()) { flash("Ngày vào ở phải nằm trong thời hạn hợp đồng và không ở tương lai."); return; }
       const ids = [...new Set(data.getAll("memberIds").map(String))];
       const selected = ids.map((id) => c.members.find((m) => m.id === id));
@@ -1584,23 +1712,28 @@ function handleForm(form) {
     }
     case "service": {
       const current = byId(state.services, value("serviceId"));
-      if (state.services.some((s) => s.houseId === state.houseSelection && s.name.toLocaleLowerCase("vi-VN") === value("name").toLocaleLowerCase("vi-VN") && s.id !== current?.id)) { flash("Nhà này đã có dịch vụ cùng tên."); return; }
+      const parentId = current?.houseId || value("houseId") || state.houseSelection;
+      if (!canManageHouse(house(parentId))) return;
+      if (state.services.some((s) => s.houseId === parentId && s.name.toLocaleLowerCase("vi-VN") === value("name").toLocaleLowerCase("vi-VN") && s.id !== current?.id)) { flash("Nhà này đã có dịch vụ cùng tên."); return; }
       if (current) Object.assign(current, { name: value("name"), unit: value("unit"), price: Number(value("price")), method: value("method") });
-      else state.services.push({ id: `s${Date.now()}`, houseId: state.houseSelection, name: value("name"), unit: value("unit"), price: Number(value("price")), method: value("method"), active: true });
+      else state.services.push({ id: `s${Date.now()}-${state.services.length}`, houseId: parentId, name: value("name"), unit: value("unit"), price: Number(value("price")), method: value("method"), active: true });
       finish("Đã lưu dịch vụ của nhà trọ."); return;
     }
     case "override-service": {
       item = state.roomServices.find((x) => x.roomId === state.roomSelection && x.serviceId === value("serviceId"));
+      if (!canManageHouse(house(room(state.roomSelection)?.houseId)) || byId(state.services, value("serviceId"))?.houseId !== room(state.roomSelection)?.houseId) return;
       if (item) { item.override = value("price") === "" ? null : Number(value("price")); finish("Đã cập nhật giá riêng cho phòng."); } return;
     }
     case "room": {
       const current = room(value("roomId"));
-      if (state.rooms.some((r) => r.houseId === state.houseSelection && r.code.toLocaleLowerCase("vi-VN") === value("code").toLocaleLowerCase("vi-VN") && r.id !== current?.id)) { flash("Mã phòng đã tồn tại trong nhà này."); return; }
+      const parentId = current?.houseId || value("houseId") || state.houseSelection;
+      if (!canManageHouse(house(parentId))) return;
+      if (state.rooms.some((r) => r.houseId === parentId && r.code.toLocaleLowerCase("vi-VN") === value("code").toLocaleLowerCase("vi-VN") && r.id !== current?.id)) { flash("Mã phòng đã tồn tại trong nhà này."); return; }
       if (current && state.contracts.some((c) => c.roomId === current.id && c.members.some((m) => m.status === "ACTIVE")) && value("status") !== "OCCUPIED") { flash("Không thể đổi trạng thái phòng đang có người ở."); return; }
       if (!Number.isInteger(Number(value("capacity"))) || Number(value("capacity")) < Math.max(1, current ? roomLoad(current.id) : 0)) { flash("Sức chứa phải là số nguyên và đủ cho người ở, thành viên dự kiến cùng chỗ đang giữ."); return; }
       const attrs = { code: value("code"), area: Number(value("area")), price: Number(value("price")), deposit: Number(value("deposit")), capacity: Number(value("capacity")), status: value("status") };
       if (current) Object.assign(current, attrs);
-      else state.rooms.push({ id: `r${Date.now()}`, houseId: state.houseSelection, title: `Phòng ${attrs.code}`, description: "", distance: 0, photo: PHOTO.r6, amenities: [], ...attrs });
+      else state.rooms.push({ id: `r${Date.now()}-${state.rooms.length}`, houseId: parentId, title: `Phòng ${attrs.code}`, description: "", distance: 0, photo: PHOTO.r6, amenities: [], ...attrs });
       finish("Đã lưu thông tin phòng."); return;
     }
     case "listing": {
@@ -1755,6 +1888,7 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("change", (event) => {
   const target = event.target;
   if (target.dataset.change === "listing-room") { updateListingQuota(target.form); return; }
+  if (target.dataset.change === "house-right-type") { updateHouseProofFields(target.form); return; }
   if (target.dataset.change === "roommate-housing") {
     const section = target.form.querySelector("[data-roommate-external]");
     section.hidden = target.value !== "EXTERNAL";
@@ -1768,7 +1902,7 @@ document.addEventListener("change", (event) => {
   if (target.dataset.change === "room") { state.roomSelection = target.value; save(); render(); }
   if (target.dataset.change === "room-service") {
     const service = byId(state.services, target.dataset.id);
-    if (!service?.active) return;
+    if (!service?.active || !canManageHouse(house(service.houseId)) || room(state.roomSelection)?.houseId !== service.houseId) return;
     let entry = state.roomServices.find((x) => x.roomId === state.roomSelection && x.serviceId === service.id);
     if (!entry) { entry = { roomId: state.roomSelection, serviceId: service.id, active: true, override: null }; state.roomServices.push(entry); }
     else entry.active = target.checked;
@@ -1788,9 +1922,14 @@ document.addEventListener("input", (event) => {
     document.querySelectorAll(".contact").forEach((node) => { node.hidden = !node.textContent.toLocaleLowerCase("vi-VN").includes(query); });
   }
 });
+window.addEventListener?.("storage", receiveSharedState);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "hidden") { syncIncomingNotifications(); renderShell(); }
+});
+window.addEventListener?.("focus", () => { syncIncomingNotifications(); renderShell(); });
 
 const initialParams = new URLSearchParams(location.search);
 if (["tenant", "landlord", "admin"].includes(initialParams.get("role"))) state.role = initialParams.get("role");
 if (NAV[state.role].some(([id]) => id === initialParams.get("view"))) state.view = initialParams.get("view");
-window.__troday = { getState: () => state, reset: () => { state = structuredClone(seed); save(); render(); }, action: handleAction };
+window.__troday = { getState: () => state, reset: () => { state = structuredClone(seed); resetNotificationDelivery(); save(); render(); }, action: handleAction };
 render();

@@ -4,22 +4,31 @@ Mở `index.html` trực tiếp trong trình duyệt, không cần cài đặt h
 
 Dữ liệu mẫu lưu trong `localStorage`; nhập `__troday.reset()` ở console để bắt đầu lại. Wireframe chạy độc lập với MySQL, các thao tác trên giao diện chưa ghi vào CSDL thật.
 
+Luồng nhà trọ mới: **Chủ trọ → Nhà & phòng → Thêm nhà trọ → Lưu nhà nháp → Xác minh quyền cho thuê → Gửi minh chứng**. Có thể thêm phòng và dịch vụ ngay khi nhà còn nháp. **Quản trị → Xác minh hồ sơ → Quyền cho thuê từng nhà trọ → Xem hồ sơ → Duyệt / Từ chối**. Khi duyệt phải xác nhận đã đối chiếu minh chứng; từ chối hoặc thu hồi cần lý do. Duyệt quyền cho thuê xong vẫn cần duyệt nội dung từng tin đăng.
+
+Chủ sở hữu nộp giấy tờ sở hữu; người được ủy quyền nộp thêm văn bản ủy quyền; người cho thuê lại nộp hợp đồng thuê gốc và chấp thuận cho thuê lại. Hai trường hợp sau cần ngày hết hạn. Khi hết hạn, thu hồi hoặc đổi địa chỉ/vị trí định danh, tin ngừng công khai và cần xác minh lại trước khi thuê mới, gia hạn hoặc chuyển sang phòng thuộc nhà đó. Hợp đồng và lịch sử đang có vẫn được giữ, việc ghi nhận rời phòng/kết thúc hợp đồng vẫn hoạt động.
+
+Tệp demo (PDF/JPG/PNG/WebP, tối đa 8 tệp, 5 MB/tệp) nằm trong **IndexedDB của trình duyệt**, metadata trong `localStorage`; không đồng bộ sang máy khác. Hai nhà mẫu có hồ sơ giả lập được ghi rõ trên giao diện. Nhà thực được migration giữ ở trạng thái chưa xác minh; không tự cấp phê duyệt. Cần tích hợp API, kho tệp riêng tư và xác thực thực tế khi triển khai sản phẩm.
+
 ## Bắt đầu đọc
 
 - [Quy tắc nghiệp vụ](docs/business-rules.md): toàn bộ logic đang có, thay đổi đã thực hiện, ràng buộc CSDL và cách tích hợp API.
-- [SQL tạo mới](database/schema.sql): CSDL v5 hiện tại, 41 bảng.
+- [SQL tạo mới](database/schema.sql): CSDL v5 hiện tại, 43 bảng.
 - [Nâng cấp nghiệp vụ](database/migrations/20261024_v5_workflows.sql): chuyển v5 gốc 39 bảng sang bản có lịch sử đại diện.
 - [Nâng cấp chia sẻ tin phòng](database/migrations/20261025_chat_post_sharing.sql): thêm tin nhắn tham chiếu bài đăng, chạy sau bản nâng cấp nghiệp vụ.
 - [Nâng cấp đề nghị lịch xem](database/migrations/20261025_viewing_proposals.sql): người thuê đề nghị, chủ trọ duyệt; vẫn giữ chủ trọ tự tạo lịch sau trao đổi.
 - [Nâng cấp xử lý lịch khi giữ phòng](database/migrations/20261025_contract_viewing_cleanup.sql): gửi hợp đồng đồng thời hủy lịch sắp tới, đóng đề nghị chờ và tạo thông báo.
 - [Nâng cấp nhiều bài đăng cùng phòng](database/migrations/20261025_multiple_room_posts.sql): bỏ giới hạn một tin hoạt động; cho phép nhiều tin chờ duyệt/đã duyệt của cùng phòng.
 - [Giới hạn 3 bài chờ duyệt/phòng](database/migrations/20261025_post_review_quota.sql): giữ tổng bài không giới hạn, kiểm soát chờ duyệt bằng ràng buộc và thủ tục giao dịch.
+- [Xác minh quyền cho thuê từng nhà](database/migrations/20261025_house_right_verification.sql): nhà nháp, minh chứng riêng tư, xét duyệt và điều kiện công khai tin/thuê mới; chạy sau giới hạn bài chờ.
 
 ## Cấu trúc thư mục
 
 ```text
 index.html                     Giao diện
 app.js                         Dữ liệu mẫu và xử lý nghiệp vụ
+house-rights.js                Tạo nhà và xác minh quyền cho thuê từng nhà
+house-proof-store.js           Lưu tệp minh chứng demo bằng IndexedDB
 styles.css                     Kiểu hiển thị
 icons.js                       Bộ biểu tượng
 assets/                        Ảnh phòng
@@ -33,12 +42,14 @@ database/
     20261025_viewing_proposals.sql  Thêm đề nghị và duyệt lịch xem
     20261025_contract_viewing_cleanup.sql  Xử lý lịch khi gửi hợp đồng
     20261025_multiple_room_posts.sql  Cho phép nhiều bài đăng cùng phòng
-    20261025_post_review_quota.sql  Tối đa 3 bài chờ duyệt/phòng (chạy cuối)
+    20261025_post_review_quota.sql  Tối đa 3 bài chờ duyệt/phòng
+    20261025_house_right_verification.sql  Xác minh quyền từng nhà (chạy cuối)
   source/
     workflows.sql              Nguồn chung của view, trigger và procedure
     viewing-proposals.sql      Nguồn đề nghị lịch và tạo lịch trực tiếp
     contract-viewing-cleanup.sql  Nguồn tạo hợp đồng và đóng hoạt động xem phòng
     post-review-quota.sql      Nguồn trigger và thủ tục giới hạn bài chờ duyệt
+    house-rights.sql           Nguồn bảng, view, trigger và thủ tục xác minh nhà
 scripts/
   build-database.cjs            Đồng bộ nguồn nghiệp vụ vào SQL triển khai
 tests/
@@ -57,8 +68,8 @@ SQL triển khai nằm trong `database/`. Hai SQL trong `tests/fixtures/` cần 
 Chọn **một** cách phù hợp:
 
 - **Tạo mới:** chạy `database/schema.sql`. File tự tạo và chọn CSDL `room_rental_v5_20261023`; nếu tên này đã tồn tại thì dừng. Tên CSDL được giữ nguyên để tương thích v5.
-- **Nâng cấp v5 gốc:** sao lưu, dừng ghi rồi chạy `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` → `20261025_contract_viewing_cleanup.sql` → `20261025_multiple_room_posts.sql` → `20261025_post_review_quota.sql` trong `database/migrations/`, mỗi file **một lần**. Các file cùng ngày chạy theo thứ tự này, không theo bảng chữ cái. Script kiểm tra điều kiện trước DDL. Nếu có lỗi thì dừng và xử lý nguyên nhân; không dùng `--force` hoặc bỏ qua lỗi để chạy tiếp. MySQL DDL không rollback toàn bộ như giao dịch dữ liệu.
-- **Đã nâng cấp một phần:** chỉ chạy các migration còn thiếu theo thứ tự trên. Đã có bản nhiều bài đăng thì chỉ chạy `20261025_post_review_quota.sql`. Nếu dữ liệu cũ có phòng vượt 3 bài chờ, migration dừng trước khi đổi cấu trúc để quản trị xử lý duyệt/từ chối; không tự xóa hoặc từ chối bài.
+- **Nâng cấp v5 gốc:** sao lưu, dừng ghi rồi chạy `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` → `20261025_contract_viewing_cleanup.sql` → `20261025_multiple_room_posts.sql` → `20261025_post_review_quota.sql` → `20261025_house_right_verification.sql` trong `database/migrations/`, mỗi file **một lần**. Các file cùng ngày chạy theo thứ tự này, không theo bảng chữ cái. Script kiểm tra điều kiện trước DDL. Nếu có lỗi thì dừng và xử lý nguyên nhân; không dùng `--force` hoặc bỏ qua lỗi để chạy tiếp. MySQL DDL không rollback toàn bộ như giao dịch dữ liệu.
+- **Đã nâng cấp một phần:** chỉ chạy các migration còn thiếu theo thứ tự trên. Đã có bản nhiều bài đăng thì chạy `20261025_post_review_quota.sql` rồi `20261025_house_right_verification.sql`; đã có giới hạn bài chờ thì chỉ chạy bản xác minh nhà. Nếu dữ liệu cũ có phòng vượt 3 bài chờ, migration dừng trước khi đổi cấu trúc để quản trị xử lý duyệt/từ chối; không tự xóa hoặc từ chối bài.
 
 Không chạy migration ngay sau bản tạo mới trên cùng CSDL. Chưa áp dụng các script này lên CSDL hiện có của người dùng.
 
@@ -69,7 +80,7 @@ npm run db:build
 npm run db:check
 ```
 
-Commit nguồn chung và SQL đã đồng bộ. Build ghép bốn nguồn vào schema đầy đủ và các migration tương ứng; các migration cũ giữ nguyên. Script chỉ cập nhật file, không kết nối CSDL. Chi tiết cột mới, tham số procedure và cách gọi từ API nằm trong mục 4–5 của tài liệu nghiệp vụ.
+Commit nguồn chung và SQL đã đồng bộ. Build ghép năm nguồn vào schema đầy đủ và các migration tương ứng; các migration cũ giữ nguyên. Script chỉ cập nhật file, không kết nối CSDL. Chi tiết cột mới, tham số procedure và cách gọi từ API nằm trong mục 4–5 của tài liệu nghiệp vụ.
 
 ## Kiểm thử
 
@@ -90,7 +101,7 @@ Bộ kiểm thử MySQL khởi tạo instance tạm có thư mục dữ liệu v
 
 Wireframe có tìm phòng, tin đăng, chat, lịch xem, hợp đồng, bàn giao đại diện, quản lý người ở, đổi phòng, hóa đơn, dịch vụ và quản trị. Danh sách quy tắc chi tiết tập trung trong [tài liệu nghiệp vụ](docs/business-rules.md).
 
-Mỗi phòng có tổng bài đăng và số bài đã duyệt không giới hạn, nhưng tối đa **3 bài `PENDING_REVIEW`** đồng thời. Khi đủ 3, bài mới hoặc gửi lại bài đã duyệt/từ chối/ẩn bị chặn; sửa bài đang chờ không chiếm thêm lượt. Duyệt/từ chối giải phóng lượt. Mỗi bài có ID, nội dung, ảnh và kết quả duyệt riêng. Lưu/chia sẻ/báo cáo dùng ID bài; phòng, giá, sức chứa, lịch xem và hợp đồng dùng chung. Dữ liệu demo cũ được chuyển sang `state.posts` khi mở. CSDL vẫn 41 bảng; giới hạn chờ được bảo đảm bằng slot nội bộ, UNIQUE/CHECK và trigger, API dùng `sp_submit_post`.
+Mỗi phòng có tổng bài đăng và số bài đã duyệt không giới hạn, nhưng tối đa **3 bài `PENDING_REVIEW`** đồng thời. Khi đủ 3, bài mới hoặc gửi lại bài đã duyệt/từ chối/ẩn bị chặn; sửa bài đang chờ không chiếm thêm lượt. Duyệt/từ chối giải phóng lượt. Mỗi bài có ID, nội dung, ảnh và kết quả duyệt riêng. Lưu/chia sẻ/báo cáo dùng ID bài; phòng, giá, sức chứa, lịch xem và hợp đồng dùng chung. Dữ liệu demo cũ được chuyển sang `state.posts` khi mở. CSDL vẫn 43 bảng; giới hạn chờ được bảo đảm bằng slot nội bộ, UNIQUE/CHECK và trigger, API dùng `sp_submit_post`.
 
 Từ **Nhà & phòng → Xem chi tiết**, chủ trọ xem thông tin vật lý và danh sách mọi bài liên quan, bộ đếm chờ `n/3`, tạo bài cho đúng phòng hoặc sửa bài. Mở bài có nút quay lại chi tiết phòng. Người thuê chỉ thấy bài đã duyệt trong chi tiết phòng; bài nháp/chờ/từ chối/ẩn chỉ dành cho chủ trọ liên quan và quản trị. Phần danh sách liên quan dùng `posts.room_id` hiện có, không cần thêm bảng.
 
@@ -108,8 +119,12 @@ Tìm người ở ghép chia thành ba tab **Người phù hợp / Lời mời d
 
 Tin nhắn có nhãn “Chủ trọ”, “Bạn ghép” hoặc “Người thuê” cạnh tên theo quan hệ hội thoại. Hai người đã kết nối có thể chia sẻ tin phòng từ chat hoặc trang chi tiết; bấm thẻ để xem phòng và quay lại đúng cuộc trò chuyện. CSDL dùng `chat_messages.message_type = 'POST_SHARE'` và `shared_post_id` tham chiếu bài đăng; phần chia sẻ không thêm bảng.
 
+Khi nhận tin nhắn hoặc thông báo mới, có **popup nổi trên màn hình**, kèm tên người gửi và nội dung xem trước. Bấm popup mở đúng cuộc trò chuyện; đóng bằng X hoặc chờ 8 giây sẽ ẩn popup và vẫn giữ thông báo chưa đọc trong chuông. Nếu đang đọc đúng cuộc chat thì tin đến hiển thị trực tiếp. Tải lại trang không phát lại các popup cũ.
+
+Để thử gửi/nhận ngay trong wireframe, mở cùng URL bằng **hai tab cùng trình duyệt**: một tab chọn Người thuê (Lan), tab còn lại chọn Chủ trọ (Quân), rồi gửi tin trong hội thoại của hai người. Tab nhận có thể đang ở trang khác; popup sẽ xuất hiện ngay khi tab nhận được hiển thị. Vai trò và bản nháp của mỗi tab được giữ riêng. Cơ chế này dùng `localStorage`/sự kiện `storage` để mô phỏng; gửi qua hai thiết bị cần API và kênh WebSocket/SSE của ứng dụng thật.
+
 Lịch xem có hai cách tạo: người thuê bấm “Đề nghị lịch xem” từ chi tiết phòng hoặc chat, chờ chủ trọ chấp nhận; hoặc chủ trọ bấm “Hẹn xem” để tạo lịch đã chốt sau khi có trao đổi từ người thuê về phòng đó. Đề nghị lưu riêng trong `room_viewing_proposals`, chưa giữ giờ/chỗ thuê; khi duyệt mới tạo `room_viewing_requests` trong cùng giao dịch. Chat và Lịch xem có chấp nhận/từ chối/rút đề nghị, sau đó dùng chung các thao tác hủy, đã xem, không đến và quyết định thuê. Thử bằng cách đổi giữa vai trò Người thuê và Chủ trọ.
 
-Một phòng có thể có nhiều lịch khác giờ. “Đồng ý thuê” chỉ là mong muốn; khi chủ trọ gửi hợp đồng mới giữ phòng, hủy các lịch xem sắp tới và từ chối đề nghị chờ của phòng đó, đồng thời thông báo người liên quan. Hủy hợp đồng trả phòng trống nhưng không khôi phục lịch cũ. Phần này dùng bảng/trạng thái hiện có, tổng vẫn 41 bảng; migration mới thay thủ tục, không tự sửa dữ liệu lịch sử.
+Một phòng có thể có nhiều lịch khác giờ. “Đồng ý thuê” chỉ là mong muốn; khi chủ trọ gửi hợp đồng mới giữ phòng, hủy các lịch xem sắp tới và từ chối đề nghị chờ của phòng đó, đồng thời thông báo người liên quan. Hủy hợp đồng trả phòng trống nhưng không khôi phục lịch cũ. Phần này dùng bảng/trạng thái hiện có, tổng vẫn 43 bảng; migration mới thay thủ tục, không tự sửa dữ liệu lịch sử.
 
 Chat nhiều bài đăng trong cùng một dòng thời gian là đề xuất giao diện: v5 hiện gắn mỗi `conversation` với một `post_id`/`room_id`. API cần nhóm các conversation theo cặp người, hoặc thiết kế thêm ngữ cảnh con và điều chỉnh liên kết lịch xem nếu muốn lưu thành một hội thoại chung. Không dùng dữ liệu chat của prototype làm migration v5.

@@ -6,7 +6,7 @@ Wireframe đã mô phỏng các thực thể chính của v5, nhưng trước b�
 
 Các luồng giao diện nằm trong `app.js` và dữ liệu mô phỏng trên `localStorage`. **SQL v5 đã được sửa** để hỗ trợ các nghiệp vụ mới, gồm lịch sử đại diện và các thủ tục giao dịch. Đã chuẩn bị cả bản tạo mới và migration từ v5 gốc. Chỉ kiểm tra trên MySQL tạm riêng; chưa chạy migration hoặc ghi vào CSDL hiện có của người dùng.
 
-Đây là file tổng hợp chung cho các logic đang có, các thay đổi vừa thực hiện và phần còn cần triển khai. SQL tạo mới là `database/schema.sql`; nâng cấp theo thứ tự `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` → `20261025_contract_viewing_cleanup.sql` → `20261025_multiple_room_posts.sql` → `20261025_post_review_quota.sql` trong `database/migrations/`. Mỗi migration chạy một lần, theo thứ tự này thay vì bảng chữ cái. Hệ thống có **41 bảng** sau cập nhật. API vẫn cần tích hợp các stored procedure; wireframe HTML chưa kết nối trực tiếp MySQL.
+Đây là file tổng hợp chung cho các logic đang có, các thay đổi vừa thực hiện và phần còn cần triển khai. SQL tạo mới là `database/schema.sql`; nâng cấp theo thứ tự `20261024_v5_workflows.sql` → `20261025_chat_post_sharing.sql` → `20261025_viewing_proposals.sql` → `20261025_contract_viewing_cleanup.sql` → `20261025_multiple_room_posts.sql` → `20261025_post_review_quota.sql` → `20261025_house_right_verification.sql` trong `database/migrations/`. Mỗi migration chạy một lần, theo thứ tự này thay vì bảng chữ cái. Hệ thống có **43 bảng** sau cập nhật. API vẫn cần tích hợp các stored procedure; wireframe HTML chưa kết nối trực tiếp MySQL.
 
 ## 1. Danh mục logic nghiệp vụ đang có
 
@@ -40,6 +40,9 @@ Ký hiệu: **Có** = đang được mô phỏng bằng code; **Sửa** = đã c
 | PH-09 | Trong chi tiết phòng, chủ trọ xem bộ đếm bài chờ `n/3`, tạo bài với phòng đã chọn sẵn hoặc sửa bài; tạo/sửa xong trở về danh sách liên quan của phòng. Mở một bài có thể quay lại chi tiết phòng. | Mới |
 | PH-10 | Chi tiết phòng có số người đang ở/sức chứa và danh sách lượt cư trú `ACTIVE` đúng phòng: tên, đại diện hợp đồng, ngày vào ở. Chủ trọ sở hữu phòng/quản trị thấy danh sách; người xem khác chỉ thấy số lượng. Không đưa người dự kiến/đã rời/đã hủy vào danh sách. Lượt ở còn mở trên hợp đồng đã đóng vẫn hiện kèm nhắc đối soát. | Mới |
 | PH-11 | Bên dưới thông tin chung của phòng có ba tab Bài đăng / Người ở / Dịch vụ. Chỉ hiển thị nội dung tab đang chọn, mặc định Bài đăng; ghi nhớ lựa chọn trong demo. Có thể chọn bằng chuột, phím trái/phải và Home/End. Quyền xem người ở/bài đăng áp dụng riêng khi mở từng tab. | Mới |
+| PH-12 | Thêm/sửa nhà thuộc chủ trọ hiện tại; lưu nhà nháp khi chưa có phòng. Cấu hình dịch vụ trước khi thêm phòng được phép. | Mới |
+| PH-13 | Xác minh quyền cho thuê riêng cho từng nhà bằng minh chứng sở hữu/ủy quyền/cho thuê lại. Duyệt tài khoản không tự duyệt nhà. | Mới |
+| PH-14 | Chỉ công khai tin, lập/xác nhận/kích hoạt thuê mới, gia hạn hoặc chuyển sang phòng có quyền cho thuê đang hiệu lực. Hết hạn/thu hồi/đổi định danh cần xác minh lại; giữ hợp đồng, lượt cư trú và lịch sử cũ. | Mới |
 
 ### 1.3. Tin đăng, tìm kiếm và lưu tin
 
@@ -208,6 +211,10 @@ Khi triển khai API, trong một giao dịch phải khóa và kiểm tra lời 
 | QT-04 | Ghi nhật ký quyết định duyệt/từ chối tin, hồ sơ, khóa/mở tài khoản và xử lý báo cáo. Demo hiện cho tạo mẫu và xử lý dữ liệu qua vai trò quản trị. | Có |
 | QT-05 | Thông báo theo người dùng, có chưa đọc/đã đọc. Gửi hợp đồng, bàn giao đại diện, phản hồi đề nghị và tự hủy lịch/đóng đề nghị do giữ phòng đều phát sinh thông báo. Người thuê nhận kết quả cho lịch/đề nghị của mình; chủ trọ nhận tổng số đã xử lý. | Có / Mới |
 | QT-06 | Thông báo demo nằm trong `localStorage`, không gửi email, SMS hoặc push thực. | Có |
+| QT-07 | Chuông hiển thị bộ đếm đỏ theo số thông báo chưa đọc của tài khoản đang dùng, giới hạn chữ hiển thị `99+`; hết thông báo chưa đọc thì ẩn bộ đếm. Danh sách ưu tiên thông báo chưa đọc, mới nhận lên trước, có nền nổi bật và nhãn “Mới”. Đánh dấu đã đọc cập nhật ngay bộ đếm, giữ sau khi tải lại; chỉ được đánh dấu thông báo của chính mình. | Mới |
+| QT-08 | Thông báo mới hiện dạng popup nổi, tối đa 3 popup, tự ẩn sau 8 giây hoặc đóng bằng nút X; đóng popup không đánh dấu đã đọc. Tin nhắn/chia sẻ tin phòng tạo thông báo riêng cho người nhận, kèm người gửi, xem trước và liên kết hội thoại. Bấm popup hoặc “Mở tin nhắn” trong danh sách mở đúng chat, cập nhật đã đọc. Tin đến trong chat đang được xem trực tiếp thì hiển thị trong dòng tin và đánh dấu đã đọc, không bật popup trùng. Thông báo cũ không tự bật lại khi tải trang. | Mới |
+
+Popup được mô phỏng trực tiếp giữa hai tab cùng nguồn trình duyệt bằng sự kiện `storage`: mở một tab Người thuê (Lan) và một tab Chủ trọ (Quân), nhắn trong hội thoại tương ứng. Tab nhận cập nhật dữ liệu và popup mà vẫn giữ vai trò, trang, bản nháp và form đang nhập; khi đang ở tab khác, popup chờ đến lúc trở lại. Popup dùng lớp nổi của trình duyệt để hiện được cả khi đang có hộp thoại mở, không tự đóng form. Dữ liệu dùng chung gồm hội thoại, thông báo và các bản ghi nghiệp vụ; lựa chọn giao diện và bản nháp giữ riêng trong bộ nhớ mỗi tab. Đây là mô phỏng cùng trình duyệt, chưa phải chuyển tin giữa các thiết bị qua máy chủ. Khi triển khai API, tạo `notifications` với `type = 'CHAT_MESSAGE'`, `resource_type = 'CONVERSATION'`, `resource_id` là ID hội thoại và `event_key` ổn định theo tin/người nhận; đẩy sự kiện tới đúng người qua WebSocket/SSE và áp dụng cùng logic popup. UNIQUE `(user_id,event_key)` hiện có chống ghi thông báo trùng; cần kiểm tra thành viên trước khi mở hội thoại.
 
 ### 1.12. Dữ liệu, kiểm tra và giới hạn
 
@@ -337,7 +344,7 @@ Các thủ tục công khai dưới đây tự mở giao dịch `READ COMMITTED`
 | `sp_apply_contract_change` | Áp dụng yêu cầu đã duyệt và được đại diện hiện tại xác nhận: gia hạn, kết thúc hoặc đổi phòng. Khóa hai phòng theo thứ tự ID khi đổi phòng. |
 | `sp_set_room_capacity` | Chủ trọ đổi sức chứa sau khi kiểm tra cả người ở, người dự kiến và chỗ giữ. |
 
-Chữ ký nằm trong bốn nguồn SQL ở `database/source/`; phiên bản hiện tại của `sp_create_rental_contract` nằm trong `contract-viewing-cleanup.sql`, còn `sp_submit_post` nằm trong `post-review-quota.sql`. Có thể kiểm tra bằng `SHOW CREATE PROCEDURE`. Worker dùng riêng `sp_expire_viewing_proposals()` để cập nhật đề nghị quá giờ; không cấp thủ tục này cho người dùng cuối. Với `sp_create_rental_contract`, JSON thành viên phụ dùng `full_name`, `tenant_id` (tùy chọn), `identity_number` và `date_of_birth`; không gửi trực tiếp các khóa JavaScript của prototype.
+Chữ ký nằm trong năm nguồn SQL ở `database/source/`; phiên bản hiện tại của `sp_create_rental_contract` nằm trong `contract-viewing-cleanup.sql`, còn `sp_submit_post` nằm trong `post-review-quota.sql`. Có thể kiểm tra bằng `SHOW CREATE PROCEDURE`. Worker dùng riêng `sp_expire_viewing_proposals()` để cập nhật đề nghị quá giờ; không cấp thủ tục này cho người dùng cuối. Với `sp_create_rental_contract`, JSON thành viên phụ dùng `full_name`, `tenant_id` (tùy chọn), `identity_number` và `date_of_birth`; không gửi trực tiếp các khóa JavaScript của prototype.
 
 Ví dụ cấu trúc lời gọi cho backend, với các ID thực tế do API tra cứu:
 
@@ -356,7 +363,7 @@ Gia hạn cần `proposed_revision_id` đã xác nhận. Đổi phòng cần `pr
 ### 4.7. Chạy bản tạo mới hoặc migration
 
 1. Chưa có CSDL v5: chạy toàn bộ `database/schema.sql`. File tự tạo và chọn CSDL; nếu tên đó đã tồn tại thì dừng để tránh nhầm với nâng cấp.
-2. Đã có v5 gốc 39 bảng: sao lưu, dừng ghi và chạy sáu file theo thứ tự ở đầu tài liệu. Đã nâng cấp một phần thì chỉ chạy các file còn thiếu theo thứ tự này. Đã có bản nhiều bài đăng thì chỉ cần `20261025_post_review_quota.sql`. Nếu dữ liệu cũ vượt 3 bài chờ/phòng, preflight dừng trước DDL để quản trị duyệt/từ chối; không tự xóa hay thay quyết định bài. Không chạy migration trên CSDL vừa tạo bằng schema mới.
+2. Đã có v5 gốc 39 bảng: sao lưu, dừng ghi và chạy bảy file theo thứ tự ở đầu tài liệu. Đã nâng cấp một phần thì chỉ chạy các file còn thiếu theo thứ tự này. Sau `20261025_post_review_quota.sql` chạy `20261025_house_right_verification.sql`. Nếu dữ liệu cũ vượt 3 bài chờ/phòng, preflight dừng trước DDL để quản trị duyệt/từ chối; không tự xóa hay thay quyết định bài. Không chạy migration trên CSDL vừa tạo bằng schema mới.
 3. Preflight từ chối trường hợp phòng vượt sức chứa, hợp đồng đóng nhưng còn lượt ở mở, hợp đồng hoạt động không có đại diện đang ở, hoặc nhiều hợp đồng mở trên cùng phòng. Cần đối soát các hàng đó, không tự xóa người hoặc đoán ngày ra.
 4. Nếu script báo đã nâng cấp/đang dở, không dùng `--force` hoặc chạy lại bỏ qua lỗi. DDL MySQL có implicit commit, nên lỗi sau một số lệnh DDL cần kiểm tra trạng thái và phục hồi/hoàn tất theo bản sao lưu. [Tài liệu MySQL về implicit commit](https://dev.mysql.com/doc/refman/8.0/en/implicit-commit.html).
 5. Sau nâng cấp, API gọi các thủ tục đúng quyền; thiết lập múi giờ UTC cho mọi kết nối, còn ngày cư trú truyền vào là ngày Việt Nam. Các SQL trong `tests/fixtures/` chỉ phục vụ kiểm thử.
@@ -493,6 +500,53 @@ Từ **Nhà & phòng → Xem chi tiết**, thông tin vật lý/giá/cọc/tiệ
 
 **Không cần sửa CSDL cho hai danh sách này:** `room_tenants.room_id` và `status` đã xác định người đang ở; đại diện lấy từ `contracts.representative_room_tenant_id`. `room_services` đã liên kết phòng với `house_services`, có trạng thái bật/tắt và giá/phương pháp riêng; NULL kế thừa cấu hình nhà. Wireframe hiện cấu hình giá riêng, cách tính lấy từ dịch vụ nhà; backend khi triển khai phải dùng thêm `calculation_method_override` nếu đã cấu hình trong SQL. Không thêm bảng/cột/migration và không thay quy trình vào ở, rời phòng, bàn giao đại diện hay tính phí. API cần kiểm tra quyền trên máy chủ và lọc trường người ở trước khi trả dữ liệu; quyền ẩn/hiện trong prototype chỉ mô phỏng ở trình duyệt.
 
+### 4.14. Tạo nhà và xác minh quyền cho thuê từng nhà
+
+Chủ trọ vào **Nhà & phòng → Thêm nhà trọ**, nhập tên, địa chỉ, tỉnh/thành, khu vực hiển thị, cặp tọa độ tùy chọn và ghi chú. Lưu xong chọn ngay nhà mới, chưa bắt buộc có phòng. Màn hình Dịch vụ hoạt động cả khi nhà chưa có phòng/dịch vụ. Form nhà kiểm tra chủ sở hữu, phiên bản và khóa chống tạo trùng khi gửi lại.
+
+Chọn **Xác minh quyền cho thuê**, khai phạm vi và thời hạn, đính kèm minh chứng rồi gửi. Nhà chỉ có một hồ sơ chờ duyệt. Quản trị vào **Xác minh hồ sơ → Quyền cho thuê từng nhà trọ → Xem hồ sơ**, mở từng tệp và đối chiếu người nộp, địa chỉ, phạm vi, thời hạn trước khi đánh dấu xác nhận và duyệt. Từ chối/thu hồi phải ghi lý do; chủ trọ được thông báo và có thể nộp hồ sơ mới. Chủ trọ có thể rút hồ sơ đang chờ. Mỗi lần nộp là một bản ghi riêng, giữ nguyên ảnh chụp thông tin nhà và minh chứng đã nộp.
+
+| Tư cách | Minh chứng bắt buộc | Thời hạn |
+| --- | --- | --- |
+| `OWNER` | `OWNER_PROOF`: giấy tờ thể hiện quyền sở hữu phù hợp | Có ngày bắt đầu; ngày kết thúc tùy chọn |
+| `AUTHORIZED` | `OWNER_PROOF` và `AUTHORIZATION`: văn bản ủy quyền cho thuê | Bắt buộc có ngày bắt đầu/kết thúc |
+| `SUBLESSOR` | `LEASE_AGREEMENT` và `SUBLET_CONSENT`: thuê gốc và chấp thuận cho thuê lại | Bắt buộc có ngày bắt đầu/kết thúc |
+
+Có thể đính kèm `OTHER`; tổng 1–8 tệp PDF/JPEG/PNG/WebP, mỗi tệp tối đa 5 MB. Được nộp hồ sơ có ngày bắt đầu trong tương lai, nhưng chỉ duyệt khi đã đến ngày hiệu lực. Phạm vi khai báo phải bao phủ các phòng dự định cho thuê tại nhà; quản trị đối chiếu thủ công trước khi phê duyệt cho cả nhà. Luồng hiện tại không có phân quyền chỉ cho thuê một số phòng trong cùng nhà.
+
+Các trạng thái lưu: `PENDING`, `APPROVED`, `REJECTED`, `WITHDRAWN`, `REVOKED`, `EXPIRED`, `SUPERSEDED`. Nhãn nhà nháp/chưa xác minh hoặc cần xác minh lại được tính từ lịch sử. Phê duyệt mới thay thế phê duyệt trước; đang nộp lại không làm mất quyền cũ nếu quyền đó vẫn hiệu lực. Hết hạn được kiểm tra trực tiếp theo ngày Việt Nam khi truy vấn, không phải chờ worker đổi trạng thái. Tên hiển thị/ghi chú nhà đổi không mất xác minh. Đổi chủ sở hữu, địa chỉ, mã tỉnh/địa phương hoặc tọa độ tăng phiên bản định danh và vô hiệu hóa quyền cũ; hồ sơ đang chờ được rút với lý do để nộp lại.
+
+Nhà chưa được xác minh vẫn được chuẩn bị phòng, dịch vụ và bài chờ duyệt. Công khai/khôi phục bài, thuê mới, gia hạn và phòng đích khi chuyển hợp đồng cần quyền cho thuê đang hiệu lực. Hợp đồng mới đang chờ xác nhận/kích hoạt cũng kiểm tra lại. Khi quyền hết hiệu lực, view công khai ẩn tin ngay; không đổi/xóa nội dung, quyết định duyệt bài, hợp đồng, hóa đơn hay lượt cư trú cũ. Vẫn ghi nhận rời phòng/kết thúc hợp đồng. `PAPER_IMPORT` dành riêng nhập hợp đồng đã ký/lịch sử; API phải hạn chế quyền đường nhập này, không cho client dùng để thay luồng thuê mới.
+
+**CSDL hiện có 43 bảng**, thêm hai bảng sau:
+
+| Bảng | Thông tin |
+| --- | --- |
+| `rental_houses` | Bổ sung `name`, `row_version`, `verification_version`, `creation_key`; khóa chống tạo trùng theo chủ trọ |
+| `rental_house_verifications` | Nhà, người nộp, phiên bản/JSON định danh lúc nộp, tư cách, phạm vi, thời hạn, trạng thái, thời điểm và người duyệt/thu hồi, lý do |
+| `house_verification_documents` | Mỗi minh chứng liên kết hồ sơ với `files` và loại tài liệu; một tệp có thể chứa nhiều loại chứng minh |
+| `files` | Tái sử dụng metadata có sẵn, `purpose=LANDLORD_PROOF`, `visibility=PRIVATE`, chủ tệp đúng người nộp |
+
+`landlord_verifications` tiếp tục dùng cho xác minh tài khoản; không dùng thay hồ sơ quyền từng nhà. FK hồ sơ lưu người nộp tại thời điểm nộp, không buộc vào người sở hữu hiện tại theo cách làm mất lịch sử. UNIQUE bảo đảm một hồ sơ chờ và một phê duyệt hiện hành/nhà. Minh chứng và nội dung hồ sơ đã nộp không được sửa/xóa để thay thế quyết định cũ. `v_effective_house_verifications` kiểm tra chủ hiện tại, phiên bản, trạng thái tài khoản, thời hạn. **API tìm kiếm/xem/chia sẻ công khai phải đọc `v_public_house_posts`**; không chỉ lọc `posts.status='APPROVED'`.
+
+Các thủ tục trong `database/source/house-rights.sql`:
+
+```sql
+sp_create_rental_house(actor, name, address, province, creation_key, OUT house_id)
+sp_update_rental_house(house_id, actor, row_version, name, address, province,
+  locality, area_label, latitude, longitude, notes)
+sp_submit_house_verification(house_id, actor, right_type, scope, valid_from,
+  valid_until, documents_json, OUT verification_id)
+sp_review_house_verification(verification_id, actor, decision, reason, evidence_checked)
+sp_withdraw_house_verification(verification_id, actor)
+```
+
+`documents_json` là mảng `[{"fileId":123,"documentType":"OWNER_PROOF"}]`; dùng ID tệp đã tải xong và được máy chủ kiểm tra nội dung. `decision` là `APPROVE`/`REJECT`/`REVOKE`. Actor lấy từ phiên đăng nhập. Các thủ tục mở giao dịch riêng, khóa nhà trước khi xét quyết định; ghi quyết định, audit và thông báo cùng giao dịch. Trigger chặn công khai bài/thuê mới và gia hạn khi quyền không hiệu lực, kể cả ghi trực tiếp. Khi truy vấn quyền trong trigger dùng locking read để không dùng lại ảnh chụp giao dịch trước thu hồi. API chỉ được EXECUTE thủ tục công khai, không được gọi helper hay ghi bảng xét duyệt tùy ý; cấp quyền đọc tệp riêng tư cho đúng người nộp và quản trị đang hoạt động.
+
+Migration `20261025_house_right_verification.sql` chạy cuối, sau quota; kiểm tra sai thứ tự/chạy lại trước DDL. Không tự tạo phê duyệt cho nhà cũ. Giữ các hợp đồng, bài và người ở có sẵn; các tin cũ cần qua xác minh nhà để trở lại view công khai. Cần triển khai truy vấn view công khai đồng thời với migration.
+
+Wireframe lưu nội dung tệp trong IndexedDB cùng trình duyệt, metadata trong localStorage. Đây là mô phỏng quyền bằng chuyển vai trò, chưa có đăng nhập/API hay bảo vệ kho tệp phía máy chủ. Reload cùng trình duyệt vẫn mở được tệp; máy khác không có tệp. Hai nhà mẫu có hồ sơ/giấy tờ giả lập được gắn nhãn rõ; chỉ khôi phục hồ sơ mẫu cho đúng địa chỉ/chủ sở hữu mẫu, không áp dụng cho nhà tùy chỉnh hoặc dữ liệu SQL cũ. Dữ liệu địa chỉ có danh mục 34 tỉnh/thành theo [Quyết định 19/2025/QĐ-TTg](https://vanban.chinhphu.vn/?classid=1&docid=214409&pageid=27160).
+
 ## 5. Backend cần làm thêm cho các luồng còn lại
 
 Các CHECK/FK, trigger và thủ tục mới hỗ trợ các luồng vừa sửa, nhưng chưa phải một backend/API hoàn chỉnh. Những kiểm tra tổng hợp và giao dịch phải được thực hiện qua thủ tục tương ứng; không thay bằng các lệnh ghi rời rạc từ client. Backend cần xác thực tài khoản, lấy actor ID từ phiên đăng nhập và cấp quyền DB theo phạm vi công việc, không tin actor ID do trình duyệt tùy ý gửi lên.
@@ -517,15 +571,17 @@ Sửa các lỗi trên không đồng nghĩa wireframe đã thay thế backend h
 
 ## 8. Kiểm tra
 
+Đợt xác minh nhà trọ: 124 tình huống JavaScript, toàn bộ kiểm thử Chrome và 56 kiểm tra tích hợp MySQL đạt. Bao phủ nhà nháp chưa có phòng/dịch vụ, tạo trùng, quyền sở hữu, hồ sơ theo từng tư cách, loại/kích thước tệp, một hồ sơ chờ/nhà, duyệt có xác nhận minh chứng, từ chối/rút/nộp lại/thu hồi, đổi định danh và hết hạn. Chrome tải ảnh thật vào IndexedDB, reload rồi mở lại minh chứng, xét duyệt và thu hồi trên màn hình điện thoại. MySQL kiểm tra 43 bảng, migration không tự duyệt nhà cũ, chặn công khai/thuê mới/gia hạn, giữ hợp đồng và cho phép rời phòng sau hết quyền, cạnh tranh hồ sơ chờ, tính bất biến của minh chứng, audit/thông báo và rollback. Các kiểm thử chỉ chạy trên môi trường tạm.
+
 Chạy `npm test` trong thư mục wireframe. Bộ kiểm thử gọi các handler thực tế với đồng hồ cố định, bao phủ sức chứa, giữ chỗ, trạng thái hợp đồng, vào ở theo nhóm/từng người, chuyển phòng không cập nhật dở dang, lịch UTC+7 và hủy/rút ý định.
 
-**90/90 tình huống JavaScript đạt.** Các luồng cũ vẫn đạt. Phần mới kiểm tra chặn bài chờ thứ tư, sửa bài đang chờ lúc đủ 3, không ghi đè bài đã duyệt khi gửi lại thất bại, giải phóng lượt sau duyệt/từ chối, hạn mức từng phòng, tổng bài không giới hạn và form cũ. Chi tiết phòng kiểm tra dữ liệu vật lý/danh sách đúng phòng, tạo bài chọn sẵn phòng và trở lại danh sách, mở bài/quay lại phòng, quyền chủ trọ/quản trị/người thuê và phòng chưa có bài công khai. Kiểm tra thêm người thực tế đang ở, cập nhật đại diện sau bàn giao, giữ lượt ở trên hợp đồng cũ đã đóng, không lộ danh tính cho người xem khác, lọc dịch vụ đúng phòng/nhà/trạng thái, kế thừa giá và giá riêng bằng 0, các danh sách trống. Ba tab chỉ tạo nội dung đang chọn, giữ lựa chọn khi tải lại, bỏ qua tab không hợp lệ và hỗ trợ dữ liệu demo cũ chưa có lựa chọn tab.
+**124/124 tình huống JavaScript đạt.** Các luồng cũ vẫn đạt. Phần mới kiểm tra chặn bài chờ thứ tư, sửa bài đang chờ lúc đủ 3, không ghi đè bài đã duyệt khi gửi lại thất bại, giải phóng lượt sau duyệt/từ chối, hạn mức từng phòng, tổng bài không giới hạn và form cũ. Chi tiết phòng kiểm tra dữ liệu vật lý/danh sách đúng phòng, tạo bài chọn sẵn phòng và trở lại danh sách, mở bài/quay lại phòng, quyền chủ trọ/quản trị/người thuê và phòng chưa có bài công khai. Kiểm tra thêm người thực tế đang ở, cập nhật đại diện sau bàn giao, giữ lượt ở trên hợp đồng cũ đã đóng, không lộ danh tính cho người xem khác, lọc dịch vụ đúng phòng/nhà/trạng thái, kế thừa giá và giá riêng bằng 0, các danh sách trống. Ba tab chỉ tạo nội dung đang chọn, giữ lựa chọn khi tải lại, bỏ qua tab không hợp lệ và hỗ trợ dữ liệu demo cũ chưa có lựa chọn tab.
 
 `npm run test:browser` cũng đạt với Chrome chạy theo giờ Los Angeles: thao tác nút/form thật cho các luồng cũ và gửi/chấp nhận/từ chối/rút đề nghị, tạo lịch trực tiếp sau chat, cảnh báo trước gửi hợp đồng, hủy lịch/đóng đề nghị và thông báo hai bên, xác nhận giữ phòng, hủy hợp đồng và đặt lịch mới. Có kiểm tra UTC+7, trạng thái chung giữa chat/Lịch xem, tải lại localStorage, chia sẻ tin, sửa/gửi lại tin của phòng hiện có và bố cục di động; không có lỗi JavaScript. Cần Node 22+, Chrome tại đường dẫn mặc định hoặc `CHROME_PATH`.
 
-`npm run test:database`: **48/48 kiểm tra tích hợp đạt trên MySQL 8.0.42**, gồm tạo mới 41 bảng, nâng cấp qua sáu migration và tính tương đương cột/FK/chỉ mục bài đăng/nội dung thủ tục tạo hợp đồng. Hai phiên gửi cùng tranh lượt chờ thứ ba chỉ một thành công. Có kiểm tra sửa bài đang chờ, gửi lại bài đã duyệt thất bại không ghi đè, duyệt/từ chối giải phóng slot, ghi trực tiếp không vượt/giả slot, quyền và phiên bản. Migration từ chối dữ liệu cũ có 4 bài chờ trước DDL, giữ nguyên bài, rồi cấp đúng slot khi đã xử lý về 3; từ chối sai thứ tự/chạy lại. Các kiểm tra người ở, đại diện, lịch/hợp đồng dùng chung phòng, giao dịch đồng thời và rollback vẫn đạt.
+`npm run test:database`: **56/56 kiểm tra tích hợp đạt trên MySQL 8.0.42**, gồm tạo mới 43 bảng, nâng cấp qua bảy migration và tính tương đương cột/FK/chỉ mục bài đăng/nội dung thủ tục tạo hợp đồng. Hai phiên gửi cùng tranh lượt chờ thứ ba chỉ một thành công. Có kiểm tra sửa bài đang chờ, gửi lại bài đã duyệt thất bại không ghi đè, duyệt/từ chối giải phóng slot, ghi trực tiếp không vượt/giả slot, quyền và phiên bản. Migration từ chối dữ liệu cũ có 4 bài chờ trước DDL, giữ nguyên bài, rồi cấp đúng slot khi đã xử lý về 3; từ chối sai thứ tự/chạy lại. Các kiểm tra người ở, đại diện, lịch/hợp đồng dùng chung phòng, giao dịch đồng thời và rollback vẫn đạt.
 
-`npm run db:check` xác nhận SQL tạo mới và các migration sinh ra đồng bộ với bốn nguồn trong `database/source/`. Các kiểm tra chỉ dùng instance tạm có thư mục dữ liệu/cổng riêng và dữ liệu fixture; chưa xác nhận dữ liệu hoặc triển khai trên CSDL hiện có của người dùng.
+`npm run db:check` xác nhận SQL tạo mới và các migration sinh ra đồng bộ với năm nguồn trong `database/source/`. Các kiểm tra chỉ dùng instance tạm có thư mục dữ liệu/cổng riêng và dữ liệu fixture; chưa xác nhận dữ liệu hoặc triển khai trên CSDL hiện có của người dùng.
 
 Kiểm thử Chrome cũng tạo hai bài mới cho cùng phòng, duyệt một bài/từ chối bài kia, sửa và ẩn độc lập, xem hai thẻ công khai, lưu/chia sẻ/báo cáo đúng bài và xác nhận thẻ chia sẻ của bài bị ẩn không bị thay bằng bài khác cùng phòng. Các biểu mẫu được thử trên bố cục di động.
 

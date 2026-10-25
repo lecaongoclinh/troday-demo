@@ -55,7 +55,34 @@ img { display: block; max-width: 100%; }
 .topbar-actions { display: flex; align-items: center; gap: 17px; }
 .icon-button { border: 1px solid var(--line); background: #fff; color: #40585a; border-radius: 6px; width: 36px; height: 36px; display: inline-grid; place-items: center; position: relative; flex: none; }
 .icon-button:hover { border-color: #8abcb4; background: #f7fbfa; }
-.notification-dot { width: 7px; height: 7px; background: #d96b45; position: absolute; top: 5px; right: 5px; border: 1px solid white; border-radius: 50%; }
+.notification-button.has-unread { color: #b91c1c; border-color: #efb8b2; background: #fff5f3; }
+.notification-badge { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 4px; display: inline-grid; place-items: center; background: #dc2626; color: #fff; border: 2px solid #fff; border-radius: 12px; font-size: 10px; font-weight: 800; line-height: 1; }
+.notification-badge[hidden] { display: none; }
+.notification-list { display: grid; gap: 8px; }
+.notification-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; }
+.notification-item.unread { background: #fff5f3; border-color: #efc7c2; }
+.notification-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+.notification-copy small { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+.notification-item:not(.unread) strong { font-weight: 500; }
+.notification-item .button { flex-shrink: 0; }
+.notification-popups { display: none; position: fixed; inset: auto; top: 78px; right: 22px; width: min(380px, calc(100vw - 24px)); max-height: calc(100dvh - 100px); margin: 0; padding: 0; border: 0; background: transparent; overflow: auto; z-index: 30; }
+.notification-popups.has-popups { display: grid; gap: 10px; }
+.notification-popup { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid #c9ded9; border-left: 4px solid var(--teal); border-radius: 7px; background: #fff; color: var(--ink); box-shadow: 0 6px 24px #19353626; }
+.notification-popup-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--teal-soft); color: var(--teal); flex: none; }
+.notification-popup-icon svg { width: 18px; height: 18px; }
+.notification-popup-open { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.notification-popup-open strong { display: block; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.notification-popup-open span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.notification-popup-open small { display: block; margin-top: 8px; color: var(--teal); font-size: 11px; font-weight: 700; }
+.notification-popup-open:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; border-radius: 3px; }
+.notification-popup-close { flex: none; min-height: 26px; padding: 3px; border: 0; }
+.house-verification-summary { margin-bottom: 18px; font-size: 12px; line-height: 1.6; }
+.house-verification-summary > .pill { margin-right: 6px; }
+.house-verification-summary .table-actions, .house-verification-row { flex-wrap: wrap; }
+.house-verification-row > div { min-width: 0; overflow-wrap: anywhere; }
+.house-proof-preview { display: block; width: 100%; min-height: 340px; max-height: 60vh; object-fit: contain; border: 1px solid var(--line); }
+.consent-field { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.6; }
+[data-house-document][hidden] { display: none; }
 .role-switch { display: inline-flex; gap: 2px; border: 1px solid var(--line); padding: 3px; border-radius: 6px; background: #f6f8f8; }
 .role-switch button { border: 0; background: transparent; color: #698082; padding: 7px 10px; font-size: 11px; font-weight: 700; border-radius: 4px; white-space: nowrap; }
 .role-switch button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 4px #1732351c; }
@@ -368,6 +395,7 @@ td.actions-cell { text-align: right; }
   .flow-banner { align-items: flex-start; flex-direction: column; }
   .form-grid { grid-template-columns: 1fr; }
   .toast { bottom: 74px; right: 12px; }
+  .notification-popups { top: 66px; right: 12px; max-height: calc(100dvh - 146px); }
 }
 
 @media (max-height: 520px) {

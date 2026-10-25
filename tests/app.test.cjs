@@ -17,25 +17,144 @@ function demo(savedState) {
     return nodes.get(selector);
   };
   const storage = new Map(savedState ? [["troday-wireframe-v5-20261023", JSON.stringify(savedState)]] : []);
+  const timers = new Map(); let timerSequence = 0;
   const context = vm.createContext({
     Date: Clock, Intl, structuredClone, URLSearchParams, URL,
-    setTimeout: () => 1, clearTimeout() {},
+    setTimeout: (callback, delay) => { const id = ++timerSequence; timers.set(id, { callback, delay }); return id; }, clearTimeout: (id) => timers.delete(id),
     localStorage: { getItem: (key) => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
     document: { querySelector: node, querySelectorAll: () => [], addEventListener() {} },
-    window: { scrollTo() {} }, location: { search: "" },
+    window: { scrollTo() {}, houseProofStore: { async save(entries, ownerId) { return entries.map(({ file, documentType }, index) => ({ id: `test-file-${index}-${now}`, ownerId, documentType, name: file.name, size: file.size, type: file.type })); }, async remove() {} } }, location: { search: "" },
     FormData: class {
       constructor(form) { this.values = form.values; }
       get(key) { const value = this.values[key]; return Array.isArray(value) ? value[0] : value ?? null; }
       getAll(key) { const value = this.values[key]; return value == null ? [] : Array.isArray(value) ? value : [value]; }
     }
   });
+  vm.runInContext(fs.readFileSync(`${__dirname}/../house-rights.js`, "utf8"), context);
   vm.runInContext(fs.readFileSync(`${__dirname}/../app.js`, "utf8"), context);
-  const api = vm.runInContext("({ state: () => state, handleAction, handleForm, render, renderResidents, roomLoad, appointmentTimestamp, todayISO, openAppointment })", context);
+  const api = vm.runInContext("({ state: () => state, handleAction, handleForm, render, renderResidents, roomLoad, appointmentTimestamp, todayISO, openAppointment, receiveSharedState, syncIncomingNotifications, effectiveHouseVerification, houseVerificationState, houseIdentity })", context);
   const state = api.state();
   state.role = "landlord"; state.view = "residents";
-  return { state, api, node, action: api.handleAction, submit: (name, values) => api.handleForm({ dataset: { form: name }, values }), now: (value) => { now = Date.parse(value); } };
+  return { state, api, node, action: api.handleAction, submit: (name, values) => api.handleForm({ dataset: { form: name }, values, querySelector: () => ({ disabled: false }) }), now: (value) => { now = Date.parse(value); }, expirePopups: () => { for (const timer of [...timers.values()]) if (timer.delay === 8000) timer.callback(); } };
 }
 const byId = (items, id) => items.find((item) => item.id === id);
+const newHouseValues = (extra = {}) => ({ houseId: "", creationKey: "house-test-1", name: "New house", address: "123 New Street", provinceCode: "01", area: "New area", latitude: "", longitude: "", notes: "", ...extra });
+const pdfProof = { name: "proof.pdf", size: 100, type: "application/pdf" };
+function houseProofValues(d, houseId, extra = {}) { return { houseId, houseVersion: String(byId(d.state.houses,houseId).verificationVersion), rightType: "OWNER", scope: "Entire house", validFrom: "2026-10-24", validUntil: "", note: "", document_OWNER_PROOF: pdfProof, ...extra }; }
+function approveHouseProof(d, id) { d.state.role="admin"; d.submit("house-verification-decision", { verificationId:id, decision:"APPROVE", checkedEvidence:"yes" }); }
+
+test("new house creates one owned draft with no rooms, survives reload and supports empty services", () => {
+  const d=demo(); const count=d.state.houses.length;
+  d.submit("house",newHouseValues()); const h=d.state.houses.at(-1);
+  assert.equal(h.ownerId,"quan"); assert.equal(d.api.houseVerificationState(h).status,"DRAFT");
+  d.submit("house",newHouseValues()); assert.equal(d.state.houses.length,count+1);
+  d.action("house-services",h.id); assert.match(d.node("#app-main").innerHTML,/Chưa có phòng/);
+  d.submit("service",{serviceId:"",name:"Water",unit:"m3",price:"12000",method:"METERED"});
+  assert.equal(d.state.services.at(-1).houseId,h.id);
+  d.action("navigate","properties"); assert.match(d.node("#app-main").innerHTML,/Cần xác minh quyền cho thuê/);
+  const restored=demo(JSON.parse(JSON.stringify(d.state)));
+  assert.equal(restored.api.effectiveHouseVerification(h.id),null);
+  assert.equal(byId(restored.state.houses,h.id).name,"New house");
+});
+test("house creation and editing reject wrong roles, stale versions and invalid coordinates", () => {
+  const d=demo(), count=d.state.houses.length;
+  for(const role of ["tenant","admin"]) {d.state.role=role; d.submit("house",newHouseValues());}
+  assert.equal(d.state.houses.length,count); d.state.role="landlord";
+  d.submit("house",newHouseValues({latitude:"10",longitude:""})); assert.equal(d.state.houses.length,count);
+  const h=byId(d.state.houses,"h1"), before=JSON.stringify(h);
+  d.submit("house",newHouseValues({houseId:h.id,originalVersion:"0"})); assert.equal(JSON.stringify(h),before);
+  h.ownerId="huong"; const foreign=JSON.stringify(h);
+  d.submit("house",newHouseValues({houseId:h.id,originalVersion:String(h.version)})); assert.equal(JSON.stringify(h),foreign);
+});
+test("a draft house can add rooms but pending posts cannot be published without verification", () => {
+  const d=demo(); d.submit("house",newHouseValues()); const h=d.state.houses.at(-1);
+  d.submit("room",{roomId:"",code:"N101",area:"20",price:"3000000",deposit:"3000000",capacity:"2",status:"AVAILABLE"});
+  const r=d.state.rooms.at(-1); assert.equal(r.houseId,h.id);
+  const p={id:"pending-new-house",roomId:r.id,status:"PENDING_REVIEW",title:"New post"};d.state.posts.push(p);
+  d.state.role="admin";d.action("approve-listing",p.id);assert.equal(p.status,"PENDING_REVIEW");
+});
+test("proof submissions require the evidence for each right type and delegated expiry", async () => {
+  for(const rightType of ["OWNER","AUTHORIZED","SUBLESSOR"]) {
+    const d=demo();d.submit("house",newHouseValues());const h=d.state.houses.at(-1),before=d.state.houseVerifications.length;
+    const values=houseProofValues(d,h.id,{rightType,document_OWNER_PROOF:[],validUntil:""});
+    await d.submit("house-verification",values);assert.equal(d.state.houseVerifications.length,before);
+    if(rightType==="OWNER")values.document_OWNER_PROOF=pdfProof;
+    if(rightType==="AUTHORIZED"){values.document_OWNER_PROOF=pdfProof;values.document_AUTHORIZATION=pdfProof;values.validUntil="2027-10-24";}
+    if(rightType==="SUBLESSOR"){values.document_LEASE_AGREEMENT=pdfProof;values.document_SUBLET_CONSENT=pdfProof;values.validUntil="2027-10-24";}
+    await d.submit("house-verification",values);assert.equal(d.state.houseVerifications.length,before+1);
+    assert.equal(d.state.houseVerifications.at(-1).status,"PENDING");assert.equal(d.api.effectiveHouseVerification(h.id),null);
+  }
+});
+test("concurrent submissions and duplicate submissions create only one pending house application", async () => {
+  const d=demo();d.submit("house",newHouseValues());const h=d.state.houses.at(-1),before=d.state.houseVerifications.length;
+  const values=houseProofValues(d,h.id);
+  await Promise.all([d.submit("house-verification",values),d.submit("house-verification",values)]);
+  await d.submit("house-verification",values);assert.equal(d.state.houseVerifications.length,before+1);
+  assert.equal(d.state.houseVerificationDocuments.filter(x=>x.verificationId===d.state.houseVerifications.at(-1).id).length,1);
+});
+test("proof approval requires admin evidence confirmation then allows publication", async () => {
+  const d=demo();d.submit("house",newHouseValues());const h=d.state.houses.at(-1);
+  await d.submit("house-verification",houseProofValues(d,h.id));const v=d.state.houseVerifications.at(-1);
+  d.submit("house-verification-decision",{verificationId:v.id,decision:"APPROVE",checkedEvidence:"yes"});assert.equal(v.status,"PENDING");
+  d.state.role="admin";d.submit("house-verification-decision",{verificationId:v.id,decision:"APPROVE"});assert.equal(v.status,"PENDING");
+  approveHouseProof(d,v.id);assert.equal(v.status,"APPROVED");assert.ok(v.evidenceCheckedAt);
+  assert.equal(d.api.effectiveHouseVerification(h.id).id,v.id);
+  d.state.role="landlord";d.state.houseSelection=h.id;
+  d.submit("room",{code:"N101",area:"20",price:"3000000",deposit:"3000000",capacity:"2",status:"AVAILABLE"});
+  const r=d.state.rooms.at(-1),p={id:"post-verified",roomId:r.id,status:"PENDING_REVIEW"};d.state.posts.push(p);
+  d.state.role="admin";d.action("approve-listing",p.id);assert.equal(p.status,"APPROVED");
+});
+test("rejection, withdrawal, resubmission and revocation preserve application history", async () => {
+  const d=demo();d.submit("house",newHouseValues());const h=d.state.houses.at(-1);
+  const submit=()=>d.submit("house-verification",houseProofValues(d,h.id));await submit();const first=d.state.houseVerifications.at(-1);
+  d.state.role="admin";d.submit("house-verification-decision",{verificationId:first.id,decision:"REJECT",reason:""});assert.equal(first.status,"PENDING");
+  d.submit("house-verification-decision",{verificationId:first.id,decision:"REJECT",reason:"Address mismatch"});assert.equal(first.status,"REJECTED");
+  d.state.role="landlord";await submit();const second=d.state.houseVerifications.at(-1);d.action("withdraw-house-verification",second.id);assert.equal(second.status,"WITHDRAWN");
+  await submit();const third=d.state.houseVerifications.at(-1);approveHouseProof(d,third.id);
+  d.submit("house-verification-decision",{verificationId:third.id,decision:"REVOKE",reason:"Authorization withdrawn"});
+  assert.equal(third.status,"REVOKED");assert.equal(d.api.effectiveHouseVerification(h.id),null);
+  assert.equal(d.state.houseVerifications.filter(x=>x.houseId===h.id).length,3);
+});
+test("name changes keep approval; identity changes invalidate rights and withdraw stale pending applications", async () => {
+  const d=demo(),h=byId(d.state.houses,"h1"),v=d.api.effectiveHouseVerification(h.id);
+  const values={...h,houseId:h.id,originalVersion:String(h.version),name:"Updated name",provinceCode:"01",latitude:"",longitude:""};
+  d.submit("house",values);assert.equal(d.api.effectiveHouseVerification(h.id).id,v.id);
+  await d.submit("house-verification",houseProofValues(d,h.id));const pending=d.state.houseVerifications.at(-1);
+  d.submit("house",{...values,originalVersion:String(h.version),address:"Different address"});
+  assert.equal(pending.status,"WITHDRAWN");assert.equal(d.api.effectiveHouseVerification(h.id),null);assert.equal(v.status,"APPROVED");
+  d.state.role="tenant";d.action("post-detail",d.state.posts.find(p=>p.roomId==="r3").id);
+  assert.doesNotMatch(d.node("#app-main").innerHTML,/data-room-resident-id/);
+});
+test("expired or revoked rights block new leases and renewals while preserving active rental history", () => {
+  const d=demo(),v=d.api.effectiveHouseVerification("h1"),before=JSON.stringify(d.state.contracts);
+  v.validUntil="2026-10-23";assert.equal(d.api.effectiveHouseVerification("h1"),null);
+  d.action("open-contract","v2");assert.doesNotMatch(d.node("#dialog-body").innerHTML,/data-form="create-contract"/);
+  const request=change(d,"RENEWAL",{newEnd:"2028-10-24"});const end=k2(d).end;d.action("apply-change",request.id);assert.equal(k2(d).end,end);
+  assert.equal(JSON.stringify(d.state.contracts),before);
+  d.action("move-out","k2:o3");assert.equal(k2(d).members[1].status,"LEFT");
+});
+test("legacy custom houses never inherit seed demonstration approvals", () => {
+  const d=demo(),saved=JSON.parse(JSON.stringify(d.state));delete saved.houseVerifications;delete saved.houseVerificationDocuments;delete saved.houseProofFiles;
+  byId(saved.houses,"h1").address="Legacy custom address";saved.houses.push({id:"legacy",ownerId:"quan",name:"Legacy",address:"Other"});
+  const restored=demo(saved);assert.equal(restored.api.effectiveHouseVerification("h1"),null);assert.equal(restored.api.effectiveHouseVerification("legacy"),null);
+  assert.ok(restored.api.effectiveHouseVerification("h2"));
+});
+test("revocation between lease steps prevents confirmation and activation without deleting the pending lease", () => {
+  const d=demo(),c=byId(d.state.contracts,"k1");d.api.effectiveHouseVerification("h1").status="REVOKED";
+  d.state.role="tenant";d.action("confirm-contract",c.id);assert.equal(c.status,"PENDING_CONFIRMATION");
+  c.status="CONFIRMED";c.revisionStatus="CONFIRMED";d.state.role="landlord";
+  const before=JSON.stringify(c);d.submit("move-in",{contractId:c.id,date:"2026-10-24",memberIds:[c.members[0].id]});
+  assert.equal(JSON.stringify(c),before);
+  d.submit("create-contract",{viewingId:"v2"});assert.equal(d.state.contracts.filter(x=>x.viewingId==="v2").length,0);
+});
+test("proof uploads reject unsupported and oversized files, and admins cannot approve future rights", async () => {
+  const d=demo();d.submit("house",newHouseValues());const h=d.state.houses.at(-1),before=d.state.houseVerifications.length;
+  for(const file of [{name:"script.html",type:"text/html",size:100},{...pdfProof,size:5242881}]) {
+    await d.submit("house-verification",houseProofValues(d,h.id,{document_OWNER_PROOF:file}));assert.equal(d.state.houseVerifications.length,before);
+  }
+  await d.submit("house-verification",houseProofValues(d,h.id,{validFrom:"2027-01-01"}));const v=d.state.houseVerifications.at(-1);
+  approveHouseProof(d,v.id);assert.equal(v.status,"PENDING");assert.equal(d.api.effectiveHouseVerification(h.id),null);
+});
 const viewingCard = (d, id) => d.node("#app-main").innerHTML.match(new RegExp('<article class="chat-viewing-card" data-viewing-id="' + id + '">([\\s\\S]*?)</article>'))?.[1] || "";
 const roomDetailSection = (d, name) => d.node("#app-main").innerHTML.match(new RegExp(`<section data-room-${name}>([\\s\\S]*?)</section>`))?.[1] || "";
 const k2 = (d) => byId(d.state.contracts, "k2");
@@ -309,6 +428,90 @@ test("new contract rejects more initial members than the room allows", () => {
   const count = d.state.contracts.length;
   d.submit("create-contract", { viewingId: "v2", start: "2026-10-24", end: "2027-10-24", rent: "4200000", deposit: "4200000", members: "A, 123\nB, 456\nC, 789", terms: "Thỏa thuận" });
   assert.equal(d.state.contracts.length, count);
+});
+
+test("sending a chat message notifies its recipient and never shows a popup to the sender", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("navigate", "chats"); d.action("select-chat", "c1");
+  d.submit("chat-message", { message: '<b>Phòng còn trống không?</b>' });
+  const notice = d.state.notifications.at(-1), message = byId(d.state.conversations, "c1").messages.at(-1);
+  assert.equal(notice.type, "CHAT_MESSAGE"); assert.equal(notice.userId, "quan");
+  assert.equal(notice.senderId, "lan"); assert.equal(notice.messageId, message.id); assert.equal(notice.conversationId, "c1");
+  assert.equal(notice.read, false); assert.equal(d.node("#notification-popups").innerHTML, "");
+  d.action("switch-role", "landlord");
+  assert.match(d.node("#notification-popups").innerHTML, /Tin nhắn mới từ Trần Ngọc Lan/);
+  assert.match(d.node("#notification-popups").innerHTML, /&lt;b&gt;Phòng còn trống/);
+  assert.doesNotMatch(d.node("#notification-popups").innerHTML, /<b>Phòng/);
+  d.action("open-notification", notice.id);
+  assert.equal(d.state.view, "chats"); assert.equal(d.state.selectedConversation, "c1");
+  assert.equal(d.state.chatMobileOpen, true); assert.equal(notice.read, true);
+});
+
+test("a cross-tab delivery preserves the receiver's role, page, draft and dialog and does not replay", () => {
+  const sender = demo(); sender.state.role = "tenant"; sender.action("navigate", "chats"); sender.action("select-chat", "c1");
+  sender.submit("chat-message", { message: "Tin gửi từ tab người thuê" });
+  const receiver = demo(); receiver.state.view = "dashboard";
+  receiver.state.chatDrafts["quan:c1"] = "Nội dung chưa gửi";
+  receiver.node("#dialog-body").innerHTML = "Form đang nhập";
+  const event = { key: "troday-wireframe-v5-20261023", newValue: JSON.stringify(sender.state) };
+  receiver.api.receiveSharedState(event);
+  assert.equal(receiver.state.role, "landlord"); assert.equal(receiver.state.view, "dashboard");
+  assert.equal(receiver.state.chatDrafts["quan:c1"], "Nội dung chưa gửi");
+  assert.equal(receiver.node("#dialog-body").innerHTML, "Form đang nhập");
+  assert.match(receiver.node("#notification-popups").innerHTML, /Tin gửi từ tab người thuê/);
+  const id = sender.state.notifications.at(-1).id;
+  receiver.action("dismiss-notification", id);
+  assert.equal(byId(receiver.state.notifications, id).read, false);
+  receiver.api.receiveSharedState(event); receiver.api.render();
+  assert.equal(receiver.node("#notification-popups").innerHTML, "");
+  assert.equal(receiver.state.notifications.filter((n) => n.id === id).length, 1);
+  const restored = demo(receiver.state); restored.api.render();
+  assert.equal(restored.node("#notification-popups").innerHTML, "");
+  assert.equal(byId(restored.state.notifications, id).read, false);
+});
+
+test("messages in the conversation being read appear directly without a popup and keep the draft", () => {
+  const sender = demo(); sender.state.role = "tenant"; sender.action("navigate", "chats"); sender.action("select-chat", "c1");
+  const receiver = demo(); receiver.action("navigate", "chats"); receiver.action("select-chat", "c1");
+  receiver.state.chatDrafts["quan:c1"] = "Tôi đang soạn câu trả lời";
+  sender.submit("chat-message", { message: "Tin đến khi cuộc chat đang mở" });
+  receiver.api.receiveSharedState({ key: "troday-wireframe-v5-20261023", newValue: JSON.stringify(sender.state) });
+  assert.match(receiver.node("#app-main").innerHTML, /Tin đến khi cuộc chat đang mở/);
+  assert.match(receiver.node("#app-main").innerHTML, /Tôi đang soạn câu trả lời/);
+  assert.equal(receiver.node("#notification-popups").innerHTML, "");
+  assert.equal(receiver.state.notifications.at(-1).read, true);
+});
+
+test("generic alerts are capped at three, expire without marking read and remain in the feed", () => {
+  const d = demo();
+  for (let index = 0; index < 4; index++) d.state.notifications.push({ id: `new-${index}`, userId: "quan", text: `Thông báo mới ${index}`, read: false });
+  d.api.render();
+  assert.equal((d.node("#notification-popups").innerHTML.match(/data-popup-notification=/g) || []).length, 3);
+  assert.doesNotMatch(d.node("#notification-popups").innerHTML, /data-popup-notification="new-0"/);
+  d.expirePopups();
+  assert.equal(d.node("#notification-popups").innerHTML, "");
+  assert.ok(d.state.notifications.filter((n) => n.id.startsWith("new-")).every((n) => !n.read));
+  d.action("notifications"); assert.match(d.node("#dialog-body").innerHTML, /Thông báo mới 3/);
+  d.api.render(); assert.equal(d.node("#notification-popups").innerHTML, "");
+});
+
+test("foreign or inaccessible chat alerts do not disclose messages or open a conversation", () => {
+  const d = demo(); d.state.view = "dashboard";
+  d.state.notifications.push({ id: "foreign", userId: "lan", text: "Không được hiển thị", read: false });
+  d.state.notifications.push({ id: "invalid-chat", userId: "quan", type: "CHAT_MESSAGE", conversationId: "c2", messageId: "m6", senderId: "lan", preview: "Không tham gia hội thoại", read: false });
+  d.api.render(); assert.equal(d.node("#notification-popups").innerHTML, "");
+  d.action("open-notification", "foreign"); d.action("open-notification", "invalid-chat");
+  assert.equal(d.state.view, "dashboard"); assert.equal(byId(d.state.notifications, "foreign").read, false);
+  const before = JSON.stringify(d.state.conversations);
+  for (const event of [{ key: "other", newValue: "{}" }, { key: "troday-wireframe-v5-20261023", newValue: "bad-json" }, { key: "troday-wireframe-v5-20261023", newValue: "null" }]) d.api.receiveSharedState(event);
+  assert.equal(JSON.stringify(d.state.conversations), before);
+});
+
+test("sharing a listing also creates a message alert for the connected roommate", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("accept-roommate", "rm1");
+  d.submit("share-post", { inviteId: "rm1", postId: "p-r2", note: "Bạn xem phòng này nhé" });
+  const n = d.state.notifications.at(-1);
+  assert.equal(n.type, "CHAT_MESSAGE"); assert.equal(n.userId, "bao");
+  assert.match(n.preview, /Đã chia sẻ:/); assert.equal(n.conversationId, d.state.selectedConversation);
 });
 
 test("roommate tabs isolate their lists, count all invitation statuses and restore the chosen tab", () => {
@@ -1078,7 +1281,7 @@ test("resident identities in room detail are restricted to its owner and adminis
   d.state.role = "admin"; d.api.render(); assert.match(roomDetailSection(d, "residents"), /Phạm Thu Mai/);
   byId(d.state.houses, "h1").ownerId = "huong";
   d.state.role = "landlord"; d.api.render();
-  assert.match(roomDetailSection(d, "residents"), /Phòng hiện có 2 người đang ở/);
+  assert.equal(roomDetailSection(d, "residents"), "", "ownership change also invalidates public room access until verified again");
   assert.doesNotMatch(roomDetailSection(d, "residents"), /Phạm Thu Mai|Đỗ Bích Ngọc|data-room-resident-id/);
 });
 

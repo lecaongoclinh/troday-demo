@@ -390,8 +390,107 @@ async function main() {
     assert.equal(await evaluate(`document.querySelector('[data-room-services]').textContent.includes('Chưa có dịch vụ áp dụng') && !document.querySelector('[data-room-residents]')`),true);
     await evaluate(`document.querySelector('#room-detail-tab-residents').click()`);
     assert.equal(await evaluate(`document.querySelector('[data-room-residents]').textContent.includes('Chưa có người đang ở') && !document.querySelector('[data-room-services]')`),true);
+    // Two real tabs keep their own roles and receive live messages through storage events.
+    await evaluate(`__troday.reset(); __troday.action('navigate','chats'); __troday.action('select-chat','c1')`);
+    const { targetId: receiverId } = await call("Target.createTarget", { url: "about:blank" });
+    const { sessionId: receiverSession } = await call("Target.attachToTarget", { targetId: receiverId, flatten: true });
+    const receiverPage = (method, params) => call(method, params, receiverSession);
+    const receiverEvaluate = async (expression) => {
+      const result = await receiverPage("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+      if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+      return result.result.value;
+    };
+    const waitLive = async (reader, expression, label) => {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        try { if (await reader(expression)) return; } catch { /* Navigation may replace the old context. */ }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(`Live notification did not arrive: ${label}`);
+    };
+    await receiverPage("Page.enable"); await receiverPage("Runtime.enable");
+    await receiverPage("Page.addScriptToEvaluateOnNewDocument", { source: `const NativeDate = Date; window.Date = class extends NativeDate { constructor(...args) { super(...(args.length ? args : [NativeDate.parse('2026-10-24T03:00:00Z')])); } static now() { return NativeDate.parse('2026-10-24T03:00:00Z'); } };` });
+    await receiverPage("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await receiverPage("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/index.html?role=landlord&view=dashboard&check=live-receiver` });
+    await waitLive(receiverEvaluate, "Boolean(window.__troday) && document.readyState==='complete'", "receiver loaded");
+    await receiverPage("Page.bringToFront");
+    const sendTenantMessage = (text) => evaluate(`document.querySelector('#chat-message').value=${JSON.stringify(text)}; document.querySelector('#chat-message').dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('form[data-form="chat-message"]').requestSubmit()`);
+    await sendTenantMessage("Tin nhắn mới đến từ tab của Lan");
+    await waitLive(receiverEvaluate, "Boolean(document.querySelector('.notification-popup-open'))", "first message popup");
+    assert.equal(await receiverEvaluate(`__troday.getState().role==='landlord' && __troday.getState().view==='dashboard' && document.querySelector('#notification-popups').textContent.includes('Trần Ngọc Lan') && document.querySelector('#notification-popups').textContent.includes('Tin nhắn mới đến từ tab của Lan') && document.querySelector('#notification-popups').matches(':popover-open')`), true);
+    assert.equal(await evaluate(`__troday.getState().role==='tenant' && document.querySelectorAll('.notification-popup').length===0`), true);
+    const firstNoticeId = await receiverEvaluate(`document.querySelector('.notification-popup-open').dataset.id`);
+    await receiverEvaluate(`document.querySelector('[data-action="dismiss-notification"]').click()`);
+    assert.equal(await receiverEvaluate(`!__troday.getState().notifications.find(n=>n.id===${JSON.stringify(firstNoticeId)}).read && document.querySelectorAll('.notification-popup').length===0`), true);
+    await sendTenantMessage("Bấm thông báo để mở đúng cuộc trò chuyện");
+    await waitLive(receiverEvaluate, "Boolean(document.querySelector('.notification-popup-open'))", "second popup");
+    await receiverEvaluate(`document.querySelector('.notification-popup-open').click()`);
+    assert.equal(await receiverEvaluate(`__troday.getState().view==='chats' && __troday.getState().selectedConversation==='c1' && __troday.getState().chatMobileOpen && __troday.getState().notifications.filter(n=>n.type==='CHAT_MESSAGE' && n.userId==='quan').every(n=>n.read) && !document.querySelector('.notification-popup')`), true);
+    await receiverEvaluate(`document.querySelector('#chat-message').value='Bản nháp chưa gửi của chủ trọ'; document.querySelector('#chat-message').dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('#chat-message').focus(); document.querySelector('#chat-message').setSelectionRange(5,5)`);
+    await sendTenantMessage("Tin đến trong lúc chủ trọ đang đọc chat");
+    await waitLive(receiverEvaluate, `document.querySelector('[role="log"]').textContent.includes('Tin đến trong lúc chủ trọ đang đọc chat')`, "message in open chat");
+    assert.equal(await receiverEvaluate(`!document.querySelector('.notification-popup') && document.querySelector('#chat-message').value==='Bản nháp chưa gửi của chủ trọ' && document.activeElement.id==='chat-message' && document.querySelector('#chat-message').selectionStart===5 && __troday.getState().notifications.at(-1).read`), true);
+    await evaluate(`__troday.action('navigate','discover')`);
+    await receiverEvaluate(`document.querySelector('#chat-message').value='Chủ trọ phản hồi từ tab thứ hai'; document.querySelector('#chat-message').dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('form[data-form="chat-message"]').requestSubmit()`);
+    await page("Page.bringToFront");
+    await waitLive(evaluate, "Boolean(document.querySelector('.notification-popup-open'))", "reply popup");
+    assert.equal(await evaluate(`__troday.getState().role==='tenant' && __troday.getState().view==='discover' && document.querySelector('#notification-popups').textContent.includes('Nguyễn Minh Quân') && document.querySelector('#notification-popups').textContent.includes('Chủ trọ phản hồi từ tab thứ hai')`), true);
+    await page("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/index.html?role=tenant&view=discover&check=live-reload` });
+    await waitLive(evaluate, "location.search.includes('check=live-reload') && Boolean(window.__troday) && document.readyState==='complete'", "receiver reload");
+    assert.equal(await evaluate(`!document.querySelector('.notification-popup') && __troday.getState().notifications.some(n=>n.type==='CHAT_MESSAGE' && n.userId==='lan' && !n.read)`), true);
+    await page("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await evaluate(`__troday.action('edit-roommate-profile'); document.querySelector('[name="location"]').value='Thông tin đang nhập chưa lưu'`);
+    await receiverEvaluate(`document.querySelector('#chat-message').value='Thông báo xuất hiện trên cả điện thoại'; document.querySelector('#chat-message').dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('form[data-form="chat-message"]').requestSubmit()`);
+    await waitLive(evaluate, "Boolean(document.querySelector('.notification-popup-open'))", "mobile popup over dialog");
+    assert.equal(await evaluate(`document.querySelector('#app-dialog').open && document.querySelector('[name="location"]').value==='Thông tin đang nhập chưa lưu' && document.querySelector('#notification-popups').matches(':popover-open') && document.documentElement.scrollWidth<=window.innerWidth && document.querySelector('.notification-popup').getBoundingClientRect().right<=window.innerWidth`), true);
+    await evaluate(`document.querySelector('.notification-popup-open').click()`);
+    assert.equal(await evaluate(`!document.querySelector('#app-dialog').open && __troday.getState().view==='chats' && __troday.getState().selectedConversation==='c1' && document.querySelector('.chat-shell').classList.contains('thread-open')`), true);
+    await call("Target.closeTarget", { targetId: receiverId });
+
+    // Exercise actual forms, IndexedDB blobs, review gates and persistence for a new house.
+    await page("Emulation.setDeviceMetricsOverride", { width:1440,height:1000,deviceScaleFactor:1,mobile:false });
+    await evaluate(`__troday.reset(); __troday.action('switch-role','landlord'); __troday.action('navigate','properties'); document.querySelector('[data-action="open-house"]').click();
+      for(const [key,value] of Object.entries({name:'Nhà trọ kiểm thử mới',address:'123 Đường Mới, Hà Nội',provinceCode:'01',area:'Hà Nội'}))document.querySelector('[name="'+key+'"]').value=value;
+      document.querySelector('form[data-form="house"]').requestSubmit()`);
+    const newHouseId=await evaluate(`__troday.getState().houseSelection`);
+    assert.equal(await evaluate(`document.querySelector('#app-main').textContent.includes('Nhà chưa có phòng') && __troday.getState().houseVerifications.every(v=>v.houseId!==${JSON.stringify(newHouseId)})`),true);
+    await evaluate(`document.querySelector('[data-action="house-services"]').click(); document.querySelector('[data-action="open-service"]').click();
+      for(const [key,value] of Object.entries({name:'Điện mới',unit:'kWh',price:'3500',method:'METERED'}))document.querySelector('[name="'+key+'"]').value=value;
+      document.querySelector('form[data-form="service"]').requestSubmit(); __troday.action('navigate','properties'); document.querySelector('[data-action="open-room"]').click();
+      for(const [key,value] of Object.entries({code:'N101',area:'22',price:'3000000',deposit:'3000000',capacity:'2',status:'AVAILABLE'}))document.querySelector('[name="'+key+'"]').value=value;
+      document.querySelector('form[data-form="room"]').requestSubmit()`);
+    const newRoomId=await evaluate(`__troday.getState().rooms.at(-1).id`);
+    assert.equal(await evaluate(`__troday.getState().rooms.at(-1).houseId===${JSON.stringify(newHouseId)} && __troday.getState().services.at(-1).houseId===${JSON.stringify(newHouseId)}`),true);
+    await evaluate(`{ __troday.action('submit-house-proof',${JSON.stringify(newHouseId)}); const form=document.querySelector('form[data-form="house-verification"]');
+      form.elements.rightType.value='AUTHORIZED'; form.elements.rightType.dispatchEvent(new Event('change',{bubbles:true})); }`);
+    assert.equal(await evaluate(`document.querySelector('[name="validUntil"]').required && document.querySelector('[name="document_AUTHORIZATION"]').required && !document.querySelector('[name="document_AUTHORIZATION"]').disabled`),true);
+    await evaluate(`{ const form=document.querySelector('form[data-form="house-verification"]');form.elements.rightType.value='OWNER';form.elements.rightType.dispatchEvent(new Event('change',{bubbles:true}));
+      form.elements.scope.value='Toàn bộ nhà và các phòng tại địa chỉ đã khai báo';
+      const bytes=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='),c=>c.charCodeAt(0));
+      const selected=new DataTransfer();selected.items.add(new File([bytes],'minh-chung.png',{type:'image/png'}));form.elements.document_OWNER_PROOF.files=selected.files;form.requestSubmit(); }`);
+    await waitLive(evaluate,`__troday.getState().houseVerifications.some(v=>v.houseId===${JSON.stringify(newHouseId)} && v.status==='PENDING')`,'new house proof upload');
+    const proofId=await evaluate(`__troday.getState().houseVerifications.at(-1).id`);
+    const proofFileId=await evaluate(`__troday.getState().houseVerificationDocuments.at(-1).fileId`);
+    assert.equal(await evaluate(`(async()=> (await window.houseProofStore.get(${JSON.stringify(proofFileId)})).blob.size>0)()`),true);
+    await page("Page.reload",{ignoreCache:true});
+    await waitLive(evaluate,"Boolean(window.__troday) && document.readyState==='complete'",'house reload');
+    assert.equal(await evaluate(`(async()=> (await window.houseProofStore.get(${JSON.stringify(proofFileId)})).blob.size>0 && __troday.getState().houses.some(h=>h.id===${JSON.stringify(newHouseId)}))()`),true);
+    await evaluate(`__troday.action('switch-role','admin'); __troday.action('navigate','verifications'); __troday.action('review-house-verification',${JSON.stringify(proofId)}); document.querySelector('[data-action="view-house-proof"]').click()`);
+    await waitLive(evaluate,"Boolean(document.querySelector('img.house-proof-preview'))",'private evidence preview');
+    assert.equal(await evaluate(`document.querySelector('img.house-proof-preview').src.startsWith('blob:')`),true);
+    await evaluate(`__troday.action('review-house-verification',${JSON.stringify(proofId)});document.querySelector('[data-action="approve-house-verification"]').click();document.querySelector('[name="checkedEvidence"]').checked=true;document.querySelector('form[data-form="house-verification-decision"]').requestSubmit()`);
+    assert.equal(await evaluate(`__troday.getState().houseVerifications.find(v=>v.id===${JSON.stringify(proofId)}).status`),'APPROVED');
+    await evaluate(`__troday.action('switch-role','landlord'); __troday.action('navigate','properties')`);
+    assert.equal(await evaluate(`document.querySelector('#app-main').textContent.includes('Đã xác minh')`),true);
+    await page("Emulation.setDeviceMetricsOverride", { width:390,height:844,deviceScaleFactor:1,mobile:true });
+    assert.equal(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth`),true);
+    await evaluate(`__troday.action('submit-house-proof',${JSON.stringify(newHouseId)})`);
+    assert.equal(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth && document.querySelector('#app-dialog').scrollWidth<=document.querySelector('#app-dialog').clientWidth`),true);
+    await evaluate(`__troday.action('close-dialog'); __troday.action('switch-role','tenant'); __troday.action('review-house-verification',${JSON.stringify(proofId)})`);
+    assert.equal(await evaluate(`!document.querySelector('#app-dialog').open`),true);
+    await evaluate(`__troday.action('switch-role','admin'); __troday.action('revoke-house-verification',${JSON.stringify(proofId)});document.querySelector('[name="reason"]').value='Thu hồi theo yêu cầu của người sở hữu';document.querySelector('form[data-form="house-verification-decision"]').requestSubmit()`);
+    assert.equal(await evaluate(`(async()=> __troday.getState().houseVerifications.find(v=>v.id===${JSON.stringify(proofId)}).status==='REVOKED' && __troday.getState().contracts.some(c=>c.id==='k4' && c.status==='ACTIVE') && (await window.houseProofStore.get(${JSON.stringify(proofFileId)})).blob.size>0)()`),true);
     assert.deepEqual(errors, []);
-    console.log("Browser smoke passed: three roommate tabs and counters; active rental details, renewal approval/confirmation/application and rejection; roommate profile creation, editing, housing fields and reload; rental workflows, independent posts, room detail tabs, residents and service prices, pending quota and role visibility, both viewing flows, contract cleanup, persistence and mobile layout; no runtime exceptions.");
+    console.log("Browser smoke passed: new house creation, required proof categories, IndexedDB uploads and reload, private previews, admin approval/revocation and mobile layouts; live message popups between two tabs, receiver isolation, direct chat opening, drafts, no replay and mobile dialog delivery; roommate tabs and profiles, contract renewal, rental workflows, listings, viewing flows, room detail and persistence; no runtime exceptions.");
     await call("Browser.close");
   } finally {
     socket?.close(); chrome?.kill();

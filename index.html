@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <meta name="color-scheme" content="light">
   <title>Trọday - Quản lý thuê trọ</title>
-  <link rel="stylesheet" href="styles.css?v=20261025-saved-heart">
+  <link rel="stylesheet" href="styles.css?v=20261025-house-verification">
   <script defer src="icons.js"></script>
-  <script defer src="app.js?v=20261025-saved-heart"></script>
+  <script defer src="house-proof-store.js?v=20261025-house-verification"></script>
+  <script defer src="house-rights.js?v=20261025-house-verification"></script>
+  <script defer src="app.js?v=20261025-house-verification"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -21,7 +23,7 @@
       <header class="topbar">
         <div class="topbar-location"><span class="crumb">Trọday</span><span class="crumb-divider">/</span><strong id="topbar-title">Khám phá phòng</strong></div>
         <div class="topbar-actions">
-          <button type="button" class="icon-button notification-button" data-action="notifications" aria-label="Thông báo" title="Thông báo"><i data-lucide="bell"></i><span id="notification-dot" class="notification-dot"></span></button>
+          <button type="button" class="icon-button notification-button" data-action="notifications" aria-label="Thông báo" title="Thông báo"><i data-lucide="bell"></i><span id="notification-count" class="notification-badge" aria-hidden="true" hidden></span></button>
           <div id="topbar-role-switch" class="role-switch" aria-label="Chuyển vai trò"></div>
         </div>
       </header>
@@ -31,6 +33,7 @@
   <nav id="mobile-nav" class="mobile-nav" aria-label="Dieu huong di dong"></nav>
   <dialog id="app-dialog" class="app-dialog"><div id="dialog-body"></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="notification-popups" class="notification-popups" popover="manual" role="region" aria-label="Thông báo mới" aria-live="polite" aria-relevant="additions"></div>
   <noscript>Trang này cần JavaScript để hiển thị giao diện.</noscript>
 </body>
 </html>

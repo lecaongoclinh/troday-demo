@@ -49,11 +49,11 @@ async function main() {
     assert.equal(path.resolve(await query("SELECT @@datadir;")), path.resolve(directory), "Connected server is not the temporary instance");
     ownsServer = true;
     console.log(`Temporary MySQL ${await query("SELECT VERSION();")} ready.`);
-    const { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade } = require("../scripts/build-database.cjs").build();
+    const { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade, houseRightsUpgrade } = require("../scripts/build-database.cjs").build();
     await query(schema.replaceAll("room_rental_v5_20261023", "rr_v5_fresh_test"));
-    assert.equal(await query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE';", "rr_v5_fresh_test"), "41");
-    if (process.argv.includes("--probe")) console.log("Fresh schema import passed (41 tables).");
-    else await runTests(query, { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade });
+    assert.equal(await query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE';", "rr_v5_fresh_test"), "43");
+    if (process.argv.includes("--probe")) console.log("Fresh schema import passed (43 tables).");
+    else await runTests(query, { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade, houseRightsUpgrade });
   } catch (error) {
     error.message += `\nTemporary server log:\n${serverLog.slice(-4000)}`; throw error;
   } finally {
@@ -69,19 +69,26 @@ async function main() {
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });
 
-async function runTests(query, { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade }) {
+async function runTests(query, { schema, upgrade, viewingUpgrade, cleanupUpgrade, quotaUpgrade, houseRightsUpgrade }) {
   const fixture = fs.readFileSync(path.join(root, "tests", "fixtures", "workflow-data.sql"), "utf8");
   const original = fs.readFileSync(path.join(root, "tests", "fixtures", "v5-original-schema.sql"), "utf8");
   const sharingUpgrade = fs.readFileSync(path.join(root, "database", "migrations", "20261025_chat_post_sharing.sql"), "utf8");
   const postsUpgrade = fs.readFileSync(path.join(root, "database", "migrations", "20261025_multiple_room_posts.sql"), "utf8");
+  const verifyFixtureHouse = `
+INSERT INTO files(id,owner_user_id,storage_key,original_name,mime_type,size_bytes,sha256,purpose,visibility,status)
+VALUES(99000,1,'fixture/house-proof','house-proof.pdf','application/pdf',100,REPEAT('a',64),'LANDLORD_PROOF','PRIVATE','ACTIVE');
+CALL sp_submit_house_verification(1,1,'OWNER','Entire fixture house',@today,NULL,JSON_ARRAY(JSON_OBJECT('fileId',99000,'documentType','OWNER_PROOF')),@house_proof);
+CALL sp_review_house_verification(@house_proof,7,'APPROVE',NULL,TRUE);
+`;
+  const freshFixture = fixture.replace("INSERT INTO contracts(id,", verifyFixtureHouse + "\nINSERT INTO contracts(id,");
   let checks = 0;
   const check = async (label, body) => { await body(); checks++; console.log(`PASS ${checks}: ${label}`); };
   const setup = async (name, old = false) => {
     await query((old ? original : schema).replaceAll("room_rental_v5_20261023", name));
-    await query(fixture, name); return name;
+    await query(old ? fixture : freshFixture, name); return name;
   };
   const core = "rr_v5_fresh_test";
-  await query(fixture, core);
+  await query(freshFixture, core);
   let winner;
   await check("capacity counts all residents and serializes two competing approvals", async () => {
     const results = await Promise.allSettled([query("CALL sp_approve_occupant_join(200,1);", core), query("CALL sp_approve_occupant_join(201,1);", core)]);
@@ -246,6 +253,11 @@ DELIMITER ;`, core);
     assert.equal(await query("SELECT COUNT(*) FROM posts WHERE room_id=3 AND status='PENDING_REVIEW';", upgraded), "4");
     await query("UPDATE posts SET status='APPROVED' WHERE id=901;", upgraded);
     await query(quotaUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
+    await query(houseRightsUpgrade.replaceAll("room_rental_v5_20261023", upgraded));
+    assert.equal(await query("SELECT COUNT(*) FROM rental_house_verifications;", upgraded), "0");
+    assert.equal(await query("SELECT COUNT(*) FROM v_public_house_posts;", upgraded), "0");
+    assert.equal(await query("SELECT COUNT(*) FROM contracts;", upgraded), "1");
+    await query("SET @today=DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR);" + verifyFixtureHouse, upgraded);
     assert.equal(await query("SELECT GROUP_CONCAT(pending_review_slot ORDER BY pending_review_slot) FROM posts WHERE room_id=3 AND status='PENDING_REVIEW';", upgraded), "1,2,3");
     assert.equal(await query("SELECT content,shared_post_id FROM chat_messages WHERE id=7000;", upgraded), "Existing conversation\tNULL");
     assert.equal(await query("SELECT event_type,started_at,consent_method,is_current FROM contract_representative_history;", upgraded), "LEGACY_BASELINE\tNULL\tLEGACY_UNKNOWN\t1");
@@ -551,5 +563,81 @@ DELIMITER ;`,multiple);
     await query(quotaUpgrade.replaceAll("room_rental_v5_20261023",upgraded),undefined,/already applied or incomplete/);
     assert.equal(await query("SELECT COUNT(*) FROM posts WHERE room_id=3 AND status='PENDING_REVIEW';",upgraded),"3");
   });
-  console.log(`${checks} MySQL integration checks passed; migrations, concurrent pending-post quota, independent posts, shared room holds and rollback verified.`);
+  const rights=await setup("rr_v5_house_rights_test");
+  const submitProof="CALL sp_submit_house_verification(1,1,'OWNER','Entire house',DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR),NULL,JSON_ARRAY(JSON_OBJECT('fileId',99000,'documentType','OWNER_PROOF')),@proof);";
+  await check("new houses are owned drafts, have idempotent creation and need no rooms",async()=>{
+    assert.equal(await query("CALL sp_create_rental_house(1,'New house','New address','01','key-1',@house);SELECT @house;",rights),"2");
+    assert.equal(await query("CALL sp_create_rental_house(1,'Repeated','Ignored address','01','key-1',@house);SELECT @house;",rights),"2");
+    assert.equal(await query("SELECT name,(SELECT COUNT(*) FROM rooms WHERE house_id=2),(SELECT COUNT(*) FROM rental_house_verifications WHERE house_id=2) FROM rental_houses WHERE id=2;",rights),"New house\t0\t0");
+    await query("CALL sp_create_rental_house(2,'Foreign','Address','01','foreign',@house);",rights,/Invalid active house actor/);
+  });
+  await check("revocation removes public posts, prevents publication and new rentals, preserves existing leases",async()=>{
+    const before=await query("SELECT id,status,representative_room_tenant_id FROM contracts ORDER BY id;",rights);
+    await query("CALL sp_review_house_verification(1,7,'REVOKE','Owner withdrew rights',FALSE);",rights);
+    assert.equal(await query("SELECT COUNT(*) FROM v_public_house_posts;",rights),"0");
+    assert.equal(await query("SELECT COUNT(*) FROM posts WHERE status='APPROVED';",rights),"2");
+    assert.equal(await query("SELECT id,status,representative_room_tenant_id FROM contracts ORDER BY id;",rights),before);
+    await query("CALL sp_submit_post(NULL,5,1,'Prepared draft','Can prepare before rights',NULL,@id);UPDATE posts SET status='APPROVED' WHERE id=@id;",rights,/rental rights must be verified/);
+    await query("CALL sp_create_rental_contract(400,1,'BLOCKED-HOUSE',DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR),DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR)+INTERVAL 365 DAY,3500000,3500000,'Terms',NULL,JSON_ARRAY(),@new);",rights,/rental rights must be verified/);
+    await query("UPDATE contracts SET end_date=end_date+INTERVAL 1 YEAR WHERE id=1;",rights,/rental rights must be verified/);
+  });
+  await check("house submissions validate ownership, categorized documents and delegated expiry atomically",async()=>{
+    const before=await query("SELECT COUNT(*) FROM rental_house_verifications;",rights);
+    await query("CALL sp_submit_house_verification(1,2,'OWNER','House',DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR),NULL,JSON_ARRAY(JSON_OBJECT('fileId',99000,'documentType','OWNER_PROOF')),@id);",rights,/Invalid active house actor/);
+    await query("CALL sp_submit_house_verification(1,1,'AUTHORIZED','House',DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR),NULL,JSON_ARRAY(JSON_OBJECT('fileId',99000,'documentType','OWNER_PROOF')),@id);",rights,/Invalid house right type/);
+    await query("CALL sp_submit_house_verification(1,1,'SUBLESSOR','House',DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR),DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR)+INTERVAL 30 DAY,JSON_ARRAY(JSON_OBJECT('fileId',99000,'documentType','LEASE_AGREEMENT')),@id);",rights,/Missing required/);
+    await query("CALL sp_submit_house_verification(1,1,'OWNER','House',DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR),NULL,JSON_ARRAY(JSON_OBJECT('fileId',1,'documentType','OWNER_PROOF')),@id);",rights,/private and owned/);
+    assert.equal(await query("SELECT COUNT(*) FROM rental_house_verifications;",rights),before);
+  });
+  let newProof;
+  await check("competing house submissions serialize to one pending record with immutable evidence",async()=>{
+    const results=await Promise.allSettled([query(submitProof,rights),query(submitProof,rights)]);
+    assert.equal(results.filter(x=>x.status==='fulfilled').length,1);
+    assert.equal(await query("SELECT COUNT(*) FROM rental_house_verifications WHERE status='PENDING' AND house_id=1;",rights),"1");
+    newProof=await query("SELECT id FROM rental_house_verifications WHERE status='PENDING';",rights);
+    await query(`UPDATE house_verification_documents SET document_type='OTHER' WHERE verification_id=${newProof};`,rights,/immutable/);
+    await query(`DELETE FROM house_verification_documents WHERE verification_id=${newProof};`,rights,/Preserve house proof/);
+    await query("UPDATE files SET visibility='PUBLIC' WHERE id=99000;",rights,/private and immutable/);
+    await query(`UPDATE rental_house_verifications SET scope_description='Changed' WHERE id=${newProof};`,rights,/snapshot is immutable/);
+  });
+  await check("only an active admin can approve after confirming evidence, with audit and owner notification",async()=>{
+    await query(`CALL sp_review_house_verification(${newProof},1,'APPROVE',NULL,TRUE);`,rights,/Invalid active house actor/);
+    await query(`CALL sp_review_house_verification(${newProof},7,'APPROVE',NULL,FALSE);`,rights,/Check evidence/);
+    await query(`CALL sp_review_house_verification(${newProof},7,'APPROVE',NULL,TRUE);`,rights);
+    assert.equal(await query("SELECT COUNT(*) FROM v_effective_house_verifications;",rights),"1");
+    assert.equal(await query("SELECT COUNT(*) FROM v_public_house_posts;",rights),"2");
+    assert.equal(await query(`SELECT COUNT(*) FROM notifications WHERE user_id=1 AND resource_type='HOUSE_VERIFICATION' AND resource_id=${newProof};`,rights),"1");
+    assert.equal(await query("SELECT COUNT(*) FROM moderation_actions WHERE action='HOUSE_APPROVE';",rights),"2");
+    await query(`CALL sp_review_house_verification(${newProof},7,'APPROVE',NULL,TRUE);`,rights,/no longer applicable/);
+  });
+  await check("cosmetic edits preserve approval; identity edits withdraw pending requests and require reverification",async()=>{
+    await query("CALL sp_update_rental_house(1,1,1,'Renamed','Fixture address','01',NULL,NULL,NULL,NULL,'Note');",rights);
+    assert.equal(await query("SELECT verification_version FROM rental_houses WHERE id=1;",rights),"1");
+    assert.equal(await query("SELECT COUNT(*) FROM v_effective_house_verifications;",rights),"1");
+    await query(submitProof,rights);
+    await query("CALL sp_update_rental_house(1,1,1,'Stale','Other','01',NULL,NULL,NULL,NULL,NULL);",rights,/version changed/);
+    await query("CALL sp_update_rental_house(1,1,2,'Renamed','Changed address','01',NULL,NULL,NULL,NULL,NULL);",rights);
+    assert.equal(await query("SELECT verification_version FROM rental_houses WHERE id=1;",rights),"2");
+    assert.equal(await query("SELECT COUNT(*) FROM v_effective_house_verifications;",rights),"0");
+    assert.equal(await query("SELECT COUNT(*) FROM rental_house_verifications WHERE status='WITHDRAWN';",rights),"1");
+    assert.equal(await query("SELECT COUNT(*) FROM contracts WHERE status='ACTIVE';",rights),"1");
+  });
+  await check("rejected and withdrawn applications remain in history, and expired approvals lose public access without a worker",async()=>{
+    await query(submitProof+"CALL sp_review_house_verification(@proof,7,'REJECT','Address cannot be confirmed',FALSE);",rights);
+    await query(submitProof+"CALL sp_withdraw_house_verification(@proof,1);",rights);
+    await query(submitProof+"CALL sp_review_house_verification(@proof,7,'APPROVE',NULL,TRUE);",rights);
+    assert.equal(await query("SELECT COUNT(*) FROM rental_house_verifications WHERE status='REJECTED';",rights),"1");
+    assert.equal(await query("SELECT COUNT(*) FROM rental_house_verifications WHERE status='SUPERSEDED';",rights),"1");
+    // Simulated time exercises expiry immediately; no destructive rewriting of signed leases.
+    await query("CALL sp_submit_house_verification(1,1,'AUTHORIZED','House',DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR),DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR)+INTERVAL 1 DAY,JSON_ARRAY(JSON_OBJECT('fileId',99000,'documentType','OWNER_PROOF'),JSON_OBJECT('fileId',99000,'documentType','AUTHORIZATION')),@proof);CALL sp_review_house_verification(@proof,7,'APPROVE',NULL,TRUE);",rights);
+    assert.equal(await query("SET timestamp=UNIX_TIMESTAMP()+172800;SELECT COUNT(*) FROM v_effective_house_verifications;",rights),"0");
+    assert.equal(await query("SELECT COUNT(*) FROM contracts WHERE status='ACTIVE';",rights),"1");
+    await query("SET timestamp=UNIX_TIMESTAMP()+172800;CALL sp_move_out(1,11,DATE(UTC_TIMESTAMP()+INTERVAL 7 HOUR),1);",rights);
+    assert.equal(await query("SELECT status FROM room_tenants WHERE id=11;",rights),"LEFT");
+  });
+  await check("house migration refuses wrong order and reapplication",async()=>{
+    await query(houseRightsUpgrade.replaceAll("room_rental_v5_20261023",invalid),undefined,/post review quota before/);
+    await query(houseRightsUpgrade.replaceAll("room_rental_v5_20261023",upgraded),undefined,/already applied or incomplete/);
+  });
+  console.log(`${checks} MySQL integration checks passed; house rights, migration, public gates, concurrent submissions, history and rollback verified.`);
 }
