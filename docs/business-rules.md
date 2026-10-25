@@ -122,6 +122,7 @@ Hiển thị lịch trong chat dùng liên kết `room_viewing_requests.conversa
 | HD-13 | SQL hỗ trợ `PAPER_IMPORT`; demo có dữ liệu mẫu nhập giấy nhưng chưa có luồng nhập hồ sơ giấy đầy đủ. | Có một phần |
 | HD-14 | `sp_create_rental_contract` tạo hợp đồng, giữ phòng, đóng hoạt động xem phòng sắp tới và ghi thông báo trong cùng giao dịch. Thất bại ở bất kỳ bước nào rollback toàn bộ; hai phiên tranh cùng phòng chỉ tạo được một hợp đồng mở. | Mới |
 | HD-15 | Form lập hợp đồng hiển thị số lịch xem sắp tới/đề nghị chờ sẽ bị ảnh hưởng trước khi gửi; khi submit kiểm tra lại quyền, phòng, hợp đồng và sức chứa. Không giữ phòng chỉ bằng việc mở form hoặc bấm đồng ý thuê. | Mới |
+| HD-16 | `ACTIVE` hiển thị “Còn hiệu lực”. Người thuê thấy phòng đang thuê, số hợp đồng và thời hạn, có nút xem chi tiết. Demo bổ sung Lan ở P203 theo HD-2026-099, từ 01/10/2026 đến 30/09/2027. Dữ liệu cũ được bổ sung một lần nếu Lan chưa có lượt ở `ACTIVE` và chưa có phòng/hợp đồng trùng; không mở lại hợp đồng đã kết thúc. | Mới |
 
 ### 1.7. Người ở và duyệt thêm người
 
@@ -142,15 +143,18 @@ Hiển thị lịch trong chat dùng liên kết `room_viewing_requests.conversa
 
 | Mã | Quy tắc / hành vi | Tình trạng |
 | --- | --- | --- |
-| DC-01 | Đại diện hiện tại gửi đề nghị `RENEWAL`, `TERMINATION` hoặc `TRANSFER` khi hợp đồng đang hoạt động. Một hợp đồng chỉ có một yêu cầu điều chỉnh mở. | Có / Sửa |
-| DC-02 | Luồng: chủ trọ duyệt → đại diện xác nhận phương án → chủ trọ áp dụng; có từ chối. Chưa đến ngày hiệu lực thì không áp dụng. | Có |
+| DC-01 | Chi tiết hợp đồng có ba nút “Yêu cầu gia hạn”, “Yêu cầu thay đổi” (đổi phòng), “Yêu cầu chấm dứt”, tương ứng `RENEWAL`, `TRANSFER`, `TERMINATION`. Chỉ đại diện hiện tại gửi khi hợp đồng đang hoạt động; mỗi hợp đồng chỉ có một yêu cầu điều chỉnh mở. | Sửa |
+| DC-02 | Luồng: người thuê gửi → chủ trọ chấp nhận → đại diện xác nhận phương án → chủ trọ áp dụng. Chỉ chủ sở hữu được duyệt/từ chối/áp dụng; từ chối có lý do. Ghi người/thời điểm duyệt, xác nhận và áp dụng. Chưa đến ngày hiệu lực thì không áp dụng; gửi/chấp nhận/xác nhận chưa làm thay đổi hợp đồng. | Sửa |
 | DC-03 | Ngày hiệu lực không trước ngày bắt đầu hợp đồng hoặc ngày vào ở của thành viên đang ở. | Sửa |
-| DC-04 | Gia hạn demo cộng thêm một năm vào ngày kết thúc và tăng phiên bản; chưa có trình soạn phương án gia hạn/giá phức tạp. | Có một phần |
+| DC-04 | Form gia hạn có ngày hiệu lực và ngày kết thúc mới (gợi ý thêm một năm). Ngày kết thúc mới phải sau thời hạn cũ; cả hai bên thấy phương án trước khi xác nhận. Áp dụng dùng đúng ngày đã đồng ý, tăng phiên bản và lưu liên kết yêu cầu. Form lưu phiên bản/đại diện gốc để phát hiện thay đổi trong lúc chờ. Chưa có trình soạn lại giá/điều khoản. | Sửa |
 | DC-05 | Kết thúc đóng từng lượt đang ở với ngày ra theo ngày hiệu lực, hủy lượt dự kiến và yêu cầu thêm người. | Sửa |
 | DC-06 | Đổi phòng chỉ tới phòng khác còn trống, cùng chủ, không có hợp đồng mở hoặc chỗ đang chiếm, đủ cho toàn bộ thành viên còn mở. | Sửa |
 | DC-07 | Kiểm tra toàn bộ trước khi đóng nguồn; tạo hợp đồng `TRANSFER` và lượt dự kiến mới cho tất cả người đang ở/dự kiến. Không mang người đã rời hoặc thông tin xác nhận cũ sang. | Sửa |
 | DC-08 | Giữ `previousContractId` và `resultContractId`; lưu ngày ra ở nguồn; phòng nguồn trả trống, phòng đích giữ chỗ, tiếp tục xác nhận vào ở từng người/nhóm. | Sửa |
 | DC-09 | Khi đổi đại diện, hủy yêu cầu điều chỉnh còn mở để không tiếp tục dùng xác nhận của người cũ. | Mới |
+| DC-10 | Màn chủ trọ có “Yêu cầu gia hạn / điều chỉnh”, liệt kê mọi trạng thái của các hợp đồng thuộc mình, gồm cả chờ người thuê xác nhận và chờ áp dụng. Người thuê xem lịch sử yêu cầu trong chi tiết hợp đồng, xác nhận phương án đã được duyệt và đọc lý do từ chối. | Mới |
+
+Luồng thử: **Người thuê → Hợp đồng → HD-2026-099 → Yêu cầu gia hạn → nhập ngày kết thúc mới và nội dung → Gửi yêu cầu → Chủ trọ → Hợp đồng → Yêu cầu gia hạn / điều chỉnh → Chấp nhận → Người thuê → chi tiết hợp đồng → Xem yêu cầu → Xác nhận phương án → Chủ trọ → Áp dụng thay đổi**. Ngày hiệu lực mặc định hôm nay để có thể thử đủ luồng; nếu chọn ngày tương lai thì chờ đến ngày đó. Các bản ghi vẫn mô phỏng trong `localStorage`; API ánh xạ ngày kết thúc mới vào `proposal_snapshot`/phiên bản đề xuất của `contract_change_requests` hiện có. Nhãn “Còn hiệu lực” dùng trạng thái `ACTIVE` hiện có, không thêm trạng thái SQL hoặc migration cho thay đổi giao diện này.
 
 ### 1.9. Dịch vụ, hóa đơn và thanh toán
 
@@ -180,7 +184,7 @@ Hiển thị lịch trong chat dùng liên kết `room_viewing_requests.conversa
 | OG-05 | Người từng là đại diện vẫn có thể kết nối và nhắn tin sau khi rời phòng. Khi thực sự đề nghị vào ở, phải thu đồng ý riêng của đại diện hiện tại; lời mời của đại diện cũ không thay thế đồng ý này. | Sửa |
 | OG-06 | Danh sách “người phù hợp” trong demo là dữ liệu mẫu; chưa có thuật toán ghép cặp. SQL có hồ sơ/thói quen và các tình trạng chỗ ở, UI mới mô phỏng một phần. | Thiết kế |
 | OG-07 | Trong danh sách lời mời có “Xem hồ sơ”: tên, khu vực, ngân sách, thói quen, ngày sẵn sàng và tình trạng chỗ ở được chia sẻ. Không hiển thị căn cước hoặc ngày sinh từ hồ sơ cư trú. Có thể chấp nhận/từ chối ngay trong hộp hồ sơ. | Mới |
-| OG-08 | Có danh sách lời mời nhận và đã gửi, trạng thái chờ/đã kết nối/từ chối/hủy. Hồ sơ và cuộc chat đã kết nối có thể mở lại từ danh sách. | Mới |
+| OG-08 | Ở ghép có ba tab “Người phù hợp”, “Lời mời dành cho bạn”, “Đã mời”; mỗi bộ đếm là tổng số mục của tab, kể cả lời mời đã phản hồi. Mỗi lần hiển thị một danh sách; tab được ghi nhớ khi tải lại và hỗ trợ trái/phải, Home/End. Có xem hồ sơ, kết nối, chấp nhận, từ chối hoặc nhắn tin theo trạng thái; gửi lời mời mới chuyển sang “Đã mời”. Tab trống có hướng dẫn. | Sửa |
 | OG-09 | Tình trạng chỗ ở có ba giá trị: `NO_ACCOMMODATION` (chưa có chỗ ở), `EXTERNAL` (đang ở ngoài hệ thống, mô tả tự khai không bắt buộc, tối đa 1.000 ký tự), `IN_SYSTEM` (tự lấy từ lượt cư trú `ACTIVE` đã xác nhận). Không suy “chưa có chỗ ở” chỉ vì không tìm thấy lượt cư trú. Người có lượt ở không tự chọn sang hai tình trạng khác; lưu hồ sơ kiểm tra lại lượt ở và ID để tránh dùng form đã cũ. Khi không còn lượt ở mà hồ sơ từng là `IN_SYSTEM`, hiển thị cần cập nhật tình trạng. | Mới |
 | OG-10 | Phải tạo hồ sơ trước khi gửi lời mời mới. Bấm “Kết nối” khi chưa có hồ sơ mở form tạo; lưu hồ sơ không tự gửi lời mời, không giữ chỗ hay tạo đồng thuận thuê. Lời mời đã nhận và kết nối cũ vẫn có thể phản hồi/mở chat. Hủy form không tạo hồ sơ. Dữ liệu hồ sơ mẫu cũ được giữ làm bản điền sẵn đến khi người dùng xác nhận tạo; lời mời và chat cũ được giữ. | Mới |
 

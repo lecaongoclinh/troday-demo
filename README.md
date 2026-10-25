@@ -102,6 +102,10 @@ Ba phần nằm trong các tab **Bài đăng / Người ở / Dịch vụ** bên
 
 Có thể xem hồ sơ người gửi trước khi phản hồi lời mời ở ghép. Lời mời và kết nối đã có vẫn sử dụng được; chấp nhận mở cuộc chat giữa hai người, không tự tạo yêu cầu thuê chung hay giữ chỗ. CSDL v5 đã hỗ trợ hội thoại `ROOMMATE`; không cần thêm bảng cho luồng này.
 
+Tìm người ở ghép chia thành ba tab **Người phù hợp / Lời mời dành cho bạn / Đã mời**, có bộ đếm tổng số mục, trạng thái trống và các thao tác theo trạng thái kết nối. Tab được ghi nhớ sau khi tải lại; hỗ trợ phím trái/phải, Home/End. Gửi lời mời mới chuyển sang tab Đã mời.
+
+**Hợp đồng** hiển thị trạng thái “Còn hiệu lực”, phòng đang thuê và thời hạn. Lan có hợp đồng mẫu **HD-2026-099 — P203**, hiệu lực 01/10/2026–30/09/2027. Chi tiết có **Yêu cầu gia hạn / Yêu cầu thay đổi (đổi phòng) / Yêu cầu chấm dứt**. Thử gia hạn bằng cách nhập ngày kết thúc mới, chuyển vai trò Chủ trọ → Hợp đồng → Yêu cầu gia hạn / điều chỉnh → Chấp nhận; chuyển về Người thuê để xác nhận phương án; sau đó Chủ trọ áp dụng từ ngày hiệu lực. Từ chối có lý do và giữ lịch sử. Hợp đồng chỉ đổi sau bước áp dụng. Dữ liệu cũ được bổ sung ví dụ một lần nếu Lan chưa có lượt ở đang mở; không cần reset dữ liệu hay chạy migration SQL.
+
 Tin nhắn có nhãn “Chủ trọ”, “Bạn ghép” hoặc “Người thuê” cạnh tên theo quan hệ hội thoại. Hai người đã kết nối có thể chia sẻ tin phòng từ chat hoặc trang chi tiết; bấm thẻ để xem phòng và quay lại đúng cuộc trò chuyện. CSDL dùng `chat_messages.message_type = 'POST_SHARE'` và `shared_post_id` tham chiếu bài đăng; phần chia sẻ không thêm bảng.
 
 Lịch xem có hai cách tạo: người thuê bấm “Đề nghị lịch xem” từ chi tiết phòng hoặc chat, chờ chủ trọ chấp nhận; hoặc chủ trọ bấm “Hẹn xem” để tạo lịch đã chốt sau khi có trao đổi từ người thuê về phòng đó. Đề nghị lưu riêng trong `room_viewing_proposals`, chưa giữ giờ/chỗ thuê; khi duyệt mới tạo `room_viewing_requests` trong cùng giao dịch. Chat và Lịch xem có chấp nhận/từ chối/rút đề nghị, sau đó dùng chung các thao tác hủy, đã xem, không đến và quyết định thuê. Thử bằng cách đổi giữa vai trò Người thuê và Chủ trọ.

@@ -73,6 +73,7 @@ img { display: block; max-width: 100%; }
 .button.danger { color: #aa4c3a; border-color: #e6b6a9; }
 .button.small { padding: 5px 9px; min-height: 29px; font-size: 11px; }
 .button.compact { padding: 7px 8px; }
+.button.favorite-saved svg { color: #dc2626; fill: currentColor; }
 .inline-action { padding: 0; border: 0; background: transparent; color: var(--teal); font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
 .inline-action:hover { text-decoration: underline; }
 .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 4px; padding: 4px 7px; font-size: 10px; line-height: 1.2; font-weight: 800; white-space: nowrap; background: #ecf1f1; color: #53676a; }
@@ -253,6 +254,16 @@ td.actions-cell { text-align: right; }
 .tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line); margin-bottom: 17px; overflow-x: auto; }
 .tab-button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: #6e8284; padding: 10px 0; white-space: nowrap; font-size: 12px; font-weight: 750; }
 .tab-button.active { color: var(--teal); border-color: var(--teal); }
+.roommate-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.roommate-tabs .tab-button { display: flex; align-items: center; justify-content: center; gap: 7px; white-space: normal; line-height: 1.5; }
+.roommate-tabs .tab-button:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
+.tab-count { display: inline-grid; place-items: center; min-width: 22px; padding: 1px 5px; border-radius: 12px; background: #e7eeec; font-size: 10px; flex: none; }
+.tab-button.active .tab-count { background: #d6eee8; color: var(--teal); }
+.rental-summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 16px; margin-bottom: 20px; border: 1px solid #c9e3dd; border-radius: 6px; background: #eaf4f2; font-size: 13px; }
+.rental-summary p { color: var(--muted); margin: 5px 0 0; font-size: 12px; }
+.contract-change-row { flex-wrap: wrap; align-items: flex-start; }
+.contract-change-copy { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.contract-change-row .table-actions { flex-wrap: wrap; max-width: 100%; justify-content: flex-start; }
 .flow-banner { background: #eaf4f2; border: 1px solid #c9e3dd; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-radius: 5px; margin-bottom: 14px; }
 .flow-banner strong { font-size: 12px; }
 .flow-banner small { display: block; color: #52736e; font-size: 11px; margin-top: 3px; }

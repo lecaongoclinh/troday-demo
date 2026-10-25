@@ -81,6 +81,7 @@ async function main() {
     assert.equal(await evaluate(`document.querySelector('#app-main').textContent.includes('Giữ đến')`), true);
 
     // Build a two-person contract using actual rendered forms and browser FormData.
+    await evaluate(`__troday.action('move-out', 'k4:o5')`);
     await evaluate(`__troday.action('switch-role', 'tenant'); __troday.action('agree-rent', 'v2'); __troday.action('switch-role', 'landlord'); __troday.action('open-contract', 'v2')`);
     await evaluate(`document.querySelector('[name="members"]').value = 'Bạn cùng phòng, 0123456789'; document.querySelector('form[data-form="create-contract"]').requestSubmit()`);
     const newId = await evaluate(`__troday.getState().selectedContract`);
@@ -133,9 +134,49 @@ async function main() {
     await evaluate(`__troday.action('navigate', 'chats'); __troday.action('select-chat', 'c1')`);
     assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(chatViewingSelector)}).length`), 1);
 
-    // A tenant explicitly creates a profile before sending new invitations.
+    // Lan can request a renewal; owner approval and tenant confirmation precede application.
+    await evaluate(`__troday.reset(); __troday.action('navigate', 'contracts')`);
+    assert.equal(await evaluate(`document.querySelector('.rental-summary').textContent.includes('P203') && document.querySelector('#contract-details').textContent.includes('HD-2026-099') && document.querySelector('#contract-details').textContent.includes('Còn hiệu lực') && document.querySelector('#contract-details [data-action="open-renewal"]') && document.querySelector('#contract-details [data-action="open-transfer"]') && Boolean(document.querySelector('#contract-details [data-action="open-termination"]'))`), true);
+    const initialEnd = await evaluate(`__troday.getState().contracts.find(c=>c.id==='k4').end`);
+    await evaluate(`document.querySelector('[data-action="open-renewal"]').click(); document.querySelector('[name="newEnd"]').value='2028-09-30'; document.querySelector('[name="note"]').value='Mong gia hạn hợp đồng thêm 12 tháng'; document.querySelector('form[data-form="change-request"]').requestSubmit()`);
+    const renewalId = await evaluate(`__troday.getState().changeRequests.at(-1).id`);
+    assert.equal(await evaluate(`__troday.getState().changeRequests.at(-1).status==='PENDING' && __troday.getState().contracts.find(c=>c.id==='k4').end===${JSON.stringify(initialEnd)}`), true);
+    await evaluate(`__troday.action('switch-role','landlord'); __troday.action('navigate','contracts')`);
+    assert.equal(await evaluate(`document.querySelector('#app-main').textContent.includes('Yêu cầu gia hạn / điều chỉnh') && Boolean(document.querySelector('[data-change-request="${renewalId}"] [data-action="approve-change"]'))`), true);
+    assert.equal(await evaluate(`document.querySelector('#contract-details .contract-change-copy').getBoundingClientRect().width>=180 && document.documentElement.scrollWidth<=window.innerWidth`), true);
+    await page("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    assert.equal(await evaluate(`document.querySelector('#contract-details .contract-change-copy').getBoundingClientRect().width>=180 && document.documentElement.scrollWidth<=window.innerWidth`), true);
+    await page("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await evaluate(`document.querySelector('[data-change-request="${renewalId}"] [data-action="approve-change"]').click()`);
+    assert.equal(await evaluate(`__troday.getState().changeRequests.find(x=>x.id==='${renewalId}').status==='APPROVED_WAITING_CONFIRMATION' && !document.querySelector('[data-change-request="${renewalId}"] [data-action="apply-change"]')`), true);
+    await evaluate(`__troday.action('switch-role','tenant'); __troday.action('contract-detail','k4'); document.querySelector('[data-change-request="${renewalId}"] [data-action="review-change"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#dialog-body').textContent.includes('Ngày kết thúc mới') && Boolean(document.querySelector('#dialog-body [data-action="accept-change"]'))`), true);
+    await evaluate(`document.querySelector('#dialog-body [data-action="accept-change"]').click()`);
+    assert.equal(await evaluate(`__troday.getState().changeRequests.find(x=>x.id==='${renewalId}').status==='READY_TO_APPLY' && __troday.getState().contracts.find(c=>c.id==='k4').end===${JSON.stringify(initialEnd)}`), true);
+    await evaluate(`__troday.action('switch-role','landlord'); __troday.action('navigate','contracts'); document.querySelector('[data-change-request="${renewalId}"] [data-action="apply-change"]').click()`);
+    assert.equal(await evaluate(`__troday.getState().contracts.find(c=>c.id==='k4').end==='2028-09-30' && __troday.getState().contracts.find(c=>c.id==='k4').revisionNo===2 && __troday.getState().changeRequests.find(x=>x.id==='${renewalId}').status==='COMPLETED'`), true);
+    await evaluate(`__troday.action('switch-role','tenant'); __troday.action('contract-detail','k4'); document.querySelector('[data-action="open-termination"]').click(); document.querySelector('[name="note"]').value='Đề nghị chấm dứt trước hạn'; document.querySelector('form[data-form="change-request"]').requestSubmit()`);
+    const rejectedId = await evaluate(`__troday.getState().changeRequests.at(-1).id`);
+    await evaluate(`__troday.action('switch-role','landlord'); __troday.action('navigate','contracts'); document.querySelector('[data-change-request="${rejectedId}"] [data-action="reject-change"]').click(); document.querySelector('[name="reason"]').value='Cần trao đổi lại ngày bàn giao'; document.querySelector('form[data-form="reject-change"]').requestSubmit()`);
+    assert.equal(await evaluate(`__troday.getState().changeRequests.at(-1).status==='REJECTED' && __troday.getState().contracts.find(c=>c.id==='k4').status==='ACTIVE' && document.querySelector('#app-main').textContent.includes('Cần trao đổi lại ngày bàn giao')`), true);
+    await evaluate(`__troday.action('switch-role','tenant'); __troday.action('contract-detail','k4'); document.querySelector('[data-action="open-transfer"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('[name="type"]').value==='TRANSFER' && Boolean(document.querySelector('[name="targetRoom"]'))`), true);
+    await evaluate(`document.querySelector('#dialog-body [data-action="close-dialog"]').click()`);
+
+    // Three roommate tabs keep independent counts and support keyboard navigation.
     await page("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
     await evaluate(`__troday.reset(); __troday.action('navigate', 'roommates')`);
+    assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('.roommate-tabs .tab-count'), n=>Number(n.textContent))`), [3, 2, 0]);
+    assert.equal(await evaluate(`document.querySelectorAll('[role="tabpanel"]:not([hidden])').length===1 && document.querySelector('#roommate-tab-matches').getAttribute('aria-selected')==='true' && !document.querySelector('#roommate-panel-incoming .roommate-row')`), true);
+    await evaluate(`document.querySelector('#roommate-tab-matches').focus(); document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}))`);
+    assert.equal(await evaluate(`document.activeElement.id==='roommate-tab-outgoing' && document.querySelector('#roommate-panel-outgoing').textContent.includes('Chưa gửi lời mời')`), true);
+    await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))`);
+    assert.equal(await evaluate(`document.activeElement.id==='roommate-tab-incoming' && document.querySelectorAll('#roommate-panel-incoming .roommate-row').length===2 && !document.querySelector('#roommate-panel-matches .roommate-row')`), true);
+    await evaluate(`document.querySelector('[data-action="create-roommate-profile"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('[name="housingStatus"]').value==='IN_SYSTEM' && document.querySelector('[name="currentRoomTenantId"]').value==='o5' && document.querySelector('#dialog-body input:disabled').value.includes('P203')`), true);
+    await evaluate(`document.querySelector('#dialog-body [data-action="close-dialog"]').click(); __troday.action('switch-role','landlord'); __troday.action('move-out','k4:o5'); __troday.action('switch-role','tenant'); __troday.action('navigate','roommates')`);
+
+    // A tenant explicitly creates a profile before sending new invitations.
     assert.equal(await evaluate(`__troday.getState().roommateProfile === null && Boolean(document.querySelector('[data-action="create-roommate-profile"]')) && !document.querySelector('[data-action="edit-roommate-profile"]')`), true);
     await evaluate(`document.querySelector('[data-action="create-roommate-profile"]').click()`);
     assert.equal(await evaluate(`document.querySelector('#app-dialog').open && document.querySelector('[name="location"]').value === '' && document.querySelector('[data-roommate-external]').hidden && document.querySelector('[name="externalContext"]').disabled`), true);
@@ -218,17 +259,17 @@ async function main() {
     await evaluate(`document.querySelector('#dialog-body [data-action="accept-roommate"]').click()`);
     assert.equal(await evaluate(`__troday.getState().view === 'chats' && __troday.getState().conversations.find(c => c.id === __troday.getState().selectedConversation).users.includes('mai')`), true);
     assert.equal(await evaluate(`JSON.stringify({ contracts: __troday.getState().contracts, joins: __troday.getState().joinRequests, rooms: __troday.getState().rooms })`), beforeConnection);
-    await evaluate(`__troday.action('navigate', 'roommates'); document.querySelector('[data-action="send-roommate"][data-id="ngoc"]').click()`);
-    assert.equal(await evaluate(`document.querySelector('#app-main').textContent.includes('Lời mời đã gửi') && document.documentElement.scrollWidth <= window.innerWidth`), true);
+    await evaluate(`__troday.action('navigate', 'roommates'); document.querySelector('#roommate-tab-matches').click(); document.querySelector('[data-action="send-roommate"][data-id="ngoc"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#roommate-tab-outgoing').getAttribute('aria-selected')==='true' && document.querySelector('#roommate-tab-outgoing .tab-count').textContent==='1' && document.querySelectorAll('#roommate-panel-outgoing .roommate-row').length===1 && document.documentElement.scrollWidth <= window.innerWidth`), true);
     await evaluate(`document.querySelector('[data-action="edit-roommate-profile"]').click()`);
     assert.equal(await evaluate(`Boolean(document.querySelector('form[data-form="roommate-profile"]'))`), true);
 
     // Multiple independent posts can target the same existing room.
     await evaluate(`document.querySelector('#dialog-body [data-action="close-dialog"]').click(); __troday.reset(); __troday.action('switch-role', 'landlord'); __troday.action('navigate', 'listings'); document.querySelector('[data-action="open-listing"]').click()`);
-    assert.equal(await evaluate(`document.querySelector('[name="roomId"]').options.length === 5 && Array.from(document.querySelector('[name="roomId"]').options).some(o=>o.value==='r1') && !Array.from(document.querySelector('[name="roomId"]').options).some(o=>o.value==='r4')`), true);
+    assert.equal(await evaluate(`document.querySelector('[name="roomId"]').options.length === 6 && Array.from(document.querySelector('[name="roomId"]').options).some(o=>o.value==='r1') && !Array.from(document.querySelector('[name="roomId"]').options).some(o=>o.value==='r4')`), true);
     await evaluate(`document.querySelector('[name="roomId"]').value='r1'; document.querySelector('[name="title"]').value='Bài mới cho P101'; document.querySelector('[name="description"]').value='Thông tin của riêng bài mới'; document.querySelector('form[data-form="listing"]').requestSubmit()`);
     const secondPost = await evaluate(`__troday.getState().posts.at(-1).id`);
-    assert.equal(await evaluate(`__troday.getState().posts.find(p=>p.id==='p-r1').status==='APPROVED' && __troday.getState().posts.at(-1).status==='PENDING_REVIEW' && __troday.getState().rooms.filter(r=>r.houseId==='h1').length===5`),true);
+    assert.equal(await evaluate(`__troday.getState().posts.find(p=>p.id==='p-r1').status==='APPROVED' && __troday.getState().posts.at(-1).status==='PENDING_REVIEW' && __troday.getState().rooms.filter(r=>r.houseId==='h1').length===6`),true);
     await evaluate(`document.querySelector('[data-action="open-listing"]').click(); document.querySelector('[name="roomId"]').value='r1'; document.querySelector('[name="title"]').value='Bài thứ ba P101'; document.querySelector('[name="description"]').value='Nội dung khác'; document.querySelector('form[data-form="listing"]').requestSubmit()`);
     const thirdPost = await evaluate(`__troday.getState().posts.at(-1).id`);
     assert.equal(await evaluate(`__troday.getState().posts.filter(p=>p.roomId==='r1' && p.status==='PENDING_REVIEW').length`),2);
@@ -350,7 +391,7 @@ async function main() {
     await evaluate(`document.querySelector('#room-detail-tab-residents').click()`);
     assert.equal(await evaluate(`document.querySelector('[data-room-residents]').textContent.includes('Chưa có người đang ở') && !document.querySelector('[data-room-services]')`),true);
     assert.deepEqual(errors, []);
-    console.log("Browser smoke passed: roommate profile creation, editing, housing fields and reload; rental workflows, independent posts, room detail tabs with keyboard navigation, residents and service prices, pending quota and role visibility, both viewing flows, contract cleanup, persistence and mobile layout; no runtime exceptions.");
+    console.log("Browser smoke passed: three roommate tabs and counters; active rental details, renewal approval/confirmation/application and rejection; roommate profile creation, editing, housing fields and reload; rental workflows, independent posts, room detail tabs, residents and service prices, pending quota and role visibility, both viewing flows, contract cleanup, persistence and mobile layout; no runtime exceptions.");
     await call("Browser.close");
   } finally {
     socket?.close(); chrome?.kill();

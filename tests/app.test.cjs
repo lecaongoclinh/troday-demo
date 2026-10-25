@@ -41,6 +41,15 @@ const roomDetailSection = (d, name) => d.node("#app-main").innerHTML.match(new R
 const k2 = (d) => byId(d.state.contracts, "k2");
 const join = (d) => byId(d.state.joinRequests, "join1");
 const roommateProfileValues = (extra = {}) => ({ location: "Cầu Giấy, Thanh Xuân", budgetMin: "2000000", budgetMax: "4000000", habits: "Không hút thuốc · Giữ vệ sinh chung", available: "2026-11-01", housingStatus: "NO_ACCOMMODATION", currentRoomTenantId: "", ...extra });
+// Scenarios for a new rental or self-declared housing first end Lan's current stay.
+function leaveSampleRental(d) {
+  const previousRole = d.state.role;
+  d.state.role = "landlord"; d.action("move-out", "k4:o5"); d.state.role = previousRole;
+}
+function lanChangeValues(d, extra = {}) {
+  const c = byId(d.state.contracts, "k4");
+  return { contractId: c.id, type: "RENEWAL", effective: "2026-10-24", newEnd: "2028-09-30", note: "Mong gia hạn thêm 12 tháng", baseRevisionNo: String(c.revisionNo), representativeId: c.members[0].id, ...extra };
+}
 function change(d, type, extra = {}) {
   const request = { id: "change-test", contractId: "k2", status: "READY_TO_APPLY", type, effective: "2026-10-24", ...extra };
   d.state.changeRequests.push(request);
@@ -207,6 +216,7 @@ test("room capacity cannot be reduced below people and holds", () => {
 });
 test("initial occupants can all move in or arrive separately", () => {
   const d = demo(); const c = byId(d.state.contracts, "k1");
+  leaveSampleRental(d);
   byId(d.state.rooms, "r5").capacity = 2;
   c.status = "CONFIRMED"; c.revisionStatus = "CONFIRMED";
   c.members.push({ id: "extra", tenantId: null, name: "Bạn ở cùng", status: "PLANNED", moveIn: "" });
@@ -227,6 +237,7 @@ test("activation requires the representative and validates the entire selection 
 });
 test("a group can move in in one confirmation", () => {
   const d = demo(); const c = byId(d.state.contracts, "k1"); c.status = "CONFIRMED"; c.revisionStatus = "CONFIRMED";
+  leaveSampleRental(d);
   byId(d.state.rooms, "r5").capacity = 2;
   c.members.push({ id: "extra", tenantId: null, name: "Bạn ở cùng", status: "PLANNED" });
   d.submit("move-in", { contractId: c.id, date: "2026-10-24", memberIds: ["o1", "extra"] });
@@ -300,6 +311,177 @@ test("new contract rejects more initial members than the room allows", () => {
   assert.equal(d.state.contracts.length, count);
 });
 
+test("roommate tabs isolate their lists, count all invitation statuses and restore the chosen tab", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("navigate", "roommates");
+  assert.match(d.node("#app-main").innerHTML, /id="roommate-tab-matches"[^>]*aria-selected="true"/);
+  assert.match(d.node("#app-main").innerHTML, /id="roommate-tab-incoming"[^>]*>.*?<span class="tab-count">2<\/span>/);
+  assert.doesNotMatch(d.node("#app-main").innerHTML, /Mình đang tìm phòng khu Cầu Giấy/);
+  d.action("roommate-tab", "incoming");
+  assert.match(d.node("#app-main").innerHTML, /Mình đang tìm phòng khu Cầu Giấy/);
+  assert.match(d.node("#app-main").innerHTML, /data-action="reject-roommate"/);
+  d.action("reject-roommate", "rm1");
+  assert.match(d.node("#app-main").innerHTML, /Đã từ chối/);
+  assert.match(d.node("#app-main").innerHTML, /id="roommate-tab-incoming"[^>]*>.*?<span class="tab-count">2<\/span>/);
+  d.action("roommate-tab", "outgoing");
+  assert.match(d.node("#app-main").innerHTML, /Chưa gửi lời mời/);
+  assert.doesNotMatch(d.node("#app-main").innerHTML, /data-action="roommate-profile"/);
+  d.submit("roommate-profile", roommateProfileValues({ housingStatus: "IN_SYSTEM", currentRoomTenantId: "o5" }));
+  d.action("send-roommate", "ngoc");
+  assert.equal(d.state.roommateTab, "outgoing");
+  assert.match(d.node("#app-main").innerHTML, /id="roommate-tab-outgoing"[^>]*>.*?<span class="tab-count">1<\/span>/);
+  assert.match(d.node("#app-main").innerHTML, /Chờ phản hồi/);
+  const restored = demo(d.state); restored.state.role = "tenant"; restored.action("navigate", "roommates");
+  assert.match(restored.node("#app-main").innerHTML, /id="roommate-tab-outgoing"[^>]*aria-selected="true"/);
+  restored.action("roommate-tab", "invalid"); assert.equal(restored.state.roommateTab, "outgoing");
+  restored.state.roommateTab = "legacy"; restored.api.render();
+  assert.match(restored.node("#app-main").innerHTML, /id="roommate-tab-matches"[^>]*aria-selected="true"/);
+});
+
+test("the active rental example shows Lan's room, contract term and three separate request actions", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("navigate", "contracts");
+  assert.equal(d.state.selectedContract, "k4");
+  const html = d.node("#app-main").innerHTML;
+  assert.match(html, /Phòng đang thuê: P203/); assert.match(html, /HD-2026-099/); assert.match(html, /Còn hiệu lực/);
+  assert.match(html, /Bắt đầu: 1\/10\/2026/); assert.match(html, /Kết thúc: 30\/9\/2027/);
+  for (const action of ["open-renewal", "open-transfer", "open-termination"]) assert.match(html, new RegExp(`data-action="${action}"`));
+  d.action("create-roommate-profile");
+  assert.match(d.node("#dialog-body").innerHTML, /name="currentRoomTenantId" value="o5"/);
+  assert.match(d.node("#dialog-body").innerHTML, /Đang ở P203/);
+  d.action("close-dialog"); d.action("contract-detail", "k3");
+  assert.doesNotMatch(d.node("#app-main").innerHTML, /data-action="open-renewal"/);
+});
+
+test("older demos gain the rental example once without replacing edits, existing stays or ended contracts", () => {
+  const old = structuredClone(demo().state);
+  old.contracts = old.contracts.filter((c) => c.id !== "k4"); old.rooms = old.rooms.filter((r) => r.id !== "r7");
+  delete old.lanActiveContractSeeded; old.rooms[0].title = "Tên đã chỉnh";
+  const d = demo(old);
+  assert.equal(d.state.contracts.filter((c) => c.number === "HD-2026-099").length, 1);
+  assert.equal(d.state.rooms[0].title, "Tên đã chỉnh");
+  assert.equal(d.state.posts.some((p) => p.roomId === "r7"), false);
+  leaveSampleRental(d);
+  const restored = demo(d.state);
+  assert.equal(byId(restored.state.contracts, "k4").status, "TERMINATED");
+  assert.equal(restored.state.contracts.filter((c) => c.id === "k4").length, 1);
+  const housed = structuredClone(old), c = byId(housed.contracts, "k1");
+  c.status = "ACTIVE"; c.members[0].status = "ACTIVE";
+  const preserved = demo(housed);
+  assert.equal(preserved.state.contracts.some((c) => c.id === "k4"), false);
+  assert.equal(preserved.state.rooms.some((r) => r.id === "r7"), false);
+});
+
+test("renewal changes the agreed end date only after owner review, tenant confirmation and owner application", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("contract-detail", "k4");
+  const c = byId(d.state.contracts, "k4"), originalEnd = c.end;
+  d.action("open-renewal", c.id);
+  assert.match(d.node("#dialog-body").innerHTML, /name="type" value="RENEWAL"/);
+  assert.match(d.node("#dialog-body").innerHTML, /name="newEnd"/);
+  d.submit("change-request", lanChangeValues(d));
+  const request = d.state.changeRequests.at(-1);
+  assert.equal(request.status, "PENDING"); assert.equal(c.end, originalEnd);
+  d.action("approve-change", request.id); assert.equal(request.status, "PENDING");
+  d.state.role = "landlord"; d.action("apply-change", request.id); assert.equal(c.end, originalEnd);
+  d.action("approve-change", request.id);
+  assert.equal(request.status, "APPROVED_WAITING_CONFIRMATION"); assert.equal(request.reviewedBy, "quan");
+  d.action("apply-change", request.id); assert.equal(c.end, originalEnd);
+  d.state.role = "tenant"; d.action("accept-change", request.id);
+  assert.equal(request.status, "READY_TO_APPLY"); assert.equal(request.tenantConfirmedBy, "lan");
+  assert.equal(c.end, originalEnd);
+  d.action("apply-change", request.id); assert.equal(c.end, originalEnd);
+  d.state.role = "landlord"; d.action("apply-change", request.id);
+  assert.equal(c.end, "2028-09-30"); assert.equal(c.revisionNo, 2); assert.equal(request.status, "COMPLETED");
+  assert.equal(c.revisions.at(-1).changeRequestId, request.id);
+  d.action("apply-change", request.id); assert.equal(c.revisionNo, 2);
+  const restored = demo(d.state); restored.state.role = "tenant"; restored.action("contract-detail", c.id);
+  assert.equal(byId(restored.state.contracts, c.id).end, "2028-09-30");
+  assert.match(restored.node("#app-main").innerHTML, /Đã áp dụng/);
+});
+
+test("request rejection requires the owner and a reason, retains history and allows a new request", () => {
+  const d = demo(); d.state.role = "tenant";
+  d.submit("change-request", lanChangeValues(d)); const request = d.state.changeRequests.at(-1);
+  d.submit("reject-change", { requestId: request.id, reason: "Không có quyền" }); assert.equal(request.status, "PENDING");
+  d.state.role = "landlord"; d.action("reject-change", request.id);
+  assert.match(d.node("#dialog-body").innerHTML, /Lý do từ chối/);
+  d.submit("reject-change", { requestId: request.id, reason: "   " }); assert.equal(request.status, "PENDING");
+  d.submit("reject-change", { requestId: request.id, reason: "Cần trao đổi thêm thời hạn" });
+  assert.equal(request.status, "REJECTED"); assert.equal(request.reviewedBy, "quan");
+  assert.equal(byId(d.state.contracts, "k4").end, "2027-09-30");
+  d.state.role = "tenant"; d.action("contract-detail", "k4");
+  assert.match(d.node("#app-main").innerHTML, /Cần trao đổi thêm thời hạn/);
+  d.submit("change-request", lanChangeValues(d));
+  assert.notEqual(d.state.changeRequests.at(-1).id, request.id);
+  assert.equal(d.state.changeRequests.at(-1).status, "PENDING");
+});
+
+test("request forms validate dates, type, current revision and representative and prevent duplicate open requests", () => {
+  const d = demo(); d.state.role = "tenant";
+  const count = d.state.changeRequests.length;
+  for (const fields of [
+    { type: "UNKNOWN" }, { newEnd: "" }, { newEnd: "2027-09-30" }, { newEnd: "2028-02-30" },
+    { effective: "2026-10-23" }, { effective: "2029-01-01" }, { effective: "" }, { note: " " },
+    { baseRevisionNo: "9" }, { representativeId: "o2" }, { contractId: "k2" },
+    { type: "TRANSFER", targetRoom: "r7" }, { type: "TRANSFER", targetRoom: "r4" },
+    { type: "TERMINATION", effective: "2028-01-01" }
+  ]) {
+    d.submit("change-request", lanChangeValues(d, fields));
+    assert.equal(d.state.changeRequests.length, count, JSON.stringify(fields));
+  }
+  d.submit("change-request", lanChangeValues(d));
+  d.submit("change-request", lanChangeValues(d)); assert.equal(d.state.changeRequests.length, count + 1);
+  d.action("open-termination", "k4"); assert.equal(d.node("#app-dialog").open, false);
+});
+
+test("a future renewal cannot apply early and a stale approved proposal cannot modify the contract", () => {
+  const d = demo(); d.state.role = "tenant";
+  d.submit("change-request", lanChangeValues(d, { effective: "2026-10-25" }));
+  const request = d.state.changeRequests.at(-1), c = byId(d.state.contracts, "k4");
+  d.state.role = "landlord"; d.action("approve-change", request.id);
+  d.state.role = "tenant"; d.action("accept-change", request.id);
+  d.state.role = "landlord"; d.action("apply-change", request.id);
+  assert.equal(request.status, "READY_TO_APPLY"); assert.equal(c.revisionNo, 1);
+  d.action("navigate", "contracts");
+  assert.match(d.node("#app-main").innerHTML, /disabled title="Chờ đến ngày hiệu lực/);
+  d.now("2026-10-25T03:00:00Z"); c.revisionNo = 2;
+  const before = JSON.stringify(c); d.action("apply-change", request.id);
+  assert.equal(JSON.stringify(c), before); assert.equal(request.status, "READY_TO_APPLY");
+  c.revisionNo = 1; d.action("apply-change", request.id);
+  assert.equal(request.status, "COMPLETED"); assert.equal(c.end, "2028-09-30");
+});
+
+test("only the owning landlord reviews and only the current representative confirms a request", () => {
+  const d = demo(); d.state.role = "tenant";
+  d.submit("change-request", lanChangeValues(d));
+  const request = d.state.changeRequests.at(-1), c = byId(d.state.contracts, "k4");
+  d.state.role = "landlord"; c.ownerId = "huong";
+  d.action("approve-change", request.id); d.action("reject-change", request.id);
+  assert.equal(request.status, "PENDING");
+  c.ownerId = "quan"; d.action("approve-change", request.id);
+  d.state.role = "tenant"; c.tenantId = "bao";
+  d.action("accept-change", request.id); assert.equal(request.status, "APPROVED_WAITING_CONFIRMATION");
+  c.tenantId = "lan"; c.revisionNo = 2;
+  d.action("accept-change", request.id); assert.equal(request.status, "APPROVED_WAITING_CONFIRMATION");
+  c.revisionNo = 1; d.action("accept-change", request.id); assert.equal(request.status, "READY_TO_APPLY");
+});
+
+test("the separate transfer and termination actions retain their own fields and approval workflow", () => {
+  for (const [action, type] of [["open-transfer", "TRANSFER"], ["open-termination", "TERMINATION"]]) {
+    const d = demo(); d.state.role = "tenant"; d.action(action, "k4");
+    assert.match(d.node("#dialog-body").innerHTML, new RegExp(`name="type" value="${type}"`));
+    if (type === "TRANSFER") assert.match(d.node("#dialog-body").innerHTML, /name="targetRoom"/);
+    else assert.doesNotMatch(d.node("#dialog-body").innerHTML, /name="targetRoom"|name="newEnd"/);
+    d.submit("change-request", lanChangeValues(d, { type, targetRoom: "r1" }));
+    const request = d.state.changeRequests.at(-1);
+    d.state.role = "landlord"; d.action("approve-change", request.id);
+    d.state.role = "tenant"; d.action("accept-change", request.id);
+    d.state.role = "landlord"; d.action("apply-change", request.id);
+    assert.equal(request.status, "COMPLETED");
+    assert.equal(byId(d.state.contracts, "k4").status, "TERMINATED");
+    assert.equal(byId(d.state.contracts, "k4").members[0].status, "LEFT");
+    if (type === "TRANSFER") assert.equal(byId(d.state.contracts, request.resultContractId).roomId, "r1");
+  }
+});
+
 test("a fresh tenant starts without a profile and cancelling creation leaves rental data untouched", () => {
   const d = demo(); d.state.role = "tenant"; d.action("navigate", "roommates");
   assert.equal(d.state.roommateProfile, null);
@@ -318,6 +500,7 @@ test("a fresh tenant starts without a profile and cancelling creation leaves ren
 
 test("creating a profile persists it and editing replaces the same profile without creating invitations", () => {
   const d = demo(); d.state.role = "tenant"; d.action("navigate", "roommates");
+  leaveSampleRental(d);
   const invites = JSON.stringify(d.state.roommateInvites), peers = JSON.stringify(d.state.roommateProfiles);
   d.action("create-roommate-profile"); d.submit("roommate-profile", roommateProfileValues({ budgetMin: "0" }));
   assert.equal(d.node("#app-dialog").open, false);
@@ -349,6 +532,7 @@ test("old automatically supplied profiles become prefilled drafts while existing
   old.roommateProfile = { location: "Khu vực đã sửa", budgetMin: 1000000, budgetMax: 2500000, habits: "Giờ giấc ổn định", available: "2026-12-01" };
   old.roommateInvites[0].status = "ACCEPTED";
   const d = demo(old); d.state.role = "tenant"; d.action("navigate", "roommates");
+  leaveSampleRental(d);
   assert.equal(d.state.roommateProfile, null);
   assert.equal(d.state.roommateProfileDraft.location, "Khu vực đã sửa");
   d.action("create-roommate-profile");
@@ -365,6 +549,7 @@ test("old automatically supplied profiles become prefilled drafts while existing
 
 test("new invitations require a created profile and creating one never sends an invitation implicitly", () => {
   const d = demo(); d.state.role = "tenant"; d.action("navigate", "roommates");
+  leaveSampleRental(d);
   const count = d.state.roommateInvites.length;
   d.action("send-roommate", "ngoc");
   assert.equal(d.node("#app-dialog").open, true);
@@ -379,6 +564,7 @@ test("new invitations require a created profile and creating one never sends an 
 
 test("external housing is self-declared, escaped when shared and cleared when no longer applicable", () => {
   const d = demo(); d.state.role = "tenant"; d.action("navigate", "roommates");
+  leaveSampleRental(d);
   const externalContext = '<img src=x onerror="alert(1)"> Đang thuê ở Cầu Giấy';
   d.submit("roommate-profile", roommateProfileValues({ housingStatus: "EXTERNAL", externalContext }));
   assert.equal(d.state.roommateProfile.externalContext, externalContext);
@@ -398,6 +584,7 @@ test("external housing is self-declared, escaped when shared and cleared when no
 
 test("profile validation rejects incomplete, invalid or forged housing data without replacing a valid profile", () => {
   const d = demo(); d.state.role = "tenant";
+  leaveSampleRental(d);
   d.submit("roommate-profile", roommateProfileValues());
   const before = JSON.stringify(d.state.roommateProfile);
   for (const fields of [
@@ -420,6 +607,7 @@ test("profile validation rejects incomplete, invalid or forged housing data with
 
 test("in-system housing uses a confirmed stay, rejects stale forms and follows actual move-in and move-out", () => {
   const d = demo(); d.state.role = "tenant";
+  leaveSampleRental(d);
   d.submit("roommate-profile", roommateProfileValues({ housingStatus: "EXTERNAL", externalContext: "Chỗ ở tự khai" }));
   const c = byId(d.state.contracts, "k1"), member = c.members[0];
   c.status = "CONFIRMED";
@@ -510,6 +698,7 @@ test("only the recipient accepts or rejects and only connected participants can 
 
 test("one open invitation per pair blocks reverse invitations and merges legacy crossed invitations", () => {
   const d = demo(); d.state.role = "tenant";
+  leaveSampleRental(d);
   d.submit("roommate-profile", roommateProfileValues());
   const count = d.state.roommateInvites.length;
   d.action("send-roommate", "bao"); assert.equal(d.state.roommateInvites.length, count);
