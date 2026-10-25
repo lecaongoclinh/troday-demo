@@ -40,6 +40,7 @@ const viewingCard = (d, id) => d.node("#app-main").innerHTML.match(new RegExp('<
 const roomDetailSection = (d, name) => d.node("#app-main").innerHTML.match(new RegExp(`<section data-room-${name}>([\\s\\S]*?)</section>`))?.[1] || "";
 const k2 = (d) => byId(d.state.contracts, "k2");
 const join = (d) => byId(d.state.joinRequests, "join1");
+const roommateProfileValues = (extra = {}) => ({ location: "Cầu Giấy, Thanh Xuân", budgetMin: "2000000", budgetMax: "4000000", habits: "Không hút thuốc · Giữ vệ sinh chung", available: "2026-11-01", housingStatus: "NO_ACCOMMODATION", currentRoomTenantId: "", ...extra });
 function change(d, type, extra = {}) {
   const request = { id: "change-test", contractId: "k2", status: "READY_TO_APPLY", type, effective: "2026-10-24", ...extra };
   d.state.changeRequests.push(request);
@@ -299,6 +300,155 @@ test("new contract rejects more initial members than the room allows", () => {
   assert.equal(d.state.contracts.length, count);
 });
 
+test("a fresh tenant starts without a profile and cancelling creation leaves rental data untouched", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("navigate", "roommates");
+  assert.equal(d.state.roommateProfile, null);
+  assert.match(d.node("#app-main").innerHTML, /Chưa có hồ sơ ở ghép/);
+  assert.match(d.node("#app-main").innerHTML, /data-action="create-roommate-profile"/);
+  assert.doesNotMatch(d.node("#app-main").innerHTML, /data-action="edit-roommate-profile"/);
+  const before = JSON.stringify({ contracts: d.state.contracts, joins: d.state.joinRequests, invites: d.state.roommateInvites, rooms: d.state.rooms });
+  d.action("create-roommate-profile");
+  assert.equal(d.node("#app-dialog").open, true);
+  assert.match(d.node("#dialog-body").innerHTML, /Tạo hồ sơ ở ghép/);
+  assert.match(d.node("#dialog-body").innerHTML, /name="location" value=""/);
+  d.action("close-dialog");
+  assert.equal(d.state.roommateProfile, null);
+  assert.equal(JSON.stringify({ contracts: d.state.contracts, joins: d.state.joinRequests, invites: d.state.roommateInvites, rooms: d.state.rooms }), before);
+});
+
+test("creating a profile persists it and editing replaces the same profile without creating invitations", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("navigate", "roommates");
+  const invites = JSON.stringify(d.state.roommateInvites), peers = JSON.stringify(d.state.roommateProfiles);
+  d.action("create-roommate-profile"); d.submit("roommate-profile", roommateProfileValues({ budgetMin: "0" }));
+  assert.equal(d.node("#app-dialog").open, false);
+  assert.equal(d.state.roommateProfile.active, true);
+  assert.equal(d.state.roommateProfile.budgetMin, 0);
+  assert.equal(d.state.roommateProfile.housingStatus, "NO_ACCOMMODATION");
+  assert.equal(d.state.roommateProfile.currentRoomTenantId, null);
+  assert.equal(d.state.roommateProfile.externalContext, null);
+  assert.match(d.node("#app-main").innerHTML, /Chưa có chỗ ở/);
+  assert.match(d.node("#app-main").innerHTML, /data-action="edit-roommate-profile"/);
+  assert.doesNotMatch(d.node("#app-main").innerHTML, /data-action="create-roommate-profile"/);
+  const createdAt = d.state.roommateProfile.createdAt;
+  const restored = demo(d.state); restored.state.role = "tenant"; restored.action("navigate", "roommates");
+  assert.equal(restored.state.roommateProfile.location, "Cầu Giấy, Thanh Xuân");
+  restored.action("edit-roommate-profile");
+  assert.match(restored.node("#dialog-body").innerHTML, /Sửa hồ sơ ở ghép/);
+  assert.match(restored.node("#dialog-body").innerHTML, /value="NO_ACCOMMODATION" selected/);
+  restored.now("2026-10-24T05:00:00Z");
+  restored.submit("roommate-profile", roommateProfileValues({ location: "Đống Đa", budgetMin: "4000000", budgetMax: "4000000" }));
+  assert.equal(restored.state.roommateProfile.location, "Đống Đa");
+  assert.equal(restored.state.roommateProfile.createdAt, createdAt);
+  assert.notEqual(restored.state.roommateProfile.updatedAt, createdAt);
+  assert.equal(JSON.stringify(restored.state.roommateProfiles), peers);
+  assert.equal(JSON.stringify(restored.state.roommateInvites), invites);
+});
+
+test("old automatically supplied profiles become prefilled drafts while existing connections remain usable", () => {
+  const old = structuredClone(demo().state);
+  old.roommateProfile = { location: "Khu vực đã sửa", budgetMin: 1000000, budgetMax: 2500000, habits: "Giờ giấc ổn định", available: "2026-12-01" };
+  old.roommateInvites[0].status = "ACCEPTED";
+  const d = demo(old); d.state.role = "tenant"; d.action("navigate", "roommates");
+  assert.equal(d.state.roommateProfile, null);
+  assert.equal(d.state.roommateProfileDraft.location, "Khu vực đã sửa");
+  d.action("create-roommate-profile");
+  assert.match(d.node("#dialog-body").innerHTML, /value="Khu vực đã sửa"/);
+  d.action("close-dialog"); d.action("chat-roommate", "rm1");
+  assert.equal(d.state.view, "chats");
+  d.submit("roommate-profile", roommateProfileValues({ location: old.roommateProfile.location }));
+  assert.equal(d.state.roommateProfile.location, "Khu vực đã sửa");
+  assert.equal(d.state.roommateProfileDraft, undefined);
+  const restored = demo(d.state);
+  assert.equal(restored.state.roommateProfile.active, true);
+  assert.equal(restored.state.roommateProfileDraft, undefined);
+});
+
+test("new invitations require a created profile and creating one never sends an invitation implicitly", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("navigate", "roommates");
+  const count = d.state.roommateInvites.length;
+  d.action("send-roommate", "ngoc");
+  assert.equal(d.node("#app-dialog").open, true);
+  assert.match(d.node("#dialog-body").innerHTML, /Tạo hồ sơ ở ghép/);
+  assert.equal(d.state.roommateInvites.length, count);
+  d.submit("roommate-profile", roommateProfileValues());
+  assert.equal(d.state.roommateInvites.length, count);
+  d.action("send-roommate", "ngoc");
+  assert.equal(d.state.roommateInvites.length, count + 1);
+  assert.equal(d.state.roommateInvites.at(-1).receiverId, "ngoc");
+});
+
+test("external housing is self-declared, escaped when shared and cleared when no longer applicable", () => {
+  const d = demo(); d.state.role = "tenant"; d.action("navigate", "roommates");
+  const externalContext = '<img src=x onerror="alert(1)"> Đang thuê ở Cầu Giấy';
+  d.submit("roommate-profile", roommateProfileValues({ housingStatus: "EXTERNAL", externalContext }));
+  assert.equal(d.state.roommateProfile.externalContext, externalContext);
+  assert.match(d.node("#app-main").innerHTML, /Đang ở ngoài hệ thống/);
+  assert.match(d.node("#app-main").innerHTML, /&lt;img/);
+  d.action("edit-roommate-profile");
+  assert.match(d.node("#dialog-body").innerHTML, /value="EXTERNAL" selected/);
+  assert.match(d.node("#dialog-body").innerHTML, /&lt;img/);
+  d.action("close-dialog");
+  d.submit("roommate-profile", roommateProfileValues({ externalContext }));
+  assert.equal(d.state.roommateProfile.externalContext, null);
+  assert.doesNotMatch(d.node("#app-main").innerHTML, /Đang thuê ở Cầu Giấy/);
+  d.submit("roommate-profile", roommateProfileValues({ housingStatus: "EXTERNAL" }));
+  assert.equal(d.state.roommateProfile.housingStatus, "EXTERNAL");
+  assert.equal(d.state.roommateProfile.externalContext, null);
+});
+
+test("profile validation rejects incomplete, invalid or forged housing data without replacing a valid profile", () => {
+  const d = demo(); d.state.role = "tenant";
+  d.submit("roommate-profile", roommateProfileValues());
+  const before = JSON.stringify(d.state.roommateProfile);
+  for (const fields of [
+    { location: "   " }, { location: "x".repeat(501) }, { habits: "" }, { habits: "x".repeat(2001) },
+    { available: "" }, { available: "2026-02-30" }, { budgetMin: "" }, { budgetMax: "" },
+    { budgetMin: "NaN" }, { budgetMax: "Infinity" }, { budgetMin: "-1" }, { budgetMax: "1" },
+    { housingStatus: "" }, { housingStatus: "IN_SYSTEM" }, { housingStatus: "OTHER" },
+    { currentRoomTenantId: "o2" }, { housingStatus: "EXTERNAL", externalContext: "x".repeat(1001) }
+  ]) {
+    d.submit("roommate-profile", roommateProfileValues(fields));
+    assert.equal(JSON.stringify(d.state.roommateProfile), before, JSON.stringify(fields).slice(0, 100));
+  }
+  for (const role of ["landlord", "admin"]) {
+    d.state.role = role; d.action("create-roommate-profile");
+    assert.equal(d.node("#app-dialog").open, false);
+    d.submit("roommate-profile", roommateProfileValues({ location: "Không được thay đổi" }));
+    assert.equal(JSON.stringify(d.state.roommateProfile), before);
+  }
+});
+
+test("in-system housing uses a confirmed stay, rejects stale forms and follows actual move-in and move-out", () => {
+  const d = demo(); d.state.role = "tenant";
+  d.submit("roommate-profile", roommateProfileValues({ housingStatus: "EXTERNAL", externalContext: "Chỗ ở tự khai" }));
+  const c = byId(d.state.contracts, "k1"), member = c.members[0];
+  c.status = "CONFIRMED";
+  d.action("edit-roommate-profile");
+  assert.doesNotMatch(d.node("#dialog-body").innerHTML, /name="housingStatus" value="IN_SYSTEM"/);
+  member.status = "ACTIVE"; c.status = "ACTIVE";
+  const before = JSON.stringify(d.state.roommateProfile);
+  d.submit("roommate-profile", roommateProfileValues({ housingStatus: "EXTERNAL" }));
+  assert.equal(JSON.stringify(d.state.roommateProfile), before);
+  d.action("edit-roommate-profile");
+  assert.match(d.node("#dialog-body").innerHTML, /name="housingStatus" value="IN_SYSTEM"/);
+  assert.match(d.node("#dialog-body").innerHTML, /name="currentRoomTenantId" value="o1"/);
+  assert.doesNotMatch(d.node("#dialog-body").innerHTML, /data-change="roommate-housing"/);
+  d.submit("roommate-profile", roommateProfileValues({ housingStatus: "IN_SYSTEM", currentRoomTenantId: "o1", externalContext: "Không lưu" }));
+  assert.equal(d.state.roommateProfile.currentRoomTenantId, "o1");
+  assert.equal(d.state.roommateProfile.externalContext, null);
+  d.action("navigate", "roommates");
+  assert.match(d.node("#app-main").innerHTML, /Đang ở A02/);
+  member.status = "LEFT"; c.status = "TERMINATED";
+  const inSystem = JSON.stringify(d.state.roommateProfile);
+  d.submit("roommate-profile", roommateProfileValues({ housingStatus: "IN_SYSTEM", currentRoomTenantId: "o1" }));
+  assert.equal(JSON.stringify(d.state.roommateProfile), inSystem);
+  d.api.render();
+  assert.match(d.node("#app-main").innerHTML, /Cần cập nhật tình trạng chỗ ở/);
+  assert.doesNotMatch(d.node("#app-main").innerHTML, /Đang ở A02/);
+  d.submit("roommate-profile", roommateProfileValues({ housingStatus: "EXTERNAL" }));
+  assert.equal(d.state.roommateProfile.currentRoomTenantId, null);
+});
+
 test("accepting a connection opens a two-person chat without creating rental consent or occupancy", () => {
   for (const inviteId of ["rm1", "rm2"]) {
     const d = demo(); d.state.role = "tenant";
@@ -360,6 +510,7 @@ test("only the recipient accepts or rejects and only connected participants can 
 
 test("one open invitation per pair blocks reverse invitations and merges legacy crossed invitations", () => {
   const d = demo(); d.state.role = "tenant";
+  d.submit("roommate-profile", roommateProfileValues());
   const count = d.state.roommateInvites.length;
   d.action("send-roommate", "bao"); assert.equal(d.state.roommateInvites.length, count);
   assert.equal(byId(d.state.roommateInvites, "rm1").status, "PENDING");

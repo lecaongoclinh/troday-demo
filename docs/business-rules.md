@@ -173,7 +173,7 @@ Hiển thị lịch trong chat dùng liên kết `room_viewing_requests.conversa
 
 | Mã | Quy tắc / hành vi | Tình trạng |
 | --- | --- | --- |
-| OG-01 | Người thuê khai khu vực, ngân sách, thói quen và ngày sẵn sàng; ngân sách tối đa không nhỏ hơn tối thiểu. | Có |
+| OG-01 | Người thuê bắt đầu chưa có hồ sơ; bấm “Tạo hồ sơ ở ghép”, khai tình trạng chỗ ở, khu vực, ngân sách, thói quen và ngày sẵn sàng. Ngân sách không âm, tối đa không nhỏ hơn tối thiểu; khu vực/thói quen không để trống, ngày phải hợp lệ. Tạo xong hiển thị hồ sơ và nút “Sửa hồ sơ”; lưu/tải lại giữ thông tin đã tạo. | Mới |
 | OG-02 | Mỗi cặp người chỉ có một lời mời đang chờ hoặc kết nối chưa kết thúc, bất kể chiều gửi. Người nhận chấp nhận hoặc từ chối; gửi lời mời ngược chiều không tự chấp nhận. | Sửa |
 | OG-03 | Chấp nhận lời mời chỉ ghi nhận kết nối và chuyển ngay sang màn hình tin nhắn đúng người. Có thể mở lại bằng nút “Nhắn tin”; bấm lại không tạo cuộc chat trùng. | Sửa |
 | OG-04 | Cả `SEARCH_TOGETHER`, `JOIN_SYSTEM_ROOM` và ngữ cảnh khác đều không tự tạo yêu cầu thuê, giữ chỗ, lượt ở hoặc đồng thuận thuê chung khi chấp nhận kết nối. Thuê chung là quy trình riêng sau khi trao đổi; màn hình kết nối hiện chưa có form tạo yêu cầu thuê mới. | Sửa |
@@ -181,8 +181,12 @@ Hiển thị lịch trong chat dùng liên kết `room_viewing_requests.conversa
 | OG-06 | Danh sách “người phù hợp” trong demo là dữ liệu mẫu; chưa có thuật toán ghép cặp. SQL có hồ sơ/thói quen và các tình trạng chỗ ở, UI mới mô phỏng một phần. | Thiết kế |
 | OG-07 | Trong danh sách lời mời có “Xem hồ sơ”: tên, khu vực, ngân sách, thói quen, ngày sẵn sàng và tình trạng chỗ ở được chia sẻ. Không hiển thị căn cước hoặc ngày sinh từ hồ sơ cư trú. Có thể chấp nhận/từ chối ngay trong hộp hồ sơ. | Mới |
 | OG-08 | Có danh sách lời mời nhận và đã gửi, trạng thái chờ/đã kết nối/từ chối/hủy. Hồ sơ và cuộc chat đã kết nối có thể mở lại từ danh sách. | Mới |
+| OG-09 | Tình trạng chỗ ở có ba giá trị: `NO_ACCOMMODATION` (chưa có chỗ ở), `EXTERNAL` (đang ở ngoài hệ thống, mô tả tự khai không bắt buộc, tối đa 1.000 ký tự), `IN_SYSTEM` (tự lấy từ lượt cư trú `ACTIVE` đã xác nhận). Không suy “chưa có chỗ ở” chỉ vì không tìm thấy lượt cư trú. Người có lượt ở không tự chọn sang hai tình trạng khác; lưu hồ sơ kiểm tra lại lượt ở và ID để tránh dùng form đã cũ. Khi không còn lượt ở mà hồ sơ từng là `IN_SYSTEM`, hiển thị cần cập nhật tình trạng. | Mới |
+| OG-10 | Phải tạo hồ sơ trước khi gửi lời mời mới. Bấm “Kết nối” khi chưa có hồ sơ mở form tạo; lưu hồ sơ không tự gửi lời mời, không giữ chỗ hay tạo đồng thuận thuê. Lời mời đã nhận và kết nối cũ vẫn có thể phản hồi/mở chat. Hủy form không tạo hồ sơ. Dữ liệu hồ sơ mẫu cũ được giữ làm bản điền sẵn đến khi người dùng xác nhận tạo; lời mời và chat cũ được giữ. | Mới |
 
 #### Kết nối, trò chuyện và CSDL
+
+Luồng tạo hồ sơ: **Ở ghép → Tạo hồ sơ ở ghép → tình trạng chỗ ở + tiêu chí → Tạo hồ sơ → xem/sửa hồ sơ → gửi lời mời mới**. `roommateProfile = null` biểu thị chưa tạo trong prototype; sau khi lưu có `active = true`, thời điểm tạo/cập nhật và thông tin tương ứng `roommate_profiles`. Các hồ sơ được điền tự động ở bản demo cũ chưa có `active = true` được giữ trong `roommateProfileDraft` để điền sẵn, không tự công bố thành hồ sơ đã tạo. Tạo/sửa chỉ dành cho vai trò người thuê, không tạo hoặc thay đổi dữ liệu cư trú. Chuyển khỏi `EXTERNAL` sẽ xóa mô tả chỗ ở ngoài hệ thống khỏi hồ sơ đã lưu. Khi hiển thị, lượt cư trú thực tế luôn được ưu tiên hơn khai báo cũ. CSDL đã có `housing_status`, `current_room_tenant_id`, `external_context`, `active` và các tiêu chí nên luồng này không cần thêm bảng/migration; API phải lấy `current_room_tenant_id` từ lượt cư trú của người đang đăng nhập và kiểm tra lại khi lưu.
 
 Luồng hiện tại: **gửi lời mời → xem hồ sơ → chấp nhận kết nối → mở chat → trao đổi → quyết định thuê chung riêng**. Phòng đầy, hợp đồng đã kết thúc hoặc người gửi đã rời phòng không ngăn việc kết nối với người đó. Các điều kiện hợp đồng, sức chứa và đại diện chỉ áp dụng khi tạo/duyệt yêu cầu vào ở thực sự.
 

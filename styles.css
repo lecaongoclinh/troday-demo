@@ -198,6 +198,12 @@ td.actions-cell { text-align: right; }
 .roommate-copy { flex: 1; min-width: 160px; overflow-wrap: anywhere; }
 .roommate-copy .pill { margin-top: 6px; }
 .roommate-row .table-actions { flex-wrap: wrap; }
+.roommate-onboarding { display: grid; gap: 12px; font-size: 12px; line-height: 1.6; }
+.roommate-onboarding p, .roommate-onboarding ol { margin: 0; color: var(--muted); }
+.roommate-onboarding ol { padding-left: 18px; }
+.roommate-onboarding .button { justify-self: start; }
+.roommate-profile-summary small { overflow-wrap: anywhere; white-space: pre-line; }
+[data-roommate-external][hidden] { display: none; }
 .chat-pane-body { flex: 1; min-height: 0; overflow-y: auto; background: #fafcfc; padding: 17px 20px; }
 .message-date { text-align: center; color: #829498; font-size: 10px; margin: 7px 0 16px; }
 .chat-viewings { margin-top: 20px; }

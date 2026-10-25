@@ -98,7 +98,9 @@ Chi tiết phòng có thêm **Người đang ở** (tên, đại diện hợp đ
 
 Ba phần nằm trong các tab **Bài đăng / Người ở / Dịch vụ** bên dưới thông tin chung của phòng. Mỗi lần chỉ hiện nội dung tab đang chọn, mặc định là Bài đăng và ghi nhớ lựa chọn khi tải lại demo. Có thể chuyển tab bằng chuột hoặc phím trái/phải, Home/End. Nút tạo/sửa bài và hạn mức chờ duyệt nằm trong tab Bài đăng.
 
-Ở phần ở ghép, có thể xem hồ sơ người gửi trước khi phản hồi lời mời. Chấp nhận kết nối sẽ mở cuộc chat giữa hai người, không tự tạo yêu cầu thuê chung hay giữ chỗ. CSDL v5 đã hỗ trợ hội thoại `ROOMMATE`; không cần thêm bảng cho luồng này.
+Ở phần **Ở ghép → Tạo hồ sơ ở ghép**, người thuê khai tình trạng chỗ ở, khu vực, ngân sách, thói quen và ngày sẵn sàng; sau khi tạo có thể sửa và giữ thông tin khi tải lại trang. Nếu có lượt ở `ACTIVE`, tình trạng/phòng hiện tại được lấy tự động; nếu không có thì tự chọn chưa có chỗ ở hoặc đang ở ngoài hệ thống, kèm mô tả không bắt buộc. Hồ sơ mẫu từ bản demo cũ được giữ để điền sẵn form tạo. Cần tạo hồ sơ trước khi gửi lời mời mới; lưu hồ sơ không tự gửi lời mời. Luồng dùng bảng `roommate_profiles` hiện có, không thêm migration.
+
+Có thể xem hồ sơ người gửi trước khi phản hồi lời mời ở ghép. Lời mời và kết nối đã có vẫn sử dụng được; chấp nhận mở cuộc chat giữa hai người, không tự tạo yêu cầu thuê chung hay giữ chỗ. CSDL v5 đã hỗ trợ hội thoại `ROOMMATE`; không cần thêm bảng cho luồng này.
 
 Tin nhắn có nhãn “Chủ trọ”, “Bạn ghép” hoặc “Người thuê” cạnh tên theo quan hệ hội thoại. Hai người đã kết nối có thể chia sẻ tin phòng từ chat hoặc trang chi tiết; bấm thẻ để xem phòng và quay lại đúng cuộc trò chuyện. CSDL dùng `chat_messages.message_type = 'POST_SHARE'` và `shared_post_id` tham chiếu bài đăng; phần chia sẻ không thêm bảng.
 

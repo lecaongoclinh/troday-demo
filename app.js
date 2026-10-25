@@ -99,11 +99,11 @@ const seed = {
   ],
   changeRequests: [{ id: "chg1", contractId: "k2", type: "RENEWAL", status: "PENDING", requestedBy: "mai", effective: "2027-06-01", note: "Mong gia hạn thêm 12 tháng." }],
   joinRequests: [{ id: "join1", contractId: "k2", applicantId: "bao", requestedBy: "mai", status: "PENDING_LANDLORD", date: "2026-10-23", representativeConsent: true, applicantConsent: true }],
-  roommateProfile: { location: "Cầu Giấy, Thanh Xuân", budgetMin: 3000000, budgetMax: 5000000, habits: "Không hút thuốc · Giờ giấc ổn định", available: "2026-11-01" },
+  roommateProfile: null,
   roommateProfiles: {
-    bao: { location: "Cầu Giấy", budgetMin: 3000000, budgetMax: 5000000, habits: "Không hút thuốc · Muốn cùng tìm phòng", available: "2026-11-01" },
-    ngoc: { location: "Thanh Xuân", budgetMin: 2000000, budgetMax: 3500000, habits: "Ưu tiên không hút thuốc · Giữ vệ sinh chung", available: "2026-11-01" },
-    mai: { location: "Cầu Giấy", budgetMin: 2000000, budgetMax: 3000000, habits: "Giờ giấc ổn định · Muốn trao đổi trước khi ở chung", available: "2026-11-01" }
+    bao: { location: "Cầu Giấy", budgetMin: 3000000, budgetMax: 5000000, habits: "Không hút thuốc · Muốn cùng tìm phòng", available: "2026-11-01", housingStatus: "NO_ACCOMMODATION" },
+    ngoc: { location: "Thanh Xuân", budgetMin: 2000000, budgetMax: 3500000, habits: "Ưu tiên không hút thuốc · Giữ vệ sinh chung", available: "2026-11-01", housingStatus: "IN_SYSTEM" },
+    mai: { location: "Cầu Giấy", budgetMin: 2000000, budgetMax: 3000000, habits: "Giờ giấc ổn định · Muốn trao đổi trước khi ở chung", available: "2026-11-01", housingStatus: "IN_SYSTEM" }
   },
   roommateInvites: [{ id: "rm1", senderId: "bao", receiverId: "lan", status: "PENDING", scenario: "SEARCH_TOGETHER", note: "Mình đang tìm phòng khu Cầu Giấy, bạn cùng tìm nhé?" }, { id: "rm2", senderId: "mai", receiverId: "lan", status: "PENDING", scenario: "JOIN_SYSTEM_ROOM", contractId: "k2", note: "Phòng P305 còn một chỗ, bạn muốn ở cùng không?" }],
   invoices: [
@@ -146,6 +146,13 @@ normalizeListingData(state);
 state.chatDrafts ||= {};
 state.chatContexts ||= {};
 state.viewingProposals ||= [];
+// Previous demos supplied a profile automatically. Retain its fields as a draft
+// until the tenant explicitly creates a profile, keeping invitations and chats.
+if (state.roommateProfile && state.roommateProfile.active !== true) {
+  state.roommateProfileDraft = state.roommateProfile;
+  state.roommateProfile = null;
+}
+state.roommateProfile ??= null;
 // Update bundled photos in saved demos without resetting the visitor's changes.
 for (const item of [...state.rooms, ...state.posts]) {
   const oldPhoto = /^(?:\.?\/)?assets\/(r[1-6])\.png$/i.exec(item.photo || "");
@@ -562,13 +569,27 @@ function renderInvoices() {
 }
 
 function roommateProfileFor(id) {
-  return id === "lan" ? state.roommateProfile || seed.roommateProfile : state.roommateProfiles?.[id] || seed.roommateProfiles[id];
+  return id === "lan" ? state.roommateProfile : state.roommateProfiles?.[id] || seed.roommateProfiles[id];
+}
+function roommateStay(id) {
+  for (const c of state.contracts) {
+    const member = c.members.find((m) => m.tenantId === id && m.status === "ACTIVE");
+    if (member) return { roomId: c.roomId, memberId: member.id };
+  }
+  return null;
+}
+function roommateHousingLabel(id, profile) {
+  const current = roommateStay(id);
+  if (current) return `Đang ở ${roomName(current.roomId)}`;
+  if (profile.housingStatus === "NO_ACCOMMODATION") return "Chưa có chỗ ở";
+  if (profile.housingStatus === "EXTERNAL") return "Đang ở ngoài hệ thống";
+  return "Cần cập nhật tình trạng chỗ ở";
 }
 function roommateProfileSummary(id) {
   const profile = roommateProfileFor(id);
-  if (!profile) return '<p class="muted tiny">Người này chưa cập nhật tiêu chí ở ghép.</p>';
-  const current = state.contracts.find((c) => c.members.some((m) => m.tenantId === id && m.status === "ACTIVE"));
-  return `<div class="list-row"><div><strong>Khu vực</strong><small>${esc(profile.location)}</small></div></div><div class="list-row"><div><strong>Ngân sách / tháng</strong><small>${shortMoney(profile.budgetMin)}–${shortMoney(profile.budgetMax)}</small></div></div><div class="list-row"><div><strong>Thói quen / mong muốn</strong><small>${esc(profile.habits)}</small></div></div><div class="list-row"><div><strong>Sẵn sàng từ</strong><small>${dateLabel(profile.available)}</small></div></div><div class="list-row"><div><strong>Tình trạng chỗ ở</strong><small>${current ? `Đang ở ${esc(roomName(current.roomId))}` : "Đang tìm người trao đổi về chỗ ở"}</small></div></div>`;
+  if (!profile) return '<p class="muted tiny">Chưa tạo hồ sơ ở ghép.</p>';
+  const external = !roommateStay(id) && profile.housingStatus === "EXTERNAL" && profile.externalContext;
+  return `<div class="roommate-profile-summary"><div class="list-row"><div><strong>Khu vực</strong><small>${esc(profile.location)}</small></div></div><div class="list-row"><div><strong>Ngân sách / tháng</strong><small>${shortMoney(profile.budgetMin)}–${shortMoney(profile.budgetMax)}</small></div></div><div class="list-row"><div><strong>Thói quen / mong muốn</strong><small>${esc(profile.habits)}</small></div></div><div class="list-row"><div><strong>Sẵn sàng từ</strong><small>${dateLabel(profile.available)}</small></div></div><div class="list-row"><div><strong>Tình trạng chỗ ở</strong><small>${esc(roommateHousingLabel(id, profile))}</small>${external ? `<small>${esc(profile.externalContext)}</small>` : ""}</div></div></div>`;
 }
 function sameRoommatePair(invite, first, second) {
   return first !== second && [first, second].includes(invite.senderId) && [first, second].includes(invite.receiverId) && invite.senderId !== invite.receiverId;
@@ -591,6 +612,7 @@ function openRoommateProfile(id) {
 }
 function renderRoommates() {
   const me = userId();
+  const ownProfile = roommateProfileFor(me);
   const incoming = state.roommateInvites.filter((x) => x.receiverId === me);
   const outgoing = state.roommateInvites.filter((x) => x.senderId === me);
   const matches = ["bao", "ngoc", "mai"].filter((id) => id !== me);
@@ -600,8 +622,9 @@ function renderRoommates() {
     const actions = item.status === "PENDING" && received ? `${button("Chấp nhận kết nối", "accept-roommate", item.id, "small primary")}${button("Từ chối", "reject-roommate", item.id, "small")}` : item.status === "ACCEPTED" && !item.endedAt ? button("Nhắn tin", "chat-roommate", item.id, "small primary") : "";
     return `<div class="list-row roommate-row">${avatar(peer)}<div class="roommate-copy"><strong>${esc(person(peer).name)}</strong><small>${esc(item.note)}</small>${chip(labels[item.status] || "Chưa rõ trạng thái", item.status === "ACCEPTED" && !item.endedAt ? "green" : "gray")}</div><div class="table-actions">${button("Xem hồ sơ", "roommate-profile", peer, "small")}${actions}</div></div>`;
   }).join("") || '<p class="muted tiny">Chưa có lời mời.</p>';
-  return head("Tìm người ở ghép", "Kết nối để trò chuyện và tìm hiểu trước khi quyết định thuê chung", button(`${icon("sliders-horizontal")} Sửa tiêu chí`, "edit-roommate-profile")) +
-    `<div class="split-grid"><div><div class="section-bar" style="margin-top:0"><h2>Người phù hợp</h2></div><div class="flat-surface" style="padding:0 16px">${matches.map((id) => { const profile = roommateProfileFor(id); return `<div class="list-row roommate-row">${avatar(id)}<div class="roommate-copy"><strong>${esc(person(id).name)}</strong><small>${esc(profile?.location)} · ${profile ? `Ngân sách ${shortMoney(profile.budgetMin)}–${shortMoney(profile.budgetMax)}` : "Chưa cập nhật tiêu chí"}</small></div><div class="table-actions">${button("Xem hồ sơ", "roommate-profile", id, "small")}${roommateConnectionAction(id)}</div></div>`; }).join("")}</div><div class="section-bar"><h2>Lời mời dành cho bạn</h2></div><div class="flat-surface" style="padding:0 16px">${invitationList(incoming, true)}</div>${outgoing.length ? `<div class="section-bar"><h2>Lời mời đã gửi</h2></div><div class="flat-surface" style="padding:0 16px">${invitationList(outgoing, false)}</div>` : ""}</div><aside><div class="subtle-panel"><h3>Hồ sơ ở ghép của bạn</h3>${roommateProfileSummary(me)}</div></aside></div>`;
+  const profilePanel = ownProfile ? `${chip("Đã tạo hồ sơ", "green")}${roommateProfileSummary(me)}` : `<div class="roommate-onboarding"><strong>Chưa có hồ sơ ở ghép</strong><p>Giới thiệu nhu cầu và thói quen của bạn trước khi gửi lời mời kết nối mới.</p><ol><li>Cập nhật tình trạng chỗ ở.</li><li>Nhập khu vực, ngân sách và thói quen.</li><li>Tạo hồ sơ và tìm người để trao đổi.</li></ol>${button(`${icon("user-round")} Tạo hồ sơ ở ghép`, "create-roommate-profile", "", "primary")}</div>`;
+  return head("Tìm người ở ghép", "Kết nối để trò chuyện và tìm hiểu trước khi quyết định thuê chung", ownProfile ? button(`${icon("sliders-horizontal")} Sửa hồ sơ`, "edit-roommate-profile") : button(`${icon("user-round")} Tạo hồ sơ ở ghép`, "create-roommate-profile", "", "primary")) +
+    `<div class="split-grid"><div><div class="section-bar" style="margin-top:0"><h2>Người phù hợp</h2></div><div class="flat-surface" style="padding:0 16px">${matches.map((id) => { const profile = roommateProfileFor(id); return `<div class="list-row roommate-row">${avatar(id)}<div class="roommate-copy"><strong>${esc(person(id).name)}</strong><small>${esc(profile?.location)} · ${profile ? `Ngân sách ${shortMoney(profile.budgetMin)}–${shortMoney(profile.budgetMax)}` : "Chưa cập nhật tiêu chí"}</small></div><div class="table-actions">${button("Xem hồ sơ", "roommate-profile", id, "small")}${roommateConnectionAction(id)}</div></div>`; }).join("")}</div><div class="section-bar"><h2>Lời mời dành cho bạn</h2></div><div class="flat-surface" style="padding:0 16px">${invitationList(incoming, true)}</div>${outgoing.length ? `<div class="section-bar"><h2>Lời mời đã gửi</h2></div><div class="flat-surface" style="padding:0 16px">${invitationList(outgoing, false)}</div>` : ""}</div><aside><div class="subtle-panel"><h3>Hồ sơ ở ghép của bạn</h3>${profilePanel}</div></aside></div>`;
 }
 
 function renderVerifications() {
@@ -954,8 +977,13 @@ function openResolveReport(id) { modal("Xử lý báo cáo", `<form data-form="r
 function openReview(id) { modal("Đánh giá phòng", `<form data-form="review"><input type="hidden" name="contractId" value="${esc(id)}"><div class="form-grid"><label class="field">Số sao<select name="rating">${[5, 4, 3, 2, 1].map((n) => `<option value="${n}">${n} sao</option>`).join("")}</select></label><label class="field full">Nhận xét<textarea name="content" required placeholder="Trải nghiệm thực tế của bạn..."></textarea></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Đăng đánh giá</button></div></form>`); }
 function openIdentity() { modal("Gửi hồ sơ căn cước", `<form data-form="identity"><div class="form-grid"><label class="field full">Số căn cước<input name="identity" inputmode="numeric" required maxlength="30"></label><label class="field full">Ảnh giấy tờ<input type="file" name="document" accept="image/*,.pdf" required></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Gửi kiểm duyệt</button></div></form>`); }
 function editRoommateProfile() {
-  const p = state.roommateProfile || seed.roommateProfile;
-  modal("Tiêu chí ở ghép", `<form data-form="roommate-profile"><div class="form-grid"><label class="field full">Khu vực mong muốn<input name="location" value="${esc(p.location)}" required></label><label class="field">Ngân sách từ<input type="number" name="budgetMin" min="0" value="${p.budgetMin}" required></label><label class="field">Đến<input type="number" name="budgetMax" min="0" value="${p.budgetMax}" required></label><label class="field full">Thói quen / yêu cầu<textarea name="habits" required>${esc(p.habits)}</textarea></label><label class="field full">Sẵn sàng từ<input type="date" name="available" value="${p.available}" required></label></div><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">Lưu hồ sơ</button></div></form>`);
+  if (state.role !== "tenant") return;
+  const ownProfile = roommateProfileFor(userId());
+  const p = ownProfile || state.roommateProfileDraft || {};
+  const current = roommateStay(userId());
+  const external = !current && p.housingStatus === "EXTERNAL";
+  const housingField = current ? `<input type="hidden" name="housingStatus" value="IN_SYSTEM"><input value="${esc(roommateHousingLabel(userId(), p))}" disabled><small class="muted tiny">Lấy từ lượt ở đã được chủ trọ xác nhận.</small>` : `<select name="housingStatus" data-change="roommate-housing" required><option value="">Chọn tình trạng chỗ ở</option><option value="NO_ACCOMMODATION" ${p.housingStatus === "NO_ACCOMMODATION" ? "selected" : ""}>Chưa có chỗ ở</option><option value="EXTERNAL" ${external ? "selected" : ""}>Đang ở ngoài hệ thống</option></select>`;
+  modal(ownProfile ? "Sửa hồ sơ ở ghép" : "Tạo hồ sơ ở ghép", `<form data-form="roommate-profile"><p>Chia sẻ thông tin này để người khác hiểu nhu cầu ở ghép của bạn.</p><input type="hidden" name="currentRoomTenantId" value="${esc(current?.memberId || "")}"><div class="form-grid"><label class="field full">Tình trạng chỗ ở${housingField}</label><label class="field full" data-roommate-external ${external ? "" : "hidden"}>Thông tin chỗ ở ngoài hệ thống (không bắt buộc)<textarea name="externalContext" maxlength="1000" placeholder="Ví dụ: Đang thuê ở Cầu Giấy, muốn tìm bạn cùng chuyển phòng." ${external ? "" : "disabled"}>${esc(external ? p.externalContext || "" : "")}</textarea></label><label class="field full">Khu vực mong muốn<input name="location" value="${esc(p.location || "")}" placeholder="Ví dụ: Cầu Giấy, Thanh Xuân" maxlength="500" required></label><label class="field">Ngân sách từ (đ/tháng)<input type="number" name="budgetMin" min="0" step="1" value="${esc(p.budgetMin ?? "")}" required></label><label class="field">Đến (đ/tháng)<input type="number" name="budgetMax" min="0" step="1" value="${esc(p.budgetMax ?? "")}" required></label><label class="field full">Thói quen / mong muốn<textarea name="habits" maxlength="2000" placeholder="Ví dụ: Không hút thuốc, giữ vệ sinh chung, giờ giấc ổn định." required>${esc(p.habits || "")}</textarea></label><label class="field full">Sẵn sàng từ<input type="date" name="available" value="${esc(p.available || "")}" required></label></div><p class="muted tiny">Tạo hồ sơ để kết nối và trao đổi. Việc thuê chung cần được thỏa thuận riêng.</p><div class="form-actions">${button("Hủy", "close-dialog")}<button class="button primary" type="submit">${ownProfile ? "Lưu thay đổi" : "Tạo hồ sơ"}</button></div></form>`);
 }
 function openNotifications() {
   const list = state.notifications.filter((n) => n.userId === userId());
@@ -1131,6 +1159,7 @@ function handleAction(action, id) {
     case "issue-invoice": item = byId(state.invoices, id); if (item?.status === "DRAFT" && item.items.length) { item.status = "UNPAID"; finish("Hóa đơn đã phát hành, các dòng tiền được giữ cố định."); } return;
     case "pay-invoice": item = byId(state.invoices, id); if (item?.status === "UNPAID") { item.status = "PAID"; finish("Đã xác nhận thu tiền."); } return;
     case "cancel-invoice": item = byId(state.invoices, id); if (item?.status === "UNPAID") modal("Hủy hóa đơn", `<form data-form="cancel-invoice"><input type="hidden" name="invoiceId" value="${id}"><label class="field">Lý do hủy<textarea name="reason" required></textarea></label><div class="form-actions">${button("Quay lại", "close-dialog")}<button type="submit" class="button danger">Hủy hóa đơn</button></div></form>`); return;
+    case "create-roommate-profile":
     case "edit-roommate-profile": editRoommateProfile(); return;
     case "roommate-profile": openRoommateProfile(id); return;
     case "chat-roommate": openRoommateChat(id); return;
@@ -1139,6 +1168,7 @@ function handleAction(action, id) {
       const existing = openRoommateInvite(id);
       if (existing?.status === "ACCEPTED") { openRoommateChat(existing.id); return; }
       if (existing) { flash(existing.senderId === userId() ? "Bạn đã gửi lời mời cho người này." : "Người này đã gửi lời mời. Hãy xem hồ sơ và phản hồi lời mời hiện có."); return; }
+      if (!roommateProfileFor(userId())) { editRoommateProfile(); flash("Tạo hồ sơ ở ghép trước khi gửi lời mời mới."); return; }
       state.roommateInvites.push({ id: `rm-${userId()}-${id}-${Date.now()}-${state.roommateInvites.length}`, senderId: userId(), receiverId: id, status: "PENDING", scenario: "SEARCH_TOGETHER", note: "Mình muốn kết nối để trò chuyện và tìm hiểu về việc ở ghép." }); finish("Đã gửi lời mời kết nối."); return;
     }
     case "accept-roommate": acceptRoommate(id); return;
@@ -1556,9 +1586,21 @@ function handleForm(form) {
       finish("Đã gửi hồ sơ chờ xác minh."); return;
     }
     case "roommate-profile": {
-      if (Number(value("budgetMax")) < Number(value("budgetMin"))) { flash("Ngân sách tối đa phải lớn hơn mức tối thiểu."); return; }
-      state.roommateProfile = { location: value("location"), budgetMin: Number(value("budgetMin")), budgetMax: Number(value("budgetMax")), habits: value("habits"), available: value("available") };
-      finish("Đã cập nhật tiêu chí ở ghép."); return;
+      if (state.role !== "tenant") return;
+      const location = value("location"), habits = value("habits"), available = value("available");
+      const budgetMin = Number(value("budgetMin")), budgetMax = Number(value("budgetMax"));
+      if (!location || location.length > 500 || !habits || habits.length > 2000 || !Number.isFinite(appointmentTimestamp(available, "12:00"))) { flash("Nhập đầy đủ khu vực, thói quen và ngày sẵn sàng hợp lệ."); return; }
+      if (!value("budgetMin") || !value("budgetMax") || !Number.isFinite(budgetMin) || !Number.isFinite(budgetMax) || budgetMin < 0 || budgetMax < budgetMin) { flash("Ngân sách phải là số không âm; mức tối đa không nhỏ hơn tối thiểu."); return; }
+      const current = roommateStay(userId());
+      const housingStatus = value("housingStatus");
+      if (current ? housingStatus !== "IN_SYSTEM" || value("currentRoomTenantId") !== current.memberId : !["NO_ACCOMMODATION", "EXTERNAL"].includes(housingStatus) || !!value("currentRoomTenantId")) { flash("Chỗ ở chưa hợp lệ hoặc đã thay đổi. Hãy mở lại hồ sơ và cập nhật tình trạng chỗ ở."); return; }
+      const externalContext = housingStatus === "EXTERNAL" ? value("externalContext") : "";
+      if (externalContext.length > 1000) { flash("Thông tin chỗ ở ngoài hệ thống tối đa 1.000 ký tự."); return; }
+      const previous = roommateProfileFor(userId());
+      const timestamp = new Date().toISOString();
+      state.roommateProfile = { location, budgetMin, budgetMax, habits, available, housingStatus, currentRoomTenantId: current?.memberId || null, externalContext: externalContext || null, active: true, createdAt: previous?.createdAt || timestamp, updatedAt: timestamp };
+      delete state.roommateProfileDraft;
+      finish(previous ? "Đã cập nhật hồ sơ ở ghép." : "Đã tạo hồ sơ ở ghép. Bạn có thể gửi lời mời kết nối."); return;
     }
     case "profile": state.nameOverrides ||= {}; state.nameOverrides[userId()] = value("fullName"); finish("Đã lưu thông tin tài khoản."); return;
     default: flash("Biểu mẫu chưa có trong bản mô phỏng.");
@@ -1604,6 +1646,12 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("change", (event) => {
   const target = event.target;
   if (target.dataset.change === "listing-room") { updateListingQuota(target.form); return; }
+  if (target.dataset.change === "roommate-housing") {
+    const section = target.form.querySelector("[data-roommate-external]");
+    section.hidden = target.value !== "EXTERNAL";
+    section.querySelector("textarea").disabled = section.hidden;
+    return;
+  }
 
 
   if (target.dataset.change === "chat-context") { selectChatContext(target.value); $("#chat-room-context")?.focus({ preventScroll: true }); return; }

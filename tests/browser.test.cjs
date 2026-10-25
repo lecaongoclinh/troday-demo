@@ -133,9 +133,31 @@ async function main() {
     await evaluate(`__troday.action('navigate', 'chats'); __troday.action('select-chat', 'c1')`);
     assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(chatViewingSelector)}).length`), 1);
 
-    // Connection acceptance opens messaging, independently of rental consent.
+    // A tenant explicitly creates a profile before sending new invitations.
     await page("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
     await evaluate(`__troday.reset(); __troday.action('navigate', 'roommates')`);
+    assert.equal(await evaluate(`__troday.getState().roommateProfile === null && Boolean(document.querySelector('[data-action="create-roommate-profile"]')) && !document.querySelector('[data-action="edit-roommate-profile"]')`), true);
+    await evaluate(`document.querySelector('[data-action="create-roommate-profile"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#app-dialog').open && document.querySelector('[name="location"]').value === '' && document.querySelector('[data-roommate-external]').hidden && document.querySelector('[name="externalContext"]').disabled`), true);
+    await evaluate(`document.querySelector('[name="location"]').value='Bản nhập chưa lưu'; document.querySelector('#dialog-body [data-action="close-dialog"]').click()`);
+    assert.equal(await evaluate(`__troday.getState().roommateProfile === null`), true);
+    await evaluate(`document.querySelector('[data-action="create-roommate-profile"]').click(); document.querySelector('[name="housingStatus"]').value='EXTERNAL'; document.querySelector('[name="housingStatus"]').dispatchEvent(new Event('change', {bubbles:true}))`);
+    assert.equal(await evaluate(`!document.querySelector('[data-roommate-external]').hidden && !document.querySelector('[name="externalContext"]').disabled && document.querySelector('[name="location"]').value === ''`), true);
+    await page("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    assert.equal(await evaluate(`document.documentElement.scrollWidth <= window.innerWidth && document.querySelector('#app-dialog').scrollWidth <= document.querySelector('#app-dialog').clientWidth`), true);
+    await evaluate(`document.querySelector('[name="externalContext"]').value='Đang thuê ở Cầu Giấy, muốn cùng tìm phòng mới'; document.querySelector('[name="location"]').value='Cầu Giấy, Thanh Xuân'; document.querySelector('[name="budgetMin"]').value='4000000'; document.querySelector('[name="budgetMax"]').value='2000000'; document.querySelector('[name="habits"]').value='Không hút thuốc, giữ vệ sinh chung'; document.querySelector('[name="available"]').value='2026-11-01'; document.querySelector('form[data-form="roommate-profile"]').requestSubmit()`);
+    assert.equal(await evaluate(`document.querySelector('#app-dialog').open && __troday.getState().roommateProfile === null && document.querySelector('#toast').textContent.includes('Ngân sách')`), true);
+    await evaluate(`document.querySelector('[name="budgetMin"]').value='2000000'; document.querySelector('[name="budgetMax"]').value='4000000'; document.querySelector('form[data-form="roommate-profile"]').requestSubmit()`);
+    assert.equal(await evaluate(`!document.querySelector('#app-dialog').open && __troday.getState().roommateProfile.active && __troday.getState().roommateProfile.housingStatus === 'EXTERNAL' && document.querySelector('#app-main').textContent.includes('Đang ở ngoài hệ thống') && document.querySelector('#app-main').textContent.includes('Đang thuê ở Cầu Giấy') && !document.querySelector('[data-action="create-roommate-profile"]')`), true);
+    await evaluate(`document.querySelector('[data-action="edit-roommate-profile"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('[name="housingStatus"]').value==='EXTERNAL' && !document.querySelector('[data-roommate-external]').hidden && document.querySelector('[name="location"]').value==='Cầu Giấy, Thanh Xuân'`), true);
+    await evaluate(`document.querySelector('[name="housingStatus"]').value='NO_ACCOMMODATION'; document.querySelector('[name="housingStatus"]').dispatchEvent(new Event('change', {bubbles:true}))`);
+    assert.equal(await evaluate(`document.querySelector('[data-roommate-external]').hidden && document.querySelector('[name="externalContext"]').disabled && document.querySelector('form[data-form="roommate-profile"]').checkValidity()`), true);
+    await evaluate(`document.querySelector('form[data-form="roommate-profile"]').requestSubmit()`);
+    assert.equal(await evaluate(`__troday.getState().roommateProfile.externalContext===null && document.querySelector('#app-main').textContent.includes('Chưa có chỗ ở') && document.documentElement.scrollWidth <= window.innerWidth`), true);
+
+    // Connection acceptance opens messaging, independently of rental consent.
+    await page("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
     const beforeConnection = await evaluate(`JSON.stringify({ contracts: __troday.getState().contracts, joins: __troday.getState().joinRequests, rooms: __troday.getState().rooms })`);
     await evaluate(`document.querySelector('[data-action="accept-roommate"][data-id="rm1"]').closest('.roommate-row').querySelector('[data-action="roommate-profile"]').click()`);
     assert.equal(await evaluate(`document.querySelector('#app-dialog').open && document.querySelector('#dialog-body').textContent.includes('Lê Gia Bảo') && document.querySelector('#dialog-body').textContent.includes('Thói quen')`), true);
@@ -175,6 +197,7 @@ async function main() {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     assert.equal(reloaded, true);
+    assert.equal(await evaluate(`__troday.getState().roommateProfile.active && __troday.getState().roommateProfile.location==='Cầu Giấy, Thanh Xuân' && __troday.getState().roommateProfile.housingStatus==='NO_ACCOMMODATION' && Boolean(document.querySelector('[data-action="edit-roommate-profile"]'))`), true);
     await page("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     assert.equal(await evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true);
     await evaluate(`document.querySelector('[data-action="chat-roommate"][data-id="rm1"]').click()`);
@@ -327,7 +350,7 @@ async function main() {
     await evaluate(`document.querySelector('#room-detail-tab-residents').click()`);
     assert.equal(await evaluate(`document.querySelector('[data-room-residents]').textContent.includes('Chưa có người đang ở') && !document.querySelector('[data-room-services]')`),true);
     assert.deepEqual(errors, []);
-    console.log("Browser smoke passed: rental workflows, independent posts, room detail tabs with keyboard navigation, residents and service prices, pending quota and role visibility, both viewing flows, contract cleanup, persistence and mobile layout; no runtime exceptions.");
+    console.log("Browser smoke passed: roommate profile creation, editing, housing fields and reload; rental workflows, independent posts, room detail tabs with keyboard navigation, residents and service prices, pending quota and role visibility, both viewing flows, contract cleanup, persistence and mobile layout; no runtime exceptions.");
     await call("Browser.close");
   } finally {
     socket?.close(); chrome?.kill();
