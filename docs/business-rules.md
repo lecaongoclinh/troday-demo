@@ -549,6 +549,8 @@ Wireframe lưu nội dung tệp trong IndexedDB cùng trình duyệt, metadata t
 
 ## 5. Backend cần làm thêm cho các luồng còn lại
 
+Trang tra cứu **Logic nghiệp vụ** cạnh bộ chọn vai trò trình bày 47 luồng thuộc 12 nhóm, tham chiếu đủ 43 bảng hiện tại. Nội dung trong `business-guide.js`, kiểu hiển thị riêng trong `business-guide.css`. Mỗi luồng có đường dẫn thao tác, người thực hiện, các bước, trạng thái/kết quả, ràng buộc chia theo lớp bảo vệ, bảng liên quan và giới hạn. Nhãn “Mô phỏng trong wireframe”, “Mô phỏng một phần”, “Thiết kế CSDL” tránh nhầm tính năng có bảng với luồng đã có API. Tìm kiếm không dấu và bộ lọc vai trò/nhóm/phạm vi giúp tra cứu; mở từ sơ đồ hoặc Đọc tiếp chỉ điều hướng tài liệu, không thực hiện nghiệp vụ. Không thay đổi schema hoặc thêm migration cho trang này.
+
 Các CHECK/FK, trigger và thủ tục mới hỗ trợ các luồng vừa sửa, nhưng chưa phải một backend/API hoàn chỉnh. Những kiểm tra tổng hợp và giao dịch phải được thực hiện qua thủ tục tương ứng; không thay bằng các lệnh ghi rời rạc từ client. Backend cần xác thực tài khoản, lấy actor ID từ phiên đăng nhập và cấp quyền DB theo phạm vi công việc, không tin actor ID do trình duyệt tùy ý gửi lên.
 
 - Các thủ tục đã khóa hàng `rooms`/`contracts` bằng `SELECT ... FOR UPDATE`, đọc lại số chỗ và cập nhật cùng giao dịch; đổi phòng khóa theo thứ tự ID. Tài khoản API chỉ nên được `EXECUTE` các thủ tục công khai cho các thao tác này, không được thực hiện ghi trực tiếp hoặc gọi helper `_v5_*` để bỏ qua trình tự. Các API tạo/gửi/duyệt đề nghị và CRUD còn lại vẫn cần triển khai quyền tương ứng.
@@ -570,6 +572,8 @@ Kết nối đã chấp nhận từ demo cũ có thể mở chat bằng nút “
 Sửa các lỗi trên không đồng nghĩa wireframe đã thay thế backend hoặc tuân thủ toàn bộ v5. Dữ liệu JavaScript vẫn rút gọn các phiên bản/xác nhận/snapshot so với SQL; dữ liệu demo cũ có thể thiếu trường bắt buộc. Luồng chat gộp nhiều bài đăng/phòng trong một hội thoại cũng vẫn là khác biệt đã ghi trong README: cần nhóm các conversation v5 ở lớp ứng dụng, hoặc thiết kế lại ngữ cảnh chat nếu muốn lưu trực tiếp theo mô hình UI.
 
 ## 8. Kiểm tra
+
+Đợt bổ sung trang Logic nghiệp vụ: **128 tình huống JavaScript và bộ kiểm thử Chrome đạt**. Kiểm tra danh mục tham chiếu đủ đúng 43 bảng, tên procedure có trong schema, các liên kết luồng hợp lệ, tìm không dấu/tên bảng, giao bộ lọc và quyền truy cập ba vai trò. Chrome thử tìm/lọc, trạng thái không có kết quả, mở/thu gọn, ghi nhớ sau reload, điều hướng luồng liên quan và quay lại đúng phòng; bố cục 320/390/768/1440px không tràn ngang. Kiểm tra đọc hướng dẫn không thay đổi dữ liệu nhà, hợp đồng, hóa đơn, lịch xem và lời mời. SQL không thay đổi; chỉ chạy kiểm tra bundle đồng bộ, không chạy lại tích hợp MySQL cho trang tài liệu.
 
 Đợt xác minh nhà trọ: 124 tình huống JavaScript, toàn bộ kiểm thử Chrome và 56 kiểm tra tích hợp MySQL đạt. Bao phủ nhà nháp chưa có phòng/dịch vụ, tạo trùng, quyền sở hữu, hồ sơ theo từng tư cách, loại/kích thước tệp, một hồ sơ chờ/nhà, duyệt có xác nhận minh chứng, từ chối/rút/nộp lại/thu hồi, đổi định danh và hết hạn. Chrome tải ảnh thật vào IndexedDB, reload rồi mở lại minh chứng, xét duyệt và thu hồi trên màn hình điện thoại. MySQL kiểm tra 43 bảng, migration không tự duyệt nhà cũ, chặn công khai/thuê mới/gia hạn, giữ hợp đồng và cho phép rời phòng sau hết quyền, cạnh tranh hồ sơ chờ, tính bất biến của minh chứng, audit/thông báo và rollback. Các kiểm thử chỉ chạy trên môi trường tạm.
 

@@ -12,6 +12,8 @@ Tệp demo (PDF/JPG/PNG/WebP, tối đa 8 tệp, 5 MB/tệp) nằm trong **Index
 
 ## Bắt đầu đọc
 
+Tab **Logic nghiệp vụ** nằm cạnh bộ chọn vai trò, dùng được ở cả ba không gian. Trang gồm **47 luồng / 12 nhóm / 43 bảng**: sơ đồ hành trình thuê, các bước theo người thực hiện, trạng thái/kết quả, ràng buộc wireframe/SQL/API, bảng liên quan và giới hạn triển khai. Có tìm kiếm không dấu theo nội dung/trạng thái/tên bảng, lọc vai trò/nhóm/phạm vi, mở/thu gọn và liên kết luồng liên quan. Bộ lọc và phần đang mở được giữ sau tải lại. Nút Quay lại giữ phòng/trang đang xem; nội dung hướng dẫn không thực thi thao tác thuê. Có thể mở trực tiếp bằng `index.html?view=business-guide`.
+
 - [Quy tắc nghiệp vụ](docs/business-rules.md): toàn bộ logic đang có, thay đổi đã thực hiện, ràng buộc CSDL và cách tích hợp API.
 - [SQL tạo mới](database/schema.sql): CSDL v5 hiện tại, 43 bảng.
 - [Nâng cấp nghiệp vụ](database/migrations/20261024_v5_workflows.sql): chuyển v5 gốc 39 bảng sang bản có lịch sử đại diện.
@@ -27,6 +29,8 @@ Tệp demo (PDF/JPG/PNG/WebP, tối đa 8 tệp, 5 MB/tệp) nằm trong **Index
 ```text
 index.html                     Giao diện
 app.js                         Dữ liệu mẫu và xử lý nghiệp vụ
+business-guide.js              Nội dung và điều hướng tài liệu 47 luồng nghiệp vụ
+business-guide.css             Giao diện tài liệu, sơ đồ và bố cục di động
 house-rights.js                Tạo nhà và xác minh quyền cho thuê từng nhà
 house-proof-store.js           Lưu tệp minh chứng demo bằng IndexedDB
 styles.css                     Kiểu hiển thị

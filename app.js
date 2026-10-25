@@ -318,9 +318,11 @@ function renderShell() {
   $("#mobile-nav").innerHTML = navigation.map(([id, label, glyph]) => `<button type="button" class="nav-link ${activeView === id ? "active" : ""}" data-action="navigate" data-id="${id}">${icon(glyph)}<span>${label}</span></button>`).join("");
   const me = userId();
   $("#sidebar-account").innerHTML = `<div class="account-row">${avatar(me)}<div class="account-copy"><strong>${esc(person(me).name)}</strong><small>${roleLabel}</small></div></div>`;
+  $("#business-guide-tab").classList.toggle("active", state.view === "business-guide");
+  $("#business-guide-tab").ariaPressed = String(state.view === "business-guide");
   $("#topbar-role-switch").innerHTML = [["tenant", "Người thuê", "Thuê"], ["landlord", "Chủ trọ", "Chủ"], ["admin", "Quản trị", "QT"]].map(([role, label, short]) => `<button type="button" class="${state.role === role ? "active" : ""}" data-action="switch-role" data-id="${role}" data-short="${short}">${label}</button>`).join("");
   const currentNav = navigation.find(([id]) => id === state.view);
-  $("#topbar-title").textContent = state.view === "room-detail" ? "Chi tiết phòng" : state.view === "detail" ? "Chi tiết bài đăng" : currentNav ? currentNav[1] : "Trọday";
+  $("#topbar-title").textContent = state.view === "business-guide" ? "Logic nghiệp vụ" : state.view === "room-detail" ? "Chi tiết phòng" : state.view === "detail" ? "Chi tiết bài đăng" : currentNav ? currentNav[1] : "Trọday";
   const unreadCount = state.notifications.filter((item) => item.userId === me && !item.read).length;
   const notificationButton = $('[data-action="notifications"]');
   notificationButton.classList.toggle("has-unread", unreadCount > 0);
@@ -344,7 +346,7 @@ function render() {
     contracts: renderContracts, residents: renderResidents, invoices: renderInvoices,
     roommates: renderRoommates, verifications: renderVerifications,
     moderation: renderModeration, templates: renderTemplates, reports: renderReports, users: renderUsers, audit: renderAudit,
-    profile: renderProfile
+    profile: renderProfile, "business-guide": renderBusinessGuide
   }[view] || renderDiscover;
   const main = $("#app-main");
   main.classList.toggle("chat-view", view === "chats");
@@ -1177,6 +1179,12 @@ function finish(message) { closeDialog(); save(); render(); if (message) flash(m
 function handleAction(action, id) {
   let item;
   switch (action) {
+    case "business-guide": openBusinessGuide(); return;
+    case "business-return": returnFromBusinessGuide(); return;
+    case "business-flow": showBusinessFlow(id); return;
+    case "business-group": if (id === "all" || BUSINESS_GROUPS.some(([key]) => key === id)) updateBusinessGuide({group:id}); return;
+    case "business-expand": setBusinessGuideExpanded(id === "open"); return;
+    case "business-reset": updateBusinessGuide({query:"",group:"all",role:"all",scope:"all",expanded:["create-house"]}); return;
     case "navigate": changeView(id); return;
     case "open-house": openHouseEditor(); return;
     case "edit-house": openHouseEditor(id); return;
@@ -1521,6 +1529,7 @@ function handleForm(form) {
   const value = (key) => String(data.get(key) ?? "").trim();
   let item;
   switch (name) {
+    case "business-guide-search": updateBusinessGuide({query:value("query"),role:value("role"),scope:value("scope"),group:value("group")}); return;
     case "filters": {
       state.filters = { query: value("query"), area: value("area"), maxPrice: value("maxPrice"), minArea: value("minArea"), amenity: value("amenity"), distance: value("distance") };
       save(); render(); return;
@@ -1930,6 +1939,6 @@ window.addEventListener?.("focus", () => { syncIncomingNotifications(); renderSh
 
 const initialParams = new URLSearchParams(location.search);
 if (["tenant", "landlord", "admin"].includes(initialParams.get("role"))) state.role = initialParams.get("role");
-if (NAV[state.role].some(([id]) => id === initialParams.get("view"))) state.view = initialParams.get("view");
+if (initialParams.get("view") === "business-guide" || NAV[state.role].some(([id]) => id === initialParams.get("view"))) state.view = initialParams.get("view");
 window.__troday = { getState: () => state, reset: () => { state = structuredClone(seed); resetNotificationDelivery(); save(); render(); }, action: handleAction };
 render();

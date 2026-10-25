@@ -31,13 +31,55 @@ function demo(savedState) {
     }
   });
   vm.runInContext(fs.readFileSync(`${__dirname}/../house-rights.js`, "utf8"), context);
+  vm.runInContext(fs.readFileSync(`${__dirname}/../business-guide.js`, "utf8"), context);
   vm.runInContext(fs.readFileSync(`${__dirname}/../app.js`, "utf8"), context);
-  const api = vm.runInContext("({ state: () => state, handleAction, handleForm, render, renderResidents, roomLoad, appointmentTimestamp, todayISO, openAppointment, receiveSharedState, syncIncomingNotifications, effectiveHouseVerification, houseVerificationState, houseIdentity })", context);
+  const api = vm.runInContext("({ state: () => state, handleAction, handleForm, render, renderResidents, roomLoad, appointmentTimestamp, todayISO, openAppointment, receiveSharedState, syncIncomingNotifications, effectiveHouseVerification, houseVerificationState, houseIdentity, businessGuideState, businessGuideFlows, BUSINESS_FLOWS, BUSINESS_GROUPS })", context);
   const state = api.state();
   state.role = "landlord"; state.view = "residents";
   return { state, api, node, action: api.handleAction, submit: (name, values) => api.handleForm({ dataset: { form: name }, values, querySelector: () => ({ disabled: false }) }), now: (value) => { now = Date.parse(value); }, expirePopups: () => { for (const timer of [...timers.values()]) if (timer.delay === 8000) timer.callback(); } };
 }
 const byId = (items, id) => items.find((item) => item.id === id);
+
+test("business guide covers current SQL tables and references existing procedures and flows", () => {
+  const d=demo(),sql=fs.readFileSync(`${__dirname}/../database/schema.sql`,"utf8");
+  const tables=[...sql.matchAll(/CREATE TABLE\s+`?(\w+)`?/g)].map(match=>match[1]);
+  const referenced=[...new Set(d.api.BUSINESS_FLOWS.flatMap(flow=>flow.data.map(([name])=>name)))];
+  assert.deepEqual(referenced.sort(),tables.sort());assert.equal(referenced.length,43);
+  for(const name of new Set(JSON.stringify(d.api.BUSINESS_FLOWS).match(/\bsp_\w+/g))) assert.ok(sql.includes(`CREATE PROCEDURE ${name}(`),name);
+  const ids=d.api.BUSINESS_FLOWS.map(flow=>flow.id);assert.equal(new Set(ids).size,ids.length);
+  for(const flow of d.api.BUSINESS_FLOWS) {
+    assert.ok(d.api.BUSINESS_GROUPS.some(([id])=>id===flow.group));
+    assert.ok(flow.steps.length>=3 && flow.rules.length>=3 && flow.limits.length>0,flow.id);
+    for(const related of flow.related)assert.ok(ids.includes(related),related);
+  }
+});
+test("business guide is available to every role and preserves the room when returning", () => {
+  const d=demo();d.action("room-detail","r3");d.action("business-guide");
+  assert.equal(d.state.view,"business-guide");assert.equal(d.state.role,"landlord");
+  assert.match(d.node("#app-main").innerHTML,/47 luồng · 12 nhóm · 43 bảng/);
+  assert.equal(d.node("#business-guide-tab").ariaPressed,"true");
+  d.action("business-return");assert.equal(d.state.view,"room-detail");assert.equal(d.state.selectedRoom,"r3");
+  for(const role of ["tenant","landlord","admin"]) {d.action("switch-role",role);d.action("business-guide");assert.equal(d.state.role,role);assert.match(d.node("#app-main").innerHTML,/Ràng buộc dữ liệu/);}
+});
+test("business guide searches without accents and intersects role, group and scope filters", () => {
+  const d=demo(),search=(extra={})=>d.api.businessGuideFlows({query:"",group:"all",role:"all",scope:"all",...extra});
+  assert.ok(search({query:"48 gio"}).some(flow=>flow.id==="join-hold"));
+  assert.ok(search({query:"room_tenants"}).some(flow=>flow.id==="move-in"));
+  const admin=search({role:"admin",scope:"database",group:"account"});assert.ok(admin.length>0);
+  assert.ok(admin.every(flow=>flow.roles.includes("admin")&&flow.scope==="database"&&flow.group==="account"));
+  assert.equal(search({query:"missing-workflow-xyz"}).length,0);
+});
+test("guide navigation persists filters without changing business records and escapes search text", () => {
+  const d=demo();d.api.render();const snapshot=()=>JSON.stringify([d.state.houses,d.state.contracts,d.state.invoices,d.state.viewings,d.state.roommateInvites]);
+  const before=snapshot();d.action("business-guide");
+  d.submit("business-guide-search",{query:"48 gio",role:"landlord",scope:"demo",group:"residents"});
+  const restored=demo(JSON.parse(JSON.stringify(d.state)));assert.equal(restored.api.businessGuideState().query,"48 gio");
+  d.action("business-flow","handover");assert.equal(d.state.businessGuide.group,"residents");assert.ok(d.state.businessGuide.expanded.includes("handover"));
+  d.action("business-expand","close");assert.equal(d.state.businessGuide.expanded.length,0);
+  d.action("business-reset");assert.equal(snapshot(),before);
+  d.submit("business-guide-search",{query:'"><img src=x onerror=alert(1)>',role:"all",scope:"all",group:"all"});
+  const html=d.node("#app-main").innerHTML;assert.doesNotMatch(html,/<img src=x/);assert.match(html,/&lt;img/);assert.match(html,/Không tìm thấy luồng phù hợp/);
+});
 const newHouseValues = (extra = {}) => ({ houseId: "", creationKey: "house-test-1", name: "New house", address: "123 New Street", provinceCode: "01", area: "New area", latitude: "", longitude: "", notes: "", ...extra });
 const pdfProof = { name: "proof.pdf", size: 100, type: "application/pdf" };
 function houseProofValues(d, houseId, extra = {}) { return { houseId, houseVersion: String(byId(d.state.houses,houseId).verificationVersion), rightType: "OWNER", scope: "Entire house", validFrom: "2026-10-24", validUntil: "", note: "", document_OWNER_PROOF: pdfProof, ...extra }; }

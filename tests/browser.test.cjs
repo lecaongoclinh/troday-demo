@@ -489,6 +489,50 @@ async function main() {
     assert.equal(await evaluate(`!document.querySelector('#app-dialog').open`),true);
     await evaluate(`__troday.action('switch-role','admin'); __troday.action('revoke-house-verification',${JSON.stringify(proofId)});document.querySelector('[name="reason"]').value='Thu hồi theo yêu cầu của người sở hữu';document.querySelector('form[data-form="house-verification-decision"]').requestSubmit()`);
     assert.equal(await evaluate(`(async()=> __troday.getState().houseVerifications.find(v=>v.id===${JSON.stringify(proofId)}).status==='REVOKED' && __troday.getState().contracts.some(c=>c.id==='k4' && c.status==='ACTIVE') && (await window.houseProofStore.get(${JSON.stringify(proofFileId)})).blob.size>0)()`),true);
+    // Browse the reference guide without executing any rental workflow.
+    await evaluate(`__troday.reset(); __troday.action('switch-role','landlord'); __troday.action('room-detail','r3');
+      sessionStorage.setItem('guideDomainBefore',JSON.stringify([__troday.getState().houses,__troday.getState().contracts,__troday.getState().invoices,__troday.getState().viewings,__troday.getState().roommateInvites]));
+      document.querySelector('#business-guide-tab').click()`);
+    assert.equal(await evaluate(`__troday.getState().view==='business-guide' && __troday.getState().role==='landlord' && document.querySelector('#business-guide-tab').getAttribute('aria-pressed')==='true' && document.querySelectorAll('[data-business-flow]').length===47`),true);
+    for(const width of [320,390,768,1440]) {
+      await page("Emulation.setDeviceMetricsOverride",{width,height:1000,deviceScaleFactor:1,mobile:width<650});
+      assert.equal(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth && document.querySelector('#business-guide-tab').getBoundingClientRect().right<=window.innerWidth && document.querySelector('#topbar-role-switch').getBoundingClientRect().right<=document.querySelector('#business-guide-tab').getBoundingClientRect().left`),true,`Guide/header overflow at ${width}px`);
+    }
+    await evaluate(`document.querySelector('[data-action="business-flow"][data-id="house-proof"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#business-flow-house-proof').open && document.querySelector('#business-flow-house-proof').textContent.includes('SUBLESSOR') && document.querySelector('#business-flow-house-proof').textContent.includes('5 MB') && document.activeElement===document.querySelector('#business-flow-house-proof > summary')`),true);
+    if(process.env.GUIDE_SCREENSHOTS) {
+      const shot=await page("Page.captureScreenshot",{format:"png"});fs.writeFileSync(path.join(os.tmpdir(),"troday-business-guide-desktop.png"),Buffer.from(shot.data,"base64"));
+    }
+    await evaluate(`{const f=document.querySelector('form[data-form="business-guide-search"]');f.elements.query.value='48 gio';f.elements.group.value='all';f.elements.role.value='all';f.elements.scope.value='all';f.requestSubmit();}`);
+    assert.equal(await evaluate(`document.querySelectorAll('[data-business-flow]').length===1 && Boolean(document.querySelector('#business-flow-join-hold'))`),true);
+    await evaluate(`document.querySelector('#business-flow-join-hold > summary').click()`);
+    await waitLive(evaluate,"__troday.getState().businessGuide.expanded.includes('join-hold')","guide disclosure persistence");
+    await evaluate(`history.replaceState(null,'','index.html?view=business-guide')`);
+    await page("Page.reload",{ignoreCache:true});
+    await waitLive(evaluate,"Boolean(window.__troday) && document.readyState==='complete' && Boolean(document.querySelector('#business-flow-join-hold'))","guide reload");
+    assert.equal(await evaluate(`document.querySelector('#business-flow-join-hold').open && document.querySelector('[name="query"]').value==='48 gio'`),true);
+    await evaluate(`{const f=document.querySelector('form[data-form="business-guide-search"]');f.elements.query.value='missing-workflow-xyz';f.requestSubmit();}`);
+    assert.equal(await evaluate(`document.querySelectorAll('[data-business-flow]').length===0 && document.querySelector('.guide-empty').textContent.includes('Không tìm thấy')`),true);
+    await evaluate(`document.querySelector('[data-action="business-reset"]').click();document.querySelector('[data-action="business-group"][data-id="account"]').click();
+      {const f=document.querySelector('form[data-form="business-guide-search"]');f.elements.role.value='admin';f.elements.scope.value='database';f.requestSubmit();}`);
+    assert.equal(await evaluate(`Array.from(document.querySelectorAll('[data-business-flow]')).every(n=>n.querySelector('.guide-scope-database')) && document.querySelectorAll('[data-business-flow]').length===2`),true);
+    await evaluate(`document.querySelector('[data-action="business-reset"]').click();document.querySelector('[data-action="business-expand"][data-id="open"]').click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('details[data-business-flow][open]').length===47`),true);
+    await evaluate(`document.querySelector('[data-action="business-expand"][data-id="close"]').click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('details[data-business-flow][open]').length===0`),true);
+    await page("Emulation.setDeviceMetricsOverride",{width:390,height:844,deviceScaleFactor:1,mobile:true});
+    await evaluate(`{const f=document.querySelector('form[data-form="business-guide-search"]');f.elements.group.value='changes';f.elements.role.value='tenant';f.requestSubmit();} __troday.action('business-flow','transfer');document.querySelector('#business-flow-transfer .guide-data > summary').click()`);
+    assert.equal(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth && document.querySelector('.guide-mobile-group').getBoundingClientRect().height>0 && document.querySelector('#business-flow-transfer').textContent.includes('previous_contract_id')`),true);
+    if(process.env.GUIDE_SCREENSHOTS) {
+      const shot=await page("Page.captureScreenshot",{format:"png"});fs.writeFileSync(path.join(os.tmpdir(),"troday-business-guide-mobile.png"),Buffer.from(shot.data,"base64"));
+    }
+    await evaluate(`__troday.action('business-return')`);
+    assert.equal(await evaluate(`__troday.getState().view==='room-detail' && __troday.getState().selectedRoom==='r3'`),true);
+    for(const role of ["tenant","admin"]) {
+      await evaluate(`__troday.action('switch-role',${JSON.stringify(role)});document.querySelector('#business-guide-tab').click()`);
+      assert.equal(await evaluate(`__troday.getState().role===${JSON.stringify(role)} && __troday.getState().view==='business-guide'`),true);
+    }
+    assert.equal(await evaluate(`JSON.stringify([__troday.getState().houses,__troday.getState().contracts,__troday.getState().invoices,__troday.getState().viewings,__troday.getState().roommateInvites])===sessionStorage.getItem('guideDomainBefore')`),true);
     assert.deepEqual(errors, []);
     console.log("Browser smoke passed: new house creation, required proof categories, IndexedDB uploads and reload, private previews, admin approval/revocation and mobile layouts; live message popups between two tabs, receiver isolation, direct chat opening, drafts, no replay and mobile dialog delivery; roommate tabs and profiles, contract renewal, rental workflows, listings, viewing flows, room detail and persistence; no runtime exceptions.");
     await call("Browser.close");
