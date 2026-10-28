@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Trọday",
+    "slug": "troday-mobile",
+    "version": "1.0.0",
+    "scheme": "troday",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F7F8FA",
+    "icon": "./assets/icon.png",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "vn.troday.mobile"
+    },
+    "android": {
+      "package": "vn.troday.mobile",
+      "adaptiveIcon": { "foregroundImage": "./assets/icon.png", "backgroundColor": "#145C50" }
+    },
+    "web": {
+      "name": "Trọday Mobile",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-document-picker",
+      "expo-status-bar",
+      "expo-font",
+      "expo-sharing",
+      "@react-native-community/datetimepicker"
+    ]
+  }
+}

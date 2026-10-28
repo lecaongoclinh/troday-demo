@@ -1,5 +1,7 @@
 # Trọday — wireframe và CSDL v5
 
+App **React Native/Expo** cho **người thuê và chủ trọ** nằm trong [`mobile/`](mobile/README.md). Chạy `cd mobile` rồi `npm.cmd start`; chạm logo Trọday trong app để chuyển vai trò. App dùng lại nghiệp vụ hiện tại, có giao diện native và lưu dữ liệu demo riêng trên thiết bị.
+
 Mở `index.html` trực tiếp trong trình duyệt, không cần cài đặt hay chạy server. Chọn vai trò Người thuê, Chủ trọ hoặc Quản trị ở thanh trên.
 
 Dữ liệu mẫu lưu trong `localStorage`; nhập `__troday.reset()` ở console để bắt đầu lại. Wireframe chạy độc lập với MySQL, các thao tác trên giao diện chưa ghi vào CSDL thật.

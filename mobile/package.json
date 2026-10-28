@@ -1,0 +1,46 @@
+{
+  "name": "troday-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "sync:core": "node scripts/sync-core.cjs",
+    "prestart": "npm run sync:core",
+    "start": "expo start",
+    "start:tunnel": "npm run sync:core && expo start --go --tunnel ngrok",
+    "android": "npm run sync:core && expo start --android",
+    "ios": "npm run sync:core && expo start --ios",
+    "web": "npm run sync:core && expo start --web",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.cjs",
+    "test:browser": "node tests/browser.cjs",
+    "check": "npm run sync:core && npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@expo-google-fonts/be-vietnam-pro": "^0.4.1",
+    "@expo/vector-icons": "^15.0.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "9.2.1",
+    "css-select": "^6.0.0",
+    "domhandler": "^5.0.3",
+    "domutils": "^3.2.2",
+    "expo": "~58.0.20",
+    "expo-document-picker": "~58.0.4",
+    "expo-file-system": "~58.0.12",
+    "expo-font": "~58.0.10",
+    "expo-linear-gradient": "~58.0.3",
+    "expo-sharing": "~58.0.20",
+    "expo-status-bar": "~58.0.4",
+    "htmlparser2": "^10.0.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-web": "^0.21.4"
+  },
+  "devDependencies": {
+    "@expo/ngrok": "^4.1.0",
+    "@types/react": "~19.2.2",
+    "typescript": "~5.9.2"
+  }
+}
