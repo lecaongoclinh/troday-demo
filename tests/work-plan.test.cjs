@@ -29,10 +29,28 @@ test('Dependencies include cross-module acceptance, stay acyclic and precede the
   const visiting=new Set(),done=new Set();
   function walk(id){assert.ok(!visiting.has(id),'cycle at '+id);if(done.has(id))return;visiting.add(id);const t=tasks.get(id);assert.ok(t,id);for(const dep of t.blockers){assert.ok(Number(tasks.get(dep).phase.slice(1))<=Number(t.phase.slice(1)),id+' precedes '+dep);walk(dep);}visiting.delete(id);done.add(id);}
   P.tasks.forEach(t=>walk(t.id));assert.equal(done.size,52);
-  assert.deepEqual(P.tasks.filter(t=>!t.blockers.length).map(t=>t.id).sort(),['BE-A01','BE-B01','BE-C01']);
+  assert.deepEqual(P.tasks.filter(t=>!t.blockers.length).map(t=>t.id).sort(),['BE-A01']);
   assert.ok(tasks.get('BE-B08').blockers.includes('BE-A08'));
   assert.ok(tasks.get('BE-C05').blockers.includes('BE-B09'));
-  assert.ok(tasks.get('BE-A10').integrationWith.includes('BE-C07'));
+  assert.ok(tasks.get('BE-A10').dependsOn.includes('BE-C07'));
+});
+
+test('One serial queue covers every task, with each prerequisite and provider strictly earlier',()=>{
+  assert.equal(P.mode,'sequential');assert.equal(P.sequencePolicy.maxActiveTasks,1);
+  assert.deepEqual(P.executionOrder,P.tasks.map(t=>t.id));
+  assert.deepEqual(P.executionOrder.slice(0,4),['BE-A01','BE-B01','BE-C01','BE-A02']);
+  for(const [i,t]of P.tasks.entries()){
+    assert.equal(t.order,i+1);assert.equal(t.previousTaskId,i?P.tasks[i-1].id:null);
+    assert.equal(t.nextTaskId,P.tasks[i+1]?.id||null);assert.equal(t.integrationWith.length,0);
+    if(i)assert.ok(t.blockers.includes(P.tasks[i-1].id));
+    for(const id of t.blockers)assert.ok(tasks.get(id).order<t.order,t.id+' waits for future task '+id);
+    for(const id of t.requiredInterfaces){const provider=P.interfaces.find(x=>x.id===id);assert.ok(provider.order<t.order,t.id+' uses future provider '+id);}
+  }
+  for(const p of P.phases){const own=P.tasks.filter(t=>t.phase===p.id);assert.equal(p.firstOrder,own[0].order);assert.equal(p.lastOrder,own.at(-1).order);assert.equal(p.lastOrder-p.firstOrder+1,own.length);assert.deepEqual(P.gates.find(g=>g.phase===p.id).taskIds,own.map(t=>t.id));}
+  assert.ok(tasks.get('BE-A04').order<tasks.get('BE-C03').order); // Audit exists before template.
+  assert.ok(tasks.get('BE-B13').order<tasks.get('BE-A11').order); // Connection before share.
+  assert.ok(tasks.get('BE-C07').order<tasks.get('BE-A10').order); // Move-in before invoice.
+  assert.ok(tasks.get('BE-A13').order<tasks.get('BE-C11').order); // Payment before handover test.
 });
 test('File owners and integration providers are consistent; effort accounts for foundational and transactional work',()=>{
   const paths=new Map();
@@ -71,6 +89,8 @@ with zipfile.ZipFile('docs/backend-team-checklist.xlsx') as z:
  s=E.fromstring(z.read('xl/worksheets/sheet3.xml'));rows=s.find('m:sheetData',n)
  assert len(rows)==len(p['tasks'])+1
  assert [r[0].find('m:is/m:t',n).text for r in list(rows)[1:]]==[t['id'] for t in p['tasks']]
+ assert [int(r[2].find('m:v',n).text) for r in list(rows)[1:]]==list(range(1,53))
+ assert [r[11].find('m:is/m:t',n).text for r in list(rows)[1:]]==[t['previousTaskId'] or 'Bắt đầu' for t in p['tasks']]
  assert s.find('m:dataValidations',n) is not None and s.find('m:autoFilter',n) is not None
  assert len(s.findall('m:sheetData/m:row/m:c/m:f',n))==3*len(p['tasks'])
  assert len(E.fromstring(z.read('xl/worksheets/sheet4.xml')).find('m:sheetData',n))==177

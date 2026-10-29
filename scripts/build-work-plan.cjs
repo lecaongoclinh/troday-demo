@@ -9,6 +9,16 @@ const api=JSON.parse(fs.readFileSync(cataloguePath,'utf8'));
 const clone=value=>JSON.parse(JSON.stringify(value));
 const plan=clone(blueprint);
 const {tasks,people,phases,modules,interfaces,gates}=plan;
+const executionOrder=plan.executionOrder;
+if(executionOrder.length!==tasks.length||new Set(executionOrder).size!==tasks.length)throw Error('Sequence must list each task once');
+const ordinal=new Map(executionOrder.map((id,i)=>[id,i+1]));
+for(const task of tasks){
+  if(!ordinal.has(task.id))throw Error('Task absent from global sequence '+task.id);
+  task.order=ordinal.get(task.id);
+  task.previousTaskId=executionOrder[task.order-2]||null;
+  task.nextTaskId=executionOrder[task.order]||null;
+}
+tasks.sort((a,b)=>a.order-b.order);
 const byTask=new Map(tasks.map(t=>[t.id,t]));
 const apiById=new Map(api.endpoints.map(e=>[e.id,e]));
 const moduleById=new Map(modules.map(m=>[m.id,m]));
@@ -20,13 +30,15 @@ function visit(id){
   if(visited.has(id))return;
   const task=byTask.get(id);if(!task)throw Error('Unknown task '+id);
   visiting.add(id);
-  for(const dep of [...task.dependsOn,...(task.integrationWith||[])])visit(dep);
+  for(const dep of task.blockers)visit(dep);
   visiting.delete(id);visited.add(id);
 }
 for(const task of tasks){
   if(!people.some(p=>p.id===task.owner)||!phases.some(p=>p.id===task.phase))throw Error('Unknown owner/phase '+task.id);
   task.reviewer=people.find(p=>p.id===task.owner).reviewer;
+  task.requiredInterfaces=plan.interfaceRequirements[task.id]||[];
   task.integrationWith ||= [];
+  if(task.integrationWith.length)throw Error('Fold integration dependencies into explicit prerequisites '+task.id);
   task.decisions ||= [];
   task.jobs ||= [];
   task.qa ||= [];
@@ -36,11 +48,12 @@ for(const task of tasks){
     if(module.owner!==task.owner)throw Error('Cross-owner edit '+task.id+' '+id);
     return module.paths;
   }))];
-  task.blockers=[...new Set([...task.dependsOn,...task.integrationWith])];
+  task.blockers=[...new Set([...task.dependsOn,...(task.previousTaskId?[task.previousTaskId]:[])])];
   for(const dep of task.blockers){
     if(!byTask.has(dep)||dep===task.id)throw Error('Invalid dependency '+task.id+' '+dep);
     const provider=byTask.get(dep);
     if(Number(provider.phase.slice(1))>Number(task.phase.slice(1)))throw Error('Task precedes dependency '+task.id+' '+dep);
+    if(provider.order>=task.order)throw Error('Dependency must finish earlier in the serial queue '+task.id+' '+dep);
   }
   for(const id of task.apiIds){
     if(!apiById.has(id))throw Error('Unknown API '+id);
@@ -51,17 +64,21 @@ for(const task of tasks){
   for(const id of task.jobs)if(!api.jobs.some(d=>d.id===id))throw Error('Unknown job '+id);
   for(const id of task.qa)if(!api.qa.some(d=>d.id===id))throw Error('Unknown QA '+id);
   if(!task.deliverables.length||task.acceptance.length<2||!task.points)throw Error('Incomplete task '+task.id);
-  visit(task.id);
 }
+for(const task of tasks)visit(task.id);
 for(const endpoint of api.endpoints)if(!assigned.has(endpoint.id))throw Error('Unassigned endpoint '+endpoint.id);
-for(const item of interfaces){if(byTask.get(item.taskId)?.owner!==item.owner)throw Error('Wrong interface owner '+item.id);}
+for(const item of interfaces){if(byTask.get(item.taskId)?.owner!==item.owner)throw Error('Wrong interface owner '+item.id);item.order=byTask.get(item.taskId).order;}
+for(const task of tasks)for(const id of task.requiredInterfaces){
+  const provider=interfaces.find(i=>i.id===id);
+  if(!provider||provider.order>=task.order)throw Error('Provider must be implemented before consumer '+task.id+' '+id);
+}
 for(const gate of gates)for(const id of gate.taskIds)if(!byTask.has(id))throw Error('Unknown gate task '+id);
 for(const decision of plan.decisions){if(byTask.get(decision.taskId)?.owner!==decision.owner)throw Error('Wrong decision owner '+decision.id);}
 if(plan.decisions.length!==api.decisions.length)throw Error('Decision coverage mismatch');
 const jobs=api.jobs.map(j=>{
   const owners=tasks.filter(t=>t.jobs.includes(j.id));
   if(owners.length!==1)throw Error('Job needs one owner '+j.id);
-  return {...j,owner:owners[0].owner,taskId:owners[0].id};
+  return {...j,owner:owners[0].owner,taskId:owners[0].id,order:owners[0].order};
 });
 const qa=api.qa.map(q=>{
   const linked=tasks.filter(t=>t.qa.includes(q.id));if(!linked.length)throw Error('Unassigned QA '+q.id);
@@ -69,14 +86,22 @@ const qa=api.qa.map(q=>{
 });
 const assignments=api.endpoints.map(e=>{
   const task=byTask.get(assigned.get(e.id));
-  return {id:e.id,method:e.method,path:api.basePath+e.path,title:e.title,group:e.group,flowIds:e.flowIds,taskId:task.id,owner:task.owner,reviewer:task.reviewer,phase:task.phase,decision:e.decision||null};
+  return {id:e.id,method:e.method,path:api.basePath+e.path,title:e.title,group:e.group,flowIds:e.flowIds,taskId:task.id,owner:task.owner,reviewer:task.reviewer,phase:task.phase,order:task.order,decision:e.decision||null};
 });
 for(const p of people){
   const own=tasks.filter(t=>t.owner===p.id);
   p.taskCount=own.length;p.points=own.reduce((a,t)=>a+t.points,0);p.apiCount=assignments.filter(e=>e.owner===p.id).length;
-  own.sort((a,b)=>a.id.localeCompare(b.id)).forEach((task,i)=>task.laneOrder=i+1);
+  own.sort((a,b)=>a.order-b.order).forEach((task,i)=>task.ownerOrder=i+1);
 }
-for(const phase of phases){phase.taskIds=tasks.filter(t=>t.phase===phase.id).map(t=>t.id);phase.points=tasks.filter(t=>t.phase===phase.id).reduce((a,t)=>a+t.points,0);}
+for(const phase of phases){
+  phase.taskIds=tasks.filter(t=>t.phase===phase.id).map(t=>t.id);
+  phase.points=tasks.filter(t=>t.phase===phase.id).reduce((a,t)=>a+t.points,0);
+  phase.firstOrder=byTask.get(phase.taskIds[0]).order;
+  phase.lastOrder=byTask.get(phase.taskIds.at(-1)).order;
+  if(phase.lastOrder-phase.firstOrder+1!==phase.taskIds.length)throw Error('Phase must be contiguous '+phase.id);
+  const gate=gates.find(g=>g.phase===phase.id);
+  if(JSON.stringify(gate.taskIds)!==JSON.stringify(phase.taskIds))throw Error('Gate/phase sequence mismatch '+phase.id);
+}
 const chains=[];
 const depths=new Map();
 function depth(id){if(depths.has(id))return depths.get(id);const t=byTask.get(id);const result=t.blockers.length?1+Math.max(...t.blockers.map(depth)):1;depths.set(id,result);return result;}
@@ -87,7 +112,7 @@ const checklist=['Thiết kế / contract','Code / SQL','Validate / phân quyề
 const decisions=api.decisions.map(d=>({...d,...plan.decisions.find(x=>x.id===d.id),originalStatus:d.status}));
 const coverageFlows=api.flows.map(f=>({id:f.id,title:f.title,taskIds:[...new Set(assignments.filter(e=>e.flowIds.includes(f.id)).map(e=>e.taskId).concat(jobs.filter(j=>j.flow===f.id).map(j=>j.taskId)))],apiCount:f.endpointIds.length}));
 for(const f of coverageFlows)if(!f.taskIds.length)throw Error('Unmapped flow '+f.id);
-const data={version:'1.0-draft',date:'2026-10-29',backendLayout:'Đề xuất modular monolith; chọn framework/ngôn ngữ trong BE-A01.',assumptions:['Ba người có mức sẵn sàng tương đương; SP là độ lớn tương đối, không phải số ngày. Chưa đặt deadline vì chưa có năng lực/khung thời gian của team.','Đường dẫn backend/** là cấu trúc dự kiến. Trang này chỉ lập kế hoạch và checklist, không triển khai backend hoặc sửa CSDL.','Giai đoạn thể hiện thứ tự tích hợp; có thể chuẩn bị task sau bằng mock khi contract đã đóng băng, không phải chờ cả team hết giai đoạn.','API được chia đúng một owner/task chính; người review/hỗ trợ không đồng nghĩa được sửa file module đó.'],sourceHashes:{'docs/api-catalog.json':crypto.createHash('sha256').update(fs.readFileSync(cataloguePath)).digest('hex'),'scripts/work-plan-blueprint.cjs':crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'work-plan-blueprint.cjs'))).digest('hex')},people,phases,modules,tasks,interfaces,gates,rules:plan.rules,decisions,jobs,qa,assignments,coverageFlows,groups:api.groups,checklist,statuses:['Chưa làm','Đang làm','Chờ tích hợp','Chờ review','Bị chặn','Hoàn thành'],dependencyChain:chains,counts:{tasks:tasks.length,apis:assignments.length,flows:coverageFlows.length,points:tasks.reduce((n,t)=>n+t.points,0),phases:phases.length}};
+const data={version:'2.0-sequential',mode:'sequential',date:'2026-10-29',backendLayout:'Đề xuất modular monolith; chọn framework/ngôn ngữ trong BE-A01.',assumptions:['Một hàng đợi chung 01–52, tối đa một task đang thực hiện. A/B/C giữ owner theo module và nhận bàn giao khi đến lượt.','SP là độ lớn tương đối, không phải số ngày hay lịch làm việc ba người; chưa đặt deadline.','Đường dẫn backend/** là cấu trúc dự kiến. Trang này lập kế hoạch/checklist, không triển khai backend hoặc sửa CSDL.','Task trước phải review/merge và bàn giao provider thật, commit main, SQL/test trước khi mở task tiếp theo. Giữ task ID để đối chiếu tiến độ cũ.'],sourceHashes:{'docs/api-catalog.json':crypto.createHash('sha256').update(fs.readFileSync(cataloguePath)).digest('hex'),'scripts/work-plan-blueprint.cjs':crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'work-plan-blueprint.cjs'))).digest('hex')},executionOrder,sequencePolicy:plan.sequencePolicy,people,phases,modules,tasks,interfaces,gates,rules:plan.rules,decisions,jobs,qa,assignments,coverageFlows,groups:api.groups,checklist,statuses:['Chưa làm','Đang làm','Chờ review','Bị chặn','Hoàn thành'],dependencyChain:chains,counts:{tasks:tasks.length,apis:assignments.length,flows:coverageFlows.length,points:tasks.reduce((n,t)=>n+t.points,0),phases:phases.length}};
 const json=JSON.stringify(data,null,2)+'\n';
 const browser='// Generated by npm run plan:build. Edit scripts/work-plan-blueprint.cjs.\nwindow.TRODAY_WORK_PLAN = '+JSON.stringify(data).replace(/</g,'\\u003c')+';\n';
 const outputs=[['docs/work-plan.json',json],['work-plan-data.js',browser]];

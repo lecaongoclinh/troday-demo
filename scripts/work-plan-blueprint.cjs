@@ -5,15 +5,51 @@ const people = [
   {id:'B',name:'Người B',role:'Nhà/phòng, tin đăng, lịch xem & ở ghép',color:'blue',summary:'Sở hữu nguồn phòng cho thuê, công khai tin, dịch vụ và lịch xem. Sau luồng thuê ban đầu, hoàn thiện kết nối ở ghép và kiểm duyệt nội dung.',reviewer:'C'},
   {id:'C',name:'Người C',role:'Hợp đồng, cư trú & thay đổi thuê',color:'amber',summary:'Tập trung vào giao dịch thuê: hợp đồng, phiên bản, vào/rời phòng, thêm người, bàn giao và gia hạn/đổi phòng. Ít endpoint hơn vì nghiệp vụ giao dịch phức tạp hơn.',reviewer:'A'}
 ];
+// One global queue. Task IDs stay stable so old links and checklist evidence can
+// be reviewed after replanning; the ordinal below defines execution order.
+const sequenceByPhase = {
+  P0:['BE-A01','BE-B01','BE-C01','BE-A02'],
+  P1:['BE-A03','BE-A04','BE-A05','BE-A06','BE-A07'],
+  P2:['BE-B02','BE-B03','BE-B04','BE-C02','BE-C03','BE-B05','BE-B06','BE-B07','BE-C04'],
+  P3:['BE-A08','BE-A09','BE-B08','BE-B09','BE-C05','BE-B10'],
+  P4:['BE-C06','BE-C07','BE-C08','BE-B11','BE-B12','BE-B13','BE-A11','BE-C09','BE-A10','BE-A12'],
+  P5:['BE-A13','BE-C10','BE-C11','BE-C12','BE-A14','BE-B14'],
+  P6:['BE-A15','BE-B15','BE-B16','BE-B17','BE-B18','BE-C13','BE-C14'],
+  P7:['BE-C15','BE-B19','BE-A16','BE-C16','BE-A17']
+};
+const sequencePolicy = {
+  maxActiveTasks:1,
+  legacyBlueprintHashes:['03a29e465214408a5205f419f99e2ed8a4f9a18266685cb87e069c233ef99ed6'],
+  handoffChecklist:[
+    'Hoàn tất 7 bước, reviewer duyệt và PR của task hiện tại đã merge vào main.',
+    'A tích hợp mọi SQL sinh ra/dependency dùng chung trong cùng lượt bàn giao; CI và db:check xanh.',
+    'Ghi commit main, chữ ký interface/procedure, migration và kết quả test vào bằng chứng task.',
+    'Người nhận cập nhật main, chạy lại các kiểm tra đầu vào rồi tạo nhánh mới từ commit đã bàn giao.',
+    'Chỉ mở task tiếp theo trong hàng đợi. Nếu thiếu quyết định hoặc provider thật, đánh Bị chặn và xử lý ngay tại task hiện tại.'
+  ]
+};
+const interfaceRequirements={
+  'BE-A08':['IF-CORE','IF-FILES','IF-ROOM','IF-CONNECTION'],
+  'BE-B08':['IF-CHAT','IF-ROOM','IF-EVENT'],
+  'BE-C05':['IF-ROOM','IF-VIEWING'],
+  'BE-B11':['IF-RESIDENT','IF-CONNECTION'],
+  'BE-A10':['IF-SERVICE','IF-RESIDENT'],
+  'BE-A11':['IF-CHAT','IF-VIEWING','IF-CONNECTION'],
+  'BE-C03':['IF-AUDIT'],
+  'BE-B16':['IF-AUDIT','IF-RESIDENT'],
+  'BE-C08':['IF-TOKEN'],
+  'BE-A15':['IF-ROOM','IF-RESIDENT','IF-AUDIT'],
+  'BE-C13':['IF-FILES']
+};
 const phases = [
-  ['P0','Chốt giao diện & cách làm chung','Đóng băng contract v1, quyền sở hữu file và cách build/test; B/C chuẩn bị adapter, fixture song song với A dựng khung.','G0'],
-  ['P1','Nền tảng & dữ liệu gốc','Có auth, tệp, idempotency, CRUD nhà/phòng, dịch vụ và các cổng đọc nghiệp vụ. Chưa phụ thuộc việc có người thuê thực tế.','G1'],
-  ['P2','Công khai phòng & chat hỏi phòng','Hoàn thành minh chứng nhà, quota tin, tìm phòng, xác minh tài khoản và chat để làm đầu vào cho lịch xem.','G2'],
-  ['P3','Hẹn xem → gửi hợp đồng','B chốt lịch/ý định thuê; C dùng lịch đủ điều kiện để giữ phòng và đóng lịch tương lai; A hoàn thiện thông báo.','G3'],
-  ['P4','Xác nhận → vào ở → hóa đơn nháp','C xác nhận phiên bản và người ở thực tế; A lập hóa đơn bằng snapshot; B triển khai hồ sơ/kết nối và thẻ chat dùng cổng đã công bố.','G4'],
+  ['P0','Dựng khung → phân tích → chốt contract','A dựng khung; B phân tích nhà/phòng; C phân tích thuê; sau đó A chốt contract v1 từ hai bản bàn giao đã hoàn tất.','G0'],
+  ['P1','Hoàn tất nền tảng, danh tính & tệp','A lần lượt hoàn tất auth, idempotency/audit, kho tệp, xét duyệt tài khoản và OTP/TokenPort. Các module sau nhận provider thật đã merge.','G1'],
+  ['P2','Dữ liệu nhà/phòng → cổng đọc → tin công khai','Hoàn tất nhà/phòng, dịch vụ, cổng đọc, mẫu hợp đồng, quyền nhà và public post; bảo vệ expected revision trước khi code thao tác thuê.','G2'],
+  ['P3','Chat → lịch xem → giữ phòng','A hoàn tất chat/thông báo; B hoàn tất đề nghị và lịch xem; C tạo hợp đồng; B kiểm thử việc đóng lịch bằng các API đã xong.','G3'],
+  ['P4','Vào ở → kết nối → hóa đơn nháp','C xác nhận và ghi cư trú thực tế; B tạo hồ sơ/kết nối; A hoàn tất thẻ chat rồi lập hóa đơn từ dịch vụ và cư trú đã chạy thật.','G4'],
   ['P5','Thuê chung, thay đổi & thu tiền','Hoàn tất giữ chỗ, bàn giao, gia hạn/đổi phòng/chấm dứt, thu tiền và vận chuyển sự kiện SSE.','G5'],
   ['P6','Chính sách mở rộng & tác vụ nền','Chốt thuật toán ghép, nhập giấy, audit mở rộng, đánh giá, dashboard và worker. Các mục chưa chốt tiếp tục được đánh dấu phụ thuộc.','G6'],
-  ['P7','Kiểm thử tích hợp & bàn giao','Ba người kiểm thử các phạm vi riêng; A tích hợp bản release sau khi các gate, SQL và tài liệu đạt.','G7']
+  ['P7','Kiểm thử lần lượt → bàn giao bản release','C kiểm thử giao dịch thuê, B kiểm thử module nhà/tin, A kiểm thử hạ tầng, C chạy E2E toàn hệ thống, cuối cùng A tích hợp bản release.','G7']
 ].map(([id,title,goal,gate],index)=>({id,title,goal,gate,index}));
 
 const modules = [
@@ -44,46 +80,46 @@ T('A',1,'P0','Khởi tạo backend, nhánh và CI theo module',3,[],['platform',
  'Chọn framework/ngôn ngữ, cấu hình chạy MySQL local/test và bootstrap modular monolith. Cấu trúc là đề xuất; repo hiện chưa có backend.',
  ['Tạo backend/src/modules/<domain>, tests/fixtures theo module và manifest tự đăng ký.','Mỗi PR có branch be/<owner>/<task-id>-<slug>; main được bảo vệ bằng review và CI.','CI dựng SQL từ nguồn vào thư mục tạm cho feature PR; A giữ output SQL tích hợp khớp nguồn khi merge.'],
  ['Lệnh chạy và test được ghi trong README backend; không dùng DB thật để test.','B/C thêm module qua manifest riêng mà không sửa bootstrap, lockfile hay root routes.'],{handoff:['Lệnh chạy/test/CI; layout và manifest mẫu cho B/C.'],decisions:['D15']});
-T('A',2,'P0','Chốt contract v1 và cổng dùng chung',5,[],['platform'],['BE-A01'],
+T('A',2,'P0','Chốt contract v1 và cổng dùng chung',5,[],['platform'],['BE-A01','BE-B01','BE-C01'],
  'Cùng B/C chốt ActorContext, lỗi/envelope, tiền/ID/date, TokenPort, FilePort, AuditPort, EventPort và cách thực thi transaction.',
  ['Công bố backend/contracts/core.* với fixture request/response/error và mock adapter.','Tách UnitOfWork của service với ProcedureRunner tự START/COMMIT; actor luôn lấy từ phiên.','Định nghĩa eventId/recipient/eventKey, idempotency scope và whitelist audit target; B/C có contract test dùng ngay.'],
- ['B01/C01 cùng duyệt contract v1 trước khi merge code tích hợp.','Contract test chạy với mock và adapter thật mà không sửa code consumer.'],{handoff:['IF-CORE','IF-TOKEN','IF-AUDIT','IF-EVENT'],decisions:['D01','D09','D14','D15']});
+ ['Đã nhận bản phân tích B01/C01 và chốt contract v1 trước khi code các provider.','Contract test quy định rõ đầu vào/đầu ra; test double chỉ dùng cô lập unit test, provider phải chạy thật ở task cung cấp.'],{handoff:['IF-CORE','IF-TOKEN','IF-AUDIT','IF-EVENT'],decisions:['D01','D09','D14','D15']});
 T('A',3,'P1','Xác thực, phiên, profile và scope quyền',8,ids([1,5],[18,21]),['identity'],['BE-A02'],
  'Xây middleware mặc định từ chối, đăng nhập/refresh/thu hồi phiên và thông tin tài khoản; các module khác chỉ nhận ActorContext đã xác thực.',
  ['Register users+tenants+profile nguyên tử; không nhận ADMIN/LANDLORD tùy ý từ client.','Refresh xoay token, session revoked/LOCKED bị chặn; profile và flags theo whitelist.','Cung cấp factory actor/phiên test cho B/C, tách policy role với quyền từng đối tượng.'],
  ['Thiếu token 401; sai scope/LOCKED không truy cập được tài nguyên module khác.','Mọi contact/ID/money/date validate theo đặc tả, không log secret.'],{decisions:['D01'],qa:['QA16'],handoff:['Middleware + fixture phiên hợp lệ/hết hạn/bị khóa cho B/C.']});
 T('A',4,'P1','Idempotency, event store và adapter audit nền',5,[],['platform','integration'],['BE-A02'],
  'Hoàn thiện hạ tầng chặn gửi lặp và lưu/phát sự kiện. Thiết kế phần SQL cần bổ sung theo D09; không giả các bảng đã tồn tại.',
- ['Store key+actor+route+request hash+kết quả; xử lý đang chạy, TTL và retry sau commit.','EventPort append cùng transaction cho service; cơ chế lấy notifications sau CALL có checkpoint/dedupe và giới hạn bảo đảm được ghi rõ.','AuditPort nhận đúng một target hợp lệ; procedure đã ghi audit/notification thì adapter không ghi lặp.'],
+ ['Store key+actor+route+request hash+kết quả; xử lý đang chạy, TTL và retry sau commit.','EventPort append cùng transaction cho service; cơ chế lấy notifications sau CALL có checkpoint/dedupe và giới hạn bảo đảm được ghi rõ.','Chốt và triển khai mở rộng audit D14 ngay tại task này, gồm target template/review/criterion; procedure đã ghi audit thì adapter không ghi lặp.'],
  ['Cùng key/payload trả kết quả cũ; khác payload 409; retry không nhân đôi tác dụng phụ.','Kiểm thử crash trước/sau commit; không tuyên bố exactly-once cho kênh vận chuyển.'],{decisions:['D09','D14'],qa:['QA12'],handoff:['IF-EVENT','IF-AUDIT','Kho idempotency cho mọi module; migration do A tích hợp.']});
 T('A',5,'P1','Kho tệp riêng tư và quyền mở theo ngữ cảnh',8,ids([170,174]),['files'],['BE-A03','BE-A04'],
  'Cung cấp luồng upload → kiểm tra → ACTIVE, private download và xóa hợp lệ cho minh chứng nhà/CCCD/chat/hợp đồng/báo cáo.',
  ['Adapter kho tệp cấu hình qua môi trường; MIME magic, byte length, SHA-256 và ownership được server kiểm tra.','FilePort hỗ trợ context resolver do B/C đăng ký riêng; không import service B/C vào files tạo vòng phụ thuộc.','Proof đã tham chiếu bất biến, URL ngắn hạn và retention có chính sách D05.'],
  ['Proof nhà đúng 1–8 tệp, tối đa 5 MB/tệp; MIME giả/owner khác bị chặn.','Không đọc được file bằng đoán ID; tệp đang được giữ không bị xóa vật lý.'],{decisions:['D05'],qa:['QA15'],handoff:['IF-FILES','ID tệp mẫu ACTIVE/PRIVATE và contract test cho B05/B06/C13.']});
-T('A',6,'P2','Xác minh danh tính và cấp vai trò chủ trọ',5,ids([6,17]),['identity'],['BE-A05'],
+T('A',6,'P1','Xác minh danh tính và cấp vai trò chủ trọ',5,ids([6,17]),['identity'],['BE-A05'],
  'Triển khai hồ sơ của mình, rút hồ sơ, hàng đợi và xét duyệt theo đúng loại tài khoản; dùng chung FilePort.',
  ['Một PENDING/người/loại; duyệt/từ chối có actor/time/reason.','APPROVE landlord tạo dòng landlords trong cùng transaction; không tự duyệt nhà.','Ghi audit và thông báo qua adapter đã chốt, giữ hồ sơ lịch sử.'],
  ['Hai lần nộp đồng thời không có hai PENDING; file của người khác bị chặn.','Chủ trọ mới được cấp vai trò chỉ công khai nhà sau B05 xác minh riêng.'],{decisions:['D05'],handoff:['Tài khoản TENANT/LANDLORD đã xét duyệt cho fixture tích hợp.']});
-T('A',7,'P2','OTP, reset mật khẩu và TokenPort',5,ids([22,26]),['identity'],['BE-A03','BE-A04'],
+T('A',7,'P1','OTP, reset mật khẩu và TokenPort',5,ids([22,26]),['identity'],['BE-A03','BE-A04'],
  'Hoàn tất token một lần và adapter generic để C dùng cho liên kết cư dân, cùng cơ chế rate limit/reset grant.',
  ['Hash/HMAC mã, hạn dùng, attempt, consumed/revoked; reset không lộ tài khoản tồn tại.','Reset grant chỉ đổi mật khẩu đúng user và thu hồi phiên; phone uniqueness kiểm tra lại dưới khóa.','TokenPort issue/consume hỗ trợ OCCUPANT_LINK và targetRoomTenantId trong transaction được C truyền vào.'],
  ['OTP sai/hết hạn/dùng lại đều thất bại đúng mã; không log/response OTP thực.','C08 tiêu thụ token và gắn member trong cùng transaction, không gọi HTTP nội bộ.'],{decisions:['D01','D06'],handoff:['IF-TOKEN']});
-T('A',8,'P2','Chat hỏi phòng và cổng hội thoại cho lịch xem',8,ids([76,82]),['messaging'],['BE-A03','BE-A04','BE-B04'],
- 'Mở conversation đúng post/room, gửi/đọc tin và read-state. B cần tin nhắn thật làm điều kiện hẹn xem; không chờ hoàn tất toàn bộ matching.',
+T('A',8,'P3','Chat hỏi phòng và cổng hội thoại cho lịch xem',8,ids([76,82]),['messaging'],['BE-A03','BE-A04','BE-A05','BE-B04','BE-B07'],
+ 'Dùng tin công khai B07 và các cổng đọc B04 đã hoàn tất để mở conversation, gửi/đọc tin và read-state. B nhận tin nhắn thật làm điều kiện hẹn xem ở lượt sau.',
  ['Get-or-create inquiry có unique/khóa theo D08; một context ghi/post/room, gộp peer chỉ khi đọc.','Gửi TEXT/IMAGE chống trùng; cập nhật participant/read-state/last_message và sự kiện nguyên tử.','Công bố ensureRoommateConversation(tx) cho B13; ConnectionPort kiểm tra accepted từ DB/fixture dù endpoint kết nối chưa hoàn thiện.'],
  ['Có tin người thuê về đúng phòng cho B08/B09; ROOMMATE không dùng hẹn chủ trọ.','Chỉ participant được đọc/gửi; sender+client key không tạo trùng.'],{decisions:['D03','D08'],handoff:['IF-CHAT','conversationId + postId + roomId + tenantId chuẩn cho B.']});
 T('A',9,'P3','Feed thông báo, bộ đếm và đánh dấu đọc',3,ids([86,89]),['messaging'],['BE-A04','BE-A08'],
  'API thông báo đọc từ cùng dữ liệu nghiệp vụ, không phụ thuộc SSE để bảo đảm đúng kết quả.',
  ['Feed scoped user, counts, read một/tất cả đến mốc server.','Chống event_key trùng, mở tài nguyên vẫn kiểm tra quyền lại.','Chuẩn hóa thông báo do procedure và service phát, giữ popup là trạng thái UI.'],
  ['Đọc thông báo của user khác bị chặn; read-all không đọc nhầm sự kiện đến sau mốc.','Tắt realtime không làm mất thông báo đã commit.'],{handoff:['Notification DTO và event mapping để B/C đưa vào ca tích hợp.']});
-T('A',10,'P4','Hóa đơn nháp và snapshot giá/người trả',5,ids([145,148]),['billing'],['BE-A04','BE-B03','BE-C02'],
+T('A',10,'P4','Hóa đơn nháp và snapshot giá/người trả',5,ids([145,148]),['billing'],['BE-A04','BE-B03','BE-C02','BE-C07'],
  'Dùng ServiceQuotePort của B và ResidencyReadPort của C để lập kỳ tiền, tách khỏi code cấu hình dịch vụ/hợp đồng.',
- ['Unique contract+kỳ chưa hủy; server tính quantity, meter, tiền thuê và giảm trừ bằng decimal.','Snapshot revision, representative/payer và số ACTIVE trong cùng transaction đọc hợp đồng.','Chỉ sửa DRAFT; hợp đồng ACTIVE thật cho E2E được bàn giao khi C07 hoàn thành.'],
- ['Override=0 giữ 0; người PLANNED không tính dịch vụ theo người; chỉ số cuối<đầu bị chặn.','Đổi đại diện/giá sau lập không đổi snapshot hóa đơn cũ.'],{decisions:['D12'],integrationWith:['BE-C07'],qa:['QA10'],handoff:['InvoiceReadPort/metrics cho B17 và contract detail nếu cần.']});
-T('A',11,'P4','Thẻ lịch, chat bạn ghép và chia sẻ đúng tin',5,ids([83,85]),['messaging'],['BE-A08','BE-B04','BE-C02'],
+ ['Unique contract+kỳ chưa hủy; server tính quantity, meter, tiền thuê và giảm trừ bằng decimal.','Snapshot revision, representative/payer và số ACTIVE trong cùng transaction đọc hợp đồng.','Chỉ sửa DRAFT; kiểm thử ngay bằng hợp đồng ACTIVE và người ở thật do C07 đã bàn giao.'],
+ ['Override=0 giữ 0; người PLANNED không tính dịch vụ theo người; chỉ số cuối<đầu bị chặn.','Đổi giá giữ snapshot; trường hợp bàn giao đại diện do C11 kiểm thử sau khi API bàn giao được viết.'],{decisions:['D12'],qa:['QA10'],handoff:['InvoiceReadPort/metrics cho B17; invoice thật cho ca bàn giao C11.']});
+T('A',11,'P4','Thẻ lịch, chat bạn ghép và chia sẻ đúng tin',5,ids([83,85]),['messaging'],['BE-A08','BE-B04','BE-C02','BE-B13','BE-B09'],
  'Hoàn thiện route chat cần dữ liệu B/C: timeline đọc lịch gốc, ROOMMATE và POST_SHARE; dùng cổng đọc đã chốt, không chép bảng.',
  ['Timeline lấy viewing/proposal theo conversation có quyền; share giữ đúng postId.','ROOMMATE chỉ mở/gửi khi accepted còn hiệu lực; inactive post trả unavailable không lộ ảnh/tiêu đề.','B13 dùng ensureRoommateConversation đã có ở A08; hai phần không phụ thuộc nhau theo vòng HTTP.'],
- ['Accept kết nối xong mở cùng conversation; share không tạo join/hold/lịch.','Bài ẩn không tự đổi sang bài khác cùng phòng; chat inquiry và roommate không lẫn thẻ lịch.'],{decisions:['D03'],integrationWith:['BE-B13','BE-B09'],qa:['QA13']});
+ ['Accept kết nối đã chạy ở B13 mở đúng conversation; share không tạo join/hold/lịch.','Bài ẩn không tự đổi sang bài khác cùng phòng; timeline dùng lịch B09 đã hoàn tất.'],{decisions:['D03'],qa:['QA13']});
 T('A',12,'P4','Quản trị tài khoản và tra cứu audit',5,ids([161,164],168,169),['account-admin'],['BE-A03','BE-A04'],
  'Các route /admin/users và /admin/moderation-actions thuộc A; B/C giữ các route /admin theo nghiệp vụ của họ.',
  ['Lock/unlock có reason, audit và revoke session; không xóa cư trú/nghĩa vụ.','Audit chỉ đọc, lọc đối tượng và che secret/PII khỏi snapshot.','Không sửa source SQL nhà của B để tính quyền; view hiệu lực đã xét trạng thái user.'],
@@ -96,36 +132,36 @@ T('A',14,'P5','SSE có xác thực và nối lại sự kiện',5,ids(90),['mess
  'Triển khai kênh vận chuyển tách khỏi nghiệp vụ; B/C chỉ append/ghi sự kiện, không cùng sửa SSE controller.',
  ['Auth phiên, Last-Event-ID, replay trong cửa sổ lưu, recipient scope và dedupe eventId.','Phát sau commit; reconnect không coi popup đã đóng là đã đọc.','Tải trọng tối thiểu rồi client fetch resource; kiểm tra session revoked khi stream còn mở.'],
  ['Mất kết nối/retry không mất nguồn dữ liệu gốc và không lộ sự kiện người khác.','Crash/delivery lặp vẫn cho client dedupe và đọc lại feed.'],{decisions:['D09'],jobs:['JOB06'],qa:['QA12']});
-T('A',15,'P6','Retention, audit mở rộng và dashboard quản trị',3,ids(176),['platform','account-admin','integration'],['BE-A05','BE-A12','BE-A14'],
- 'Chốt schema audit cho review/template/criterion và dọn phiên/token/tệp theo retention; dashboard đọc metric ports thay vì join tùy tiện trong controller.',
- ['D14 có migration/adapters và contract target mới trước B16; không gán nhầm review thành post.','JOB05 dọn đúng scope/hạn lưu, tệp bị giữ làm chứng cứ được bảo toàn.','Admin dashboard đếm riêng account identity/house proof/posts/reports; flags email/push chỉ bật khi provider được chốt.'],
-  ['Job lặp an toàn, không xóa bằng chứng đang tham chiếu.','Dashboard không công khai PII; số liệu có asOf và nguồn từng module.'],{decisions:['D04','D05','D14'],jobs:['JOB05'],integrationWith:['BE-B14']});
+T('A',15,'P6','Retention, kiểm tra audit và dashboard quản trị',3,ids(176),['platform','account-admin','integration'],['BE-A05','BE-A06','BE-A12','BE-A14','BE-B04','BE-B14','BE-C02'],
+ 'Dùng audit adapter đã hoàn tất tại A04; dọn phiên/token/tệp và tổng hợp dashboard bằng các metric port đã bàn giao, không chờ endpoint dashboard B17.',
+ ['Kiểm tra migration/adapters D14 từ A04 vẫn đúng target; không gán nhầm review thành post.','JOB05 dọn đúng scope/hạn lưu, tệp bị giữ làm chứng cứ được bảo toàn.','Admin dashboard dùng IdentityMetrics A06, PropertyMetrics B04, ReportMetrics B14 và ResidencyMetrics C02; flags email/push chỉ bật khi provider được chốt.'],
+ ['Job lặp an toàn, không xóa bằng chứng đang tham chiếu.','Mọi provider metric đã merge trước task; dashboard không công khai PII và trả asOf.'],{decisions:['D04','D05','D14'],jobs:['JOB05']});
 T('A',16,'P7','Kiểm thử bảo mật, hóa đơn và lỗi hạ tầng',5,[],['platform','billing','messaging'],['BE-A15'],
  'A giữ tests/e2e/platform-*; kiểm thử phần nền tảng và dòng tiền, tránh ba người sửa một kịch bản E2E lớn.',
  ['Test scope chéo ID, nhiều vai trò, revoke/LOCKED, OTP và tài liệu riêng.','Test idempotency sau commit/timeout, outbox/SSE reconnect và invoice snapshot.','Ghi bằng chứng chạy CI, migration mới và cách rollback/retry về mặt vận hành.'],
  ['QA10/11/12/15/16 đạt trên DB tạm và storage test.','Không dùng localStorage wireframe làm bằng chứng backend đã chạy.'],{qa:['QA10','QA11','QA12','QA15','QA16']});
 T('A',17,'P7','Tích hợp bản bàn giao Backend',3,[],['integration'],['BE-A16','BE-B19','BE-C16'],
  'A là người tích hợp tệp dùng chung; việc phát hành thực tế là một bước riêng sau khi team duyệt bản release.',
- ['Tái sinh schema từ toàn bộ source, chốt thứ tự migration; test tạo mới/nâng cấp trên DB tạm.','Đối chiếu 176 API có đúng một task/module owner, gom collection/API docs và hướng dẫn chạy.','Xác nhận toàn bộ gate; ghi các quyết định ngoài phạm vi còn hoãn, không gọi backend hoàn tất nếu endpoint tương ứng chưa đạt.'],
+ ['Tái sinh schema từ toàn bộ source, chốt thứ tự migration; test tạo mới/nâng cấp trên DB tạm.','Đối chiếu 176 API có đúng một task/module owner, gom collection/API docs và hướng dẫn chạy.','Xác nhận G0–G6 và report E2E C16 trước bàn giao; chốt G7 sau khi A17 hoàn thành, không dùng gate chứa chính A17 làm điều kiện bắt đầu.'],
  ['Feature CI, DB check, contract tests và E2E ba lane đều xanh.','Không ai sửa tay schema sinh ra; không deploy hoặc áp dụng migration DB thật trong task tài liệu này.'],{jobs:['OPS01'],handoff:['Bản release có thể review, checklist và hướng dẫn bàn giao.']});
 
 T('B',1,'P0','Chốt module nhà/tin/lịch và dữ liệu bàn giao',3,[],['properties','posts','services','viewings','roommates'],[],
  'B đọc rule/SQL và công bố DTO/port thuộc mình trước khi phát triển; không chọn cách code theo từng vai trò UI.',
- ['Phân biệt postId/roomId, quyền nhà, capacity load, quote service và trạng thái kết nối.','Tạo fixture trong backend/tests/fixtures/B/**; không sửa seed chung của A/C.','Chốt cổng IF-ROOM/IF-SERVICE/IF-CONNECTION với A02/C01; các loại payload không đổi âm thầm.'],
- ['Consumer có thể chạy contract test với fixture chưa cần endpoint thật.','D02/D07/D08/D13 được ghi rõ người đề xuất/người chốt và route bị ảnh hưởng.'],{decisions:['D02','D07','D08','D13'],handoff:['IF-ROOM','IF-SERVICE','IF-CONNECTION']});
-T('B',2,'P1','Nhà/phòng CRUD và sức chứa',8,ids([29,32],[42,45]),['properties'],['BE-A02','BE-B01'],
- 'Tạo/sửa nhà nháp, phòng, tình trạng và capacity; khung auth đã có contract, có thể code với actor fixture trước A03.',
+ ['Phân biệt postId/roomId, quyền nhà, capacity load, quote service và trạng thái kết nối.','Tạo fixture trong backend/tests/fixtures/B/**; không sửa seed chung của A/C.','Gửi đề xuất IF-ROOM/IF-SERVICE/IF-CONNECTION để C01 phân tích thuê và A02 chốt contract v1 ở các lượt tiếp theo.'],
+ ['Bản đề xuất DTO/fixture đã review và bàn giao cho A02; chưa cần backend của A02 được triển khai.','D02/D07/D08/D13 được ghi rõ người đề xuất/người chốt và route bị ảnh hưởng.'],{decisions:['D02','D07','D08','D13'],handoff:['IF-ROOM','IF-SERVICE','IF-CONNECTION']});
+T('B',2,'P2','Nhà/phòng CRUD và sức chứa',8,ids([29,32],[42,45]),['properties'],['BE-A02','BE-A03','BE-A06','BE-B01'],
+ 'Tạo/sửa nhà nháp, phòng, tình trạng và capacity bằng middleware auth và vai trò chủ trọ đã hoàn tất ở A03/A06; không giữ adapter chờ tích hợp.',
  ['Nhà create idempotency, update row_version/verification_version đúng procedure.','Mã phòng duy nhất/nhà; giá và diện tích hợp lệ, status suy từ người/hợp đồng.','Capacity gọi sp_set_room_capacity; procedure nằm workflows.sql của C, cần đổi thì gửi C patch request.'],
- ['Không đặt phòng có ACTIVE thành AVAILABLE; không giảm dưới ACTIVE+PLANNED mở+hold còn hạn.','Dùng auth middleware A khi tích hợp, không hardcode user Quân/demo.'],{integrationWith:['BE-A03'],qa:['QA05','QA09']});
-T('B',3,'P1','Dịch vụ nhà/phòng và giá hiệu lực',5,ids(49,[137,144]),['services'],['BE-A02','BE-B02'],
+ ['Không đặt phòng có ACTIVE thành AVAILABLE; không giảm dưới ACTIVE+PLANNED mở+hold còn hạn.','Chạy test bằng auth middleware và tài khoản thật của A, không hardcode user Quân/demo.'],{qa:['QA05','QA09']});
+T('B',3,'P2','Dịch vụ nhà/phòng và giá hiệu lực',5,ids(49,[137,144]),['services'],['BE-A02','BE-B02'],
  'B giữ toàn bộ cấu hình dịch vụ và route read dịch vụ phòng; A chỉ dùng quote đã chốt để lập hóa đơn.',
  ['Danh mục đúng rental_services hiện tại, không giả có code/active; dịch vụ riêng catalog_service_id null.','Upsert đúng nhà/phòng, active cả hai cấp; null kế thừa, override 0 giữ 0.','Công bố ServiceQuotePort có thể đọc bằng connection/UoW của consumer để chốt invoice snapshot.'],
  ['Không gán dịch vụ nhà khác; giá/phương pháp override hợp lệ.','Đổi cấu hình không cập nhật dòng invoice đã có.'],{handoff:['IF-SERVICE'],qa:['QA10']});
-T('B',4,'P1','Cổng đọc nhà/phòng và kết nối cho A/C',3,[],['properties','services','roommates'],['BE-B02','BE-B03'],
- 'Cài adapter thật cho contract đã chốt ở B01; ưu tiên sớm để A/C viết nhanh mà không copy SQL/DTO.',
- ['RoomSnapshot có capacity/status/effectiveRight/currentLoad, không chứa PII cư dân.','ConnectionPort đọc accepted/not-ended bằng transaction được truyền; dữ liệu test riêng dù B13 chưa tạo endpoint.','ServiceQuotePort và FileContext resolver không tạo import vòng; injection ở composition root do A quản lý.'],
- ['Contract tests chạy cùng bộ fixture với mock B01.','C vẫn recheck quyền/capacity dưới khóa trong procedure, không dùng snapshot cũ làm quyền thuê.'],{handoff:['IF-ROOM','IF-SERVICE','IF-CONNECTION']});
-T('B',5,'P2','Xác minh quyền nhà và trạng thái hiệu lực',8,ids([33,41]),['properties','sql-property'],['BE-B04','BE-A05'],
+T('B',4,'P2','Cổng đọc nhà/phòng và kết nối cho A/C',3,[],['properties','services','roommates'],['BE-B02','BE-B03'],
+ 'Hoàn tất adapter SQL thật trước consumer. Mọi cổng được bàn giao đều có query, kiểm tra quyền và test DB, không chỉ có chữ ký hoặc mock.',
+ ['RoomSnapshot và PropertyMetrics đọc nguồn SQL hiện có: capacity/load/right, số nhà/phòng và pending post; không chứa PII cư dân.','ConnectionPort có query accepted/not-ended đầy đủ trên schema hiện có, test với DB fixture; không phụ thuộc endpoint tạo kết nối B13.','ServiceQuotePort và FileContext resolver chạy thật, không có import vòng hoặc provider rỗng.'],
+ ['Contract test và integration test dùng adapter SQL thật đều xanh trước khi bàn giao A/C.','C vẫn recheck quyền/capacity dưới khóa trong procedure, không dùng snapshot cũ làm quyền thuê.'],{handoff:['IF-ROOM','IF-SERVICE','IF-CONNECTION','PropertyMetrics cho A15; không chờ B17.']});
+T('B',5,'P2','Xác minh quyền nhà và trạng thái hiệu lực',8,ids([33,41]),['properties','sql-property'],['BE-B04','BE-A05','BE-A06'],
  'B phụ trách cả /houses/.../verifications và /admin/house-verifications vì cùng một nghiệp vụ; A chỉ cung cấp tệp/auth/audit.',
  ['Nộp/rút/duyệt/từ chối/thu hồi đúng procedure, đủ loại giấy theo OWNER/AUTHORIZED/SUBLESSOR.','Ngày hiệu lực VN, định danh/version khớp; pending không tự làm mất quyền cũ.','Dùng effective view khi đọc; mất quyền chặn công khai/thuê mới nhưng giữ lịch sử.'],
  ['Không có quyền chỉ nhờ account landlord được duyệt; admin cần evidenceChecked=true.','Đổi định danh/rút/hết hạn/thu hồi giữ tệp bất biến và audit.'],{decisions:['D05'],qa:['QA09','QA15']});
@@ -149,7 +185,7 @@ T('B',10,'P3','Bàn giao và kiểm tra lịch khi hợp đồng giữ phòng',3
  'B giữ test backend/tests/e2e/viewing-contract/**; C giữ procedure tạo hợp đồng và đóng hoạt động xem.',
  ['Gửi contract từ lịch bàn giao, kiểm tra lịch/proposal ở mọi post cùng room.','Phân biệt lịch chưa bắt đầu với đang diễn ra/đã hết; trả event tổng hợp cho A.','Hủy contract không khôi phục lịch cũ; lập bug đúng owner file/SQL thay vì sửa chéo.'],
  ['QA03/04 chạy với cả endpoint lịch và contract thật.','Timeline A11 và list lịch đều đọc cùng trạng thái.'],{qa:['QA03','QA04'],handoff:['G3: phòng RESERVED và lịch đã đóng đúng phạm vi.']});
-T('B',11,'P4','Hồ sơ ở ghép và tình trạng nhà ở',5,ids([62,64],66,67),['roommates'],['BE-B04','BE-C02'],
+T('B',11,'P4','Hồ sơ ở ghép và tình trạng nhà ở',5,ids([62,64],66,67),['roommates'],['BE-B04','BE-C02','BE-C07'],
  'Tách giới thiệu hồ sơ khỏi thao tác mời; C cung cấp chứng cứ ACTIVE qua ResidencyReadPort.',
  ['PUT profile version, budget/location/available date; IN_SYSTEM do server suy từ đúng member ACTIVE.','EXTERNAL tối đa 1.000 ký tự và bỏ mô tả khi đổi trạng thái.','Giá trị lifestyle giữ schema JSON theo criterion, không thêm cột mỗi thói quen.'],
  ['Không tự gắn memberId client gửi; stale version 409.','Người chưa có ACTIVE được tự khai chưa có chỗ/ngoài hệ thống đúng rule.']);
@@ -163,17 +199,17 @@ T('B',13,'P4','Mời kết nối và tạo chat đúng một lần',5,ids([71,75
  ['Gửi chéo không tự accept; retry accept không sinh chat trùng.','Hồ sơ cũ vẫn phản hồi được; room capacity không chặn kết nối đơn thuần.'],{decisions:['D03'],handoff:['Kết nối ACCEPTED và conversationId cho A11.']});
 T('B',14,'P5','Báo cáo vi phạm và kết luận',5,ids([156,160]),['content-moderation'],['BE-B07','BE-A05','BE-A04'],
  'B xử lý report/evidence/decision trong module reports; thay đổi trạng thái user/post là quyết định riêng theo owner tương ứng.',
- ['Target đúng một loại và người báo cáo có quyền đọc; file bằng chứng PRIVATE thuộc actor.','Hàng đợi/details/decision với actor/time/resolution; audit không tự khóa user hoặc hủy thuê.','Giữ các FK và che kết quả điều tra riêng tư khỏi reporter khi không được phép.'],
+ ['Target đúng một loại và người báo cáo có quyền đọc; file bằng chứng PRIVATE thuộc actor.','Hàng đợi/details/decision với actor/time/resolution; audit không tự khóa user hoặc hủy thuê.','Bàn giao ReportMetrics chạy SQL thật cho A15, giữ FK và che kết quả điều tra riêng tư khỏi reporter.'],
  ['Không nhắm nhiều target cùng report; bản đóng không bị form cũ mở lại.','Nếu cần khóa account, gọi cổng A theo nghiệp vụ; không viết users repository mới.']);
 T('B',15,'P6','Danh sách người phù hợp theo chính sách đã chốt',5,ids(68),['roommates'],['BE-B13'],
  'Chỉ triển khai score khi D02 đã chốt; không dùng thuật toán AI cho phần này và không điền tab AI.',
  ['Lọc self/inactive, location/budget và tiêu chí bắt buộc.','AlgorithmVersion/score/explanations cố định theo D02, test cùng dữ liệu thiếu/ngân sách biên.','Nếu D02 chưa chốt, ghi Bị chặn cho task; không trả score mẫu như kết quả thật.'],
  ['Cùng input+algorithmVersion có kết quả xác định, không lộ PII cư dân.','Cấu trúc output giữ contract, có pagination/sort ổn định.'],{decisions:['D02'],priority:'P1'});
-T('B',16,'P6','Đánh giá theo bằng chứng cư trú và audit',5,ids([153,155]),['content-moderation'],['BE-B14','BE-C02','BE-A15'],
+T('B',16,'P6','Đánh giá theo bằng chứng cư trú và audit',5,ids([153,155]),['content-moderation'],['BE-B14','BE-C02','BE-C12','BE-A04'],
  'Chốt D13 về thời điểm/hạn sửa trước khi mở review; dữ liệu chứng cứ lấy từ C, audit target review do A mở rộng D14.',
  ['Unique reviewer+room+contract; đúng roomTenant evidence của actor, rating 1–5.','Public chỉ PUBLISHED, moderation không sửa bằng chứng hợp đồng/cư trú.','Giữ trạng thái cần chốt nếu D13/D14 chưa có quyết định, không ghi nhầm target_post_id.'],
  ['Tài khoản chỉ từng xem phòng không được review; không đánh giá trùng.','Ẩn review giữ audit đúng đối tượng và không làm mất cư trú.'],{decisions:['D13','D14']});
-T('B',17,'P6','Dashboard chủ trọ bằng metric ports',3,ids(175),['properties'],['BE-B16','BE-A13','BE-C12'],
+T('B',17,'P6','Dashboard chủ trọ bằng metric ports',3,ids(175),['properties'],['BE-B02','BE-B09','BE-A13','BE-C12'],
  'B sở hữu API dashboard landlord; tổng hợp read-only từ properties/viewings của B, invoice của A và rental của C.',
  ['Scope landlord cho từng metric; ACTIVE tính occupied, không đồng nhất reserved với occupied.','Lịch chưa hết giờ, hóa đơn UNPAID/OVERDUE và pending requests có nguồn đúng module.','Có asOf, tách truy vấn count khỏi trả danh tính cư dân.'],
  ['Không cộng nhầm dữ liệu chủ khác; amount decimal và status phù hợp.','Contract tests của metric ports phát hiện consumer dùng field cũ.']);
@@ -189,16 +225,16 @@ T('B',19,'P7','Kiểm thử module nhà/tin/lịch và nội dung',5,[],['proper
 T('C',1,'P0','Chốt trạng thái thuê, transaction và cổng cư trú',5,[],['rentals','sql-rental'],[],
  'C phân tích vòng đời contract/member/join/change/representative và công bố snapshot read/expected revision trước khi dựng endpoint.',
  ['Vẽ chuyển trạng thái và lock order roomId tăng dần; xác định procedure tự commit.','Công bố ResidencyReadPort/contract snapshot và fixture của C; A/B không join/ghi trực tiếp các bảng này trong service của họ.','D10 expectedRevision và D11 import được ghi là mở rộng cần làm; không xác nhận nhầm phiên bản.'],
- ['A02/B01 cùng duyệt contract; chưa chọn framework vẫn chuẩn bị SQL/fixture được.','Planned/active/left/cancelled, payer cũ, đại diện ban đầu/hiện tại được phân biệt.'],{decisions:['D06','D10','D11'],handoff:['IF-RESIDENT']});
-T('C',2,'P1','Cổng đọc hợp đồng/cư trú, thành viên và lịch sử',5,ids(48,101,102,105,[114,116],126,127),['rentals'],['BE-A02','BE-C01'],
+ ['Bản phân tích thuê đã review và bàn giao A02 để chốt contract; C01 không đợi code core A02.','Planned/active/left/cancelled, payer cũ, đại diện ban đầu/hiện tại được phân biệt.'],{decisions:['D06','D10','D11'],handoff:['IF-RESIDENT']});
+T('C',2,'P2','Cổng đọc hợp đồng/cư trú, thành viên và lịch sử',5,ids(48,101,102,105,[114,116],126,127),['rentals'],['BE-A02','BE-A03','BE-B04','BE-C01'],
  'C giữ cả /rooms/{roomId}/residents vì đọc cùng bằng chứng cư trú; B giữ room detail public và chỉ dùng activeCount.',
- ['Danh sách/details/revisions/members/history, candidate representative và export CSV.','ResidencyReadPort lấy ACTIVE kể cả contract đóng sai, hỗ trợ connection/UoW của consumer.','Privacy theo quan hệ hợp đồng, không lộ CCCD thành viên khác; CSV chống formula injection.'],
+ ['Danh sách/details/revisions/members/history, candidate representative và export CSV.','ResidencyReadPort và ResidencyMetrics có query thật trên schema hiện có, hỗ trợ UoW của consumer; test DB fixture không cần endpoint tạo hợp đồng viết trước.','Privacy theo quan hệ hợp đồng, không lộ CCCD thành viên khác; CSV chống formula injection.'],
  ['A lập invoice/B xác định IN_SYSTEM bằng port thật mà không import repository C.','Không suy người ở chỉ từ representative; time không rõ trả null/chưa rõ.'],{handoff:['IF-RESIDENT','Read-only metrics/snapshot cho A10 và B11.'],qa:['QA11']});
-T('C',3,'P1','Mẫu hợp đồng và phiên bản mẫu',3,ids([165,167]),['rentals'],['BE-C02'],
+T('C',3,'P2','Mẫu hợp đồng và phiên bản mẫu',3,ids([165,167]),['rentals'],['BE-C02','BE-A04'],
  'Các /admin/contract-templates thuộc module rentals/templates của C, tách khỏi admin users của A.',
- ['Tạo version mới theo name có unique/khóa; không sửa nội dung bản đã dùng.','Chủ chỉ thấy active; admin bật/ngừng, snapshot revision giữ nội dung riêng.','Nếu cần audit template, dùng A port và D14 sau khi đã mở rộng target.'],
+ ['Tạo version mới theo name có unique/khóa; không sửa nội dung bản đã dùng.','Chủ chỉ thấy active; admin bật/ngừng, snapshot revision giữ nội dung riêng.','Audit template dùng adapter/target D14 đã được A04 hoàn tất, không đợi task A15 ở cuối kế hoạch.'],
  ['Hai lần tạo cùng name không đụng version; hợp đồng cũ không đổi khi ngừng mẫu.','Không thêm templateController vào file admin chung.'],{decisions:['D14']});
-T('C',4,'P2','Bảo vệ expected revision và adapter procedure',5,[],['rentals','sql-rental'],['BE-C01','BE-A04'],
+T('C',4,'P2','Bảo vệ expected revision và adapter procedure',5,[],['rentals','sql-rental'],['BE-C01','BE-C02','BE-A04'],
  'C sửa đúng file workflows.sql để đóng D10 trước route confirm; chuẩn bị adapter/test các giao dịch thuê bằng fixture, không chờ UI/hẹn xem thật.',
  ['Procedure confirm nhận expectedRevisionId và so dưới cùng khóa; stale 409 không xác nhận bản mới.','Mapper camelCase → SQL params/JSON snake_case; ProcedureRunner không bị bọc UoW ngoài.','Race/rollback fixture cho create/move-in/handover/transfer; đưa patch source cho A tái sinh SQL trước tích hợp.'],
  ['QA06 xác nhận A sau khi B đã gửi bị chặn; test không chỉ check trước CALL ở controller.','Các OUT ID và lỗi SIGNAL được ánh xạ ổn định, không lộ SQL ra HTTP.'],{decisions:['D10','D15'],qa:['QA06'],handoff:['Expected revision adapter và source SQL được A tích hợp.']});
@@ -226,10 +262,10 @@ T('C',10,'P5','Duyệt giữ chỗ 48 giờ và hoàn tất thêm người',8,id
  'Giữ một chỗ khác với giữ cả phòng; mọi điểm quyết định khóa phòng và tính load đầy đủ.',
  ['Approve/reject/cancel hold theo quyền và consent; 48 giờ theo chính sách đã có.','Complete recheck hold/time/account/capacity, tạo member ACTIVE và liên kết hai chiều đúng FK.','Retry đã completed trả kết quả cũ qua idempotency, không gọi lại procedure tạo thêm member.'],
  ['Hai người tranh chỗ cuối chỉ một approve; hold quá hạn không tính tải dù job chưa chạy.','Complete fail không để member mồ côi/hold đã consume.'],{qa:['QA05']});
-T('C',11,'P5','Rời phòng và bàn giao đại diện',5,ids(125,128),['rentals','sql-rental'],['BE-C10'],
+T('C',11,'P5','Rời phòng và bàn giao đại diện',5,ids(125,128),['rentals','sql-rental'],['BE-C10','BE-A13'],
  'C giữ transaction handover/move-out, không chia một phần history cho A hay phần status phòng cho B.',
  ['Chọn successor ACTIVE cùng contract có account ACTIVE; consent landlord recorded, reason bắt buộc.','Đóng history, LEFT người cũ, đại diện mới, hủy request cũ, notify cùng giao dịch.','Người cuối rời xử lý mọi member mở; không đổi payer invoice cũ, viewing gốc hoặc terms cũ.'],
- ['QA07 giữ nguyên giá/cọc/thời hạn/contract; không chọn planned/left/locked.','Nhà hết quyền vẫn rời/kết thúc được; thiếu chứng cứ không tự đoán ngày.'],{qa:['QA07','QA09'],integrationWith:['BE-A13'],handoff:['Payer/history case cho A kiểm thử hóa đơn sau handover.']});
+ ['QA07 kiểm thử bằng hóa đơn A13 đã phát hành/thu tiền, giữ nguyên giá/cọc/thời hạn/contract.','Nhà hết quyền vẫn rời/kết thúc được; thiếu chứng cứ không tự đoán ngày.'],{qa:['QA07','QA09'],handoff:['Kết quả bàn giao và payer/history cho lượt kiểm thử A16.']});
 T('C',12,'P5','Gia hạn, đổi phòng và chấm dứt có xác nhận',8,ids([129,136]),['rentals','sql-rental'],['BE-C11','BE-B04'],
  'Một chủ sở hữu cho toàn luồng yêu cầu → duyệt → xác nhận → apply; B cung cấp phòng đích, A giữ nghĩa vụ hóa đơn cũ.',
  ['Một yêu cầu mở; baseRevision/current representative/proposal bất biến và effective date.','Renewal có proposed revision confirmed và quyền nhà; transfer lock room theo ID, kiểm tra mọi điều kiện trước đóng nguồn.','Termination đóng ACTIVE, hủy PLANNED, history/yêu cầu, không xóa invoice; chuyển phòng đích tạo PLANNED chờ vào thực tế.'],
@@ -255,32 +291,32 @@ const interfaces = [
  ['IF-CORE','A','BE-A02',['B','C'],'ActorContext; ResultEnvelope; DomainError; UnitOfWork; ProcedureRunner','actor.userId/roles/sessionId/requestId; ID string; decimal/date; UoW(connection) hoặc CALL tự transaction','Không tin actor trong body; CALL không chạy bên trong transaction app.'],
  ['IF-TOKEN','A','BE-A07',['C'],'TokenPort.issue/consume(purpose,target,actor,tx)','Purpose OCCUPANT_LINK; targetRoomTenantId; expiresAt; attempt/consumed/revoked','C mở UoW khi liên kết; adapter A dùng cùng tx, không gọi HTTP hoặc commit riêng.'],
  ['IF-FILES','A','BE-A05',['B','C'],'FilePort.assertUsable/authorizeDownload(actor,fileId,purpose,context,tx?)','Metadata PRIVATE/ACTIVE, owner, MIME/size/hash/expiry; fileId, không có bucket URL cố định','Context resolver đăng ký theo module; proof đã nộp bất biến, không tạo import vòng.'],
- ['IF-ROOM','B','BE-B04',['A','C'],'PropertyReadPort.getRentalSnapshot(roomId,actor,tx?)','houseId/landlordId/status/capacity/load/effectiveRight/verificationVersion/asOf','Chỉ snapshot; khi giữ phòng/gia hạn/chuyển phải kiểm tra lại dưới khóa SQL.'],
+ ['IF-ROOM','B','BE-B04',['A','C'],'PropertyReadPort.getRentalSnapshot/getMetrics(actor,roomId?,tx?)','house/room/post counts và rental snapshot; asOf, không PII; provider SQL thật hoàn tất tại B04','Khi giữ phòng/gia hạn/chuyển phải kiểm tra lại dưới khóa SQL; metrics không đợi dashboard B17.'],
  ['IF-SERVICE','B','BE-B03',['A'],'ServiceQuotePort.getEffective(roomId,tx)','name/unit/method/unitPrice từ active_room_services, null kế thừa/0 giữ 0','A chốt bản sao invoice dưới UoW; B đổi bảng giá không sửa invoice_items.'],
- ['IF-RESIDENT','C','BE-C02',['A','B'],'ResidencyReadPort.getContractSnapshot/getActiveStay(actor,contractId?,tx?)','currentRevision/payer/member ACTIVE+PLANNED/roomId; field privacy theo actor','Không tính cư trú chỉ bằng status contract/representative. Consumer không ghi room_tenants.'],
+ ['IF-RESIDENT','C','BE-C02',['A','B'],'ResidencyReadPort.getContractSnapshot/getActiveStay/getMetrics(actor,contractId?,tx?)','currentRevision/payer/member, contract/join metrics và roomId; SQL thật đã kiểm thử ở C02','Không tính cư trú chỉ bằng status contract/representative. Consumer không ghi room_tenants.'],
  ['IF-CHAT','A','BE-A08',['B','C'],'ConversationPort.assertInquiry/ensureRoommateConversation(tx,request)','conversationId/postId/roomId/tenantId/landlordId; đúng hai participant','B13 accept và tạo chat dùng cùng tx; không gọi API A qua mạng trong transaction.'],
  ['IF-VIEWING','B','BE-B08',['A','C'],'ViewingReadPort.getTimeline/getRentalEvidence(actor,context,tx?)','Proposal/schedule hiện tại theo conversation, viewingId/status/tenantDecision cho hợp đồng','Chỉ đọc bảng lịch gốc; người gọi kiểm tra quyền, không tạo bản sao trạng thái trong chat.'],
  ['IF-CONNECTION','B','BE-B04',['A','C'],'ConnectionReadPort.assertAccepted(actor,connectionId,tx?)','sender/receiver/status/endedAt, không dùng làm consent thuê','A kiểm tra khi mở/gửi, C lấy consent riêng từ đại diện và applicant.'],
  ['IF-EVENT','A','BE-A04',['B','C'],'EventPort.append(tx,event) + procedure notification dispatcher','eventId/eventKey/recipient/resource/occurredAt; business event version','Service append cùng tx; procedure theo cơ chế sau COMMIT đã chốt, không insert thông báo trùng.'],
- ['IF-AUDIT','A','BE-A04',['B','C'],'AuditPort.append(tx,actor,action,target,before,after,reason)','Đúng target FK hiện có; extension D14 có migration trước khi dùng','Procedure đã audit thì không ghi lần hai. Không nhét review/template vào target_post_id.']
+ ['IF-AUDIT','A','BE-A04',['B','C'],'AuditPort.append(tx,actor,action,target,before,after,reason)','D14 được chốt và triển khai tại A04, có target template/review/criterion trước mọi consumer','Procedure đã audit thì không ghi lần hai. Không nhét review/template vào target_post_id.']
 ].map(([id,owner,taskId,consumers,signature,payload,rule])=>({id,owner,taskId,consumers,signature,payload,rule}));
 
 const gates = [
- ['G0','P0','Contract v1 và quyền file được chốt',['BE-A01','BE-A02','BE-B01','BE-C01'],'Cả ba duyệt core/domain contracts và fixture; manifest, nhánh và quy tắc thay đổi chung đã rõ.'],
- ['G1','P1','Có bộ nền tảng dùng được',['BE-A03','BE-A04','BE-A05','BE-B04','BE-C02','BE-C03'],'Auth thật, kho tệp test, idempotency và các cổng đọc đạt contract test; test DB độc lập.'],
- ['G2','P2','Tin công khai và chat đúng ngữ cảnh',['BE-A06','BE-A07','BE-A08','BE-B05','BE-B06','BE-B07','BE-C04'],'Có quyền nhà, post đã duyệt và tin tenant gửi đúng room; expected revision được bảo vệ trong SQL.'],
- ['G3','P3','Hẹn xem → giữ phòng nguyên tử',['BE-A09','BE-B08','BE-B09','BE-B10','BE-C05'],'Tenant COMPLETED+AGREED → contract pending giữ room; lịch/proposal đóng đúng, hai người tranh phòng chỉ một thắng.'],
- ['G4','P4','Cư trú thực tế và hóa đơn nháp',['BE-A10','BE-A11','BE-A12','BE-B11','BE-B12','BE-B13','BE-C06','BE-C07','BE-C08','BE-C09'],'Move-in mới ACTIVE, invoice đếm đúng người, kết nối/chat không tự thành thuê chung, token link nguyên tử.'],
- ['G5','P5','Bàn giao/đổi phòng/thu tiền đúng lịch sử',['BE-A13','BE-A14','BE-B14','BE-C10','BE-C11','BE-C12'],'Giữ invoice/payer cũ, chuyển đủ nhóm và rollback, hold 48h đúng, SSE phát sau commit.'],
- ['G6','P6','Chính sách và worker đã rõ',['BE-A15','BE-B15','BE-B16','BE-B17','BE-B18','BE-C13','BE-C14'],'D02/D11/D13/D14 được chốt trước tính năng tương ứng; worker không tự kết thúc cư trú bằng suy đoán.'],
- ['G7','P7','Bản bàn giao có bằng chứng',['BE-A16','BE-A17','BE-B19','BE-C15','BE-C16'],'Module tests, concurrency, E2E, SQL tạo mới/nâng cấp và 176 API coverage đạt; không có stub trong cấu hình production.']
-].map(([id,phase,title,taskIds,acceptance])=>({id,phase,title,taskIds,acceptance}));
+ ['G0','P0','Contract v1 và quyền file được chốt','A01 → B01 → C01 → A02 đã merge/review; bản contract chốt dùng hai bản phân tích đã bàn giao.'],
+ ['G1','P1','Nền tảng hoạt động thật','Auth, audit mở rộng, idempotency, tệp, cấp vai trò và TokenPort đã chạy với DB/kho test, sẵn sàng cho module nghiệp vụ.'],
+ ['G2','P2','Nhà/phòng và các provider đã sẵn sàng','Có cổng đọc SQL thật, mẫu hợp đồng, quyền nhà, tin public và expected revision; consumer ở lượt sau không phải chờ implementation.'],
+ ['G3','P3','Chat → hẹn xem → giữ phòng nguyên tử','Chat/thông báo đã xong trước lịch xem; contract dùng COMPLETED+AGREED rồi đóng lịch tương lai, có test tranh giữ phòng.'],
+ ['G4','P4','Cư trú thực tế và hóa đơn nháp','Move-in xong trước hồ sơ IN_SYSTEM/hóa đơn; kết nối xong trước thẻ chia sẻ; token link, consent và quản trị tài khoản đạt.'],
+ ['G5','P5','Bàn giao/đổi phòng/thu tiền đúng lịch sử','Thu tiền hoàn tất trước ca bàn giao; đổi phòng rollback đúng, hold 48h hợp lệ, báo cáo và SSE dùng provider đã hoàn tất.'],
+ ['G6','P6','Chính sách và worker đã rõ','D02/D11/D13 được chốt tại task dùng; D14 đã xong từ A04. Metrics không chờ dashboard; worker giữ lịch sử.'],
+ ['G7','P7','Bản bàn giao có bằng chứng','C15 → B19 → A16 → C16 → A17 đã review/merge; đủ 176 API và SQL/E2E, không còn provider rỗng ở production.']
+].map(([id,phase,title,acceptance])=>({id,phase,title,taskIds:sequenceByPhase[phase],acceptance}));
 
 const rules = [
  ['Chia theo module, không chia theo tầng','Một người làm controller/service/repository/DTO/test của module mình. Không giao A làm mọi controller, B mọi service, C mọi database; cách đó khiến mọi tính năng đều chờ người khác.'],
  ['Cùng hệ thống, ba vùng code','Các đường dẫn backend/** là bố cục đề xuất, chưa được tạo server thật. Chọn framework ở A01, giữ ranh giới module ngay cả khi tên file theo ngôn ngữ thay đổi. Mọi /admin/<nghiệp vụ> ở đúng module owner.'],
- ['Chạy song song khi contract đã chốt','Sau G0, B/C có thể code adapter/DTO/test bằng mock cùng contract v1 trước khi A hoàn tất provider. Chỉ coi tích hợp đạt khi adapter thật và gate tương ứng xanh; mock không chứng minh backend production hoàn tất.'],
- ['Giai đoạn không phải hàng rào chờ cả team','Mỗi người lấy task sẵn sàng kế tiếp trong lane của mình. Có thể chuẩn bị code/test task sau bằng contract/fixture đã chốt; các cạnh phụ thuộc chỉ ra điều kiện tích hợp. Không đợi toàn bộ Pn xong mới bắt đầu mọi việc của Pn+1.'],
+ ['Một hàng đợi, một task đang thực hiện','Làm theo số thứ tự toàn cục 01–52. Chỉ nhận task đầu tiên chưa hoàn thành; hai người còn lại review khi được yêu cầu, không mở một luồng code riêng.'],
+ ['Hoàn tất và merge trước khi chuyển lượt','Task hiện tại phải đủ 7 bước, có PR/commit và bằng chứng test, đã merge main cùng SQL sinh ra nếu có. Người nhận cập nhật main từ commit bàn giao rồi mới tạo nhánh/task kế tiếp.'],
  ['Không sửa module người khác','Cần đổi interface/SQL/file của người khác: mở change request có ví dụ trước/sau và contract test. Owner sửa module của họ trong PR nhỏ; consumer chỉ cập nhật adapter ở vùng code của mình.'],
  ['Shared files có một người tích hợp','A giữ bootstrap, manifest loader, root dependency/lockfile, CI và output SQL. B/C thêm manifest riêng trong module; yêu cầu dependency mới qua A. Không có ba PR cùng sửa một routes.*, package file hoặc seed chung.'],
  ['SQL nguồn và SQL sinh ra','B sửa house-rights/post-review-quota/viewing-proposals; C sửa workflows/contract-viewing-cleanup. A build/commit schema/migration sinh ra từ nguồn mới nhất trên nhánh tích hợp sau mỗi thay đổi SQL. Feature CI assemble vào thư mục tạm; main vẫn phải qua db:check.'],
@@ -288,13 +324,13 @@ const rules = [
  ['Chủ sở hữu code khác chủ transaction','Các procedure thuê ghi nhiều bảng (room, contract, member, history, notification) trong một giao dịch là chủ đích. Không tách thành ba HTTP call giữa A/B/C. C giữ transaction thuê; A/B nhận read/event sau commit.'],
  ['Một DB test cho mỗi người và mỗi lần chạy','Dùng database test riêng theo task/build; fixture A/B/C tách thư mục và tạo ID từ DB, không hardcode ID demo. Không cùng viết một fixtures.sql/seed.ts lớn. CI dọn đúng instance do nó tạo.'],
  ['PR nhỏ, review chéo, merge tuần tự','Nhánh be/A|B|C/BE-xx-slug → PR theo task. Rebase nhánh riêng lên main trước mở/merge PR; không rebase/force-push main hoặc nhánh người khác. Reviewer mặc định A→B, B→C, C→A; SQL/shared contract cần owner liên quan cùng duyệt.'],
- ['Định nghĩa hoàn thành chung','Task hoàn thành có thiết kế/contract, code+validation+scope, kiểm thử DB/integration, tài liệu và review/merge đủ bằng chứng. Đã merge với mock và Chờ tích hợp là trạng thái riêng; chỉ đánh Hoàn thành khi các điều kiện nghiệm thu liên quan đã đạt.'],
- ['Không cân việc chỉ bằng số endpoint','Độ lớn dùng điểm tương đối (SP), không phải ngày công hay deadline. A có chi phí nền tảng/hạ tầng, B nhiều API CRUD, C ít route nhưng nhiều race/rollback. Rà soát điểm sau G1 theo năng lực thực tế và giữ nguyên module owner khi điều chỉnh việc hỗ trợ.'],
+ ['Provider thật trước consumer','Port/query/procedure được bàn giao phải có implementation và test DB thật ở task cung cấp. Mock chỉ dùng cô lập unit test; không lấy provider rỗng hoặc một task tương lai làm điều kiện hoàn thành task hiện tại. Nếu thiếu đầu vào, dừng tại task hiện tại để xử lý.'],
+ ['Phân công theo trách nhiệm, thực hiện theo số thứ tự','A/B/C vẫn giữ module của mình để tránh sửa chéo file. SP chỉ mô tả độ lớn tương đối, không dùng để xếp ba người làm cùng thời điểm. Các mốc P0–P7 là các đoạn liên tiếp của một hàng đợi.'],
  ['Nguồn theo dõi có phạm vi rõ','Trang lưu tiến độ trên trình duyệt này; Excel là checklist bản sao riêng, không tự đồng bộ hai chiều hay giữa máy. Muốn làm việc cả nhóm, dùng một workbook chung hoặc công cụ quản lý task và đưa PR/test evidence về đó; không coi localStorage là hệ thống nhóm.']
 ].map(([title,body],i)=>({id:`RULE-${String(i+1).padStart(2,'0')}`,title,body}));
 
 const decisions = [
- ['D01','A','BE-A02','Người phụ trách sản phẩm + cả team'],['D02','B','BE-B15','Người phụ trách sản phẩm'],['D03','A','BE-A11','Người phụ trách sản phẩm + B'],['D04','A','BE-A15','Người phụ trách sản phẩm'],['D05','A','BE-A05','Người phụ trách sản phẩm + B/C'],['D06','C','BE-C08','Người phụ trách sản phẩm + A'],['D07','B','BE-B06','B đề xuất, A tích hợp SQL, C review giao dịch'],['D08','A','BE-A08','A đề xuất, B review ngữ cảnh'],['D09','A','BE-A04','Cả team chốt semantics transaction/delivery'],['D10','C','BE-C04','C đề xuất, A tích hợp SQL'],['D11','C','BE-C13','Người phụ trách sản phẩm + A/B'],['D12','A','BE-A13','Người phụ trách sản phẩm + C'],['D13','B','BE-B16','Người phụ trách sản phẩm + C'],['D14','A','BE-A15','A đề xuất, B/C chốt target'],['D15','A','BE-A02','Cả team chốt cơ chế version']
+ ['D01','A','BE-A02','Người phụ trách sản phẩm + cả team'],['D02','B','BE-B15','Người phụ trách sản phẩm'],['D03','A','BE-A08','Người phụ trách sản phẩm + B'],['D04','A','BE-A15','Người phụ trách sản phẩm'],['D05','A','BE-A05','Người phụ trách sản phẩm + B/C'],['D06','C','BE-C08','Người phụ trách sản phẩm + A'],['D07','B','BE-B06','B đề xuất, A tích hợp SQL, C review giao dịch'],['D08','A','BE-A08','A đề xuất, B review ngữ cảnh'],['D09','A','BE-A04','Cả team chốt semantics transaction/delivery'],['D10','C','BE-C04','C đề xuất, A tích hợp SQL'],['D11','C','BE-C13','Người phụ trách sản phẩm + A/B'],['D12','A','BE-A10','Người phụ trách sản phẩm + C'],['D13','B','BE-B16','Người phụ trách sản phẩm + C'],['D14','A','BE-A04','A đề xuất, B/C chốt target trước khi consumer được viết'],['D15','A','BE-A02','Cả team chốt cơ chế version']
 ].map(([id,owner,taskId,approver])=>({id,owner,taskId,approver}));
 
-module.exports={people,phases,modules,tasks,interfaces,gates,rules,decisions};
+module.exports={people,phases,modules,tasks,interfaces,gates,rules,decisions,executionOrder:Object.values(sequenceByPhase).flat(),sequencePolicy,interfaceRequirements};

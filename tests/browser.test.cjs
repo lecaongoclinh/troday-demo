@@ -577,6 +577,7 @@ async function main() {
     await page('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/work-plan.html`});
     await waitLive(evaluate,"Boolean(window.TRODAY_WORK_PLAN) && document.readyState==='complete' && document.querySelectorAll('.task-card').length===52","team plan load");
     assert.equal(await evaluate(`document.querySelector('#tab-be').getAttribute('aria-selected')==='true' && document.querySelectorAll('.person-card').length===3`),true);
+    assert.equal(await evaluate(`document.querySelectorAll('.queue-task').length===52 && !document.querySelector('.lanes') && document.querySelectorAll('.queue-task.is-current').length===1 && document.querySelector('#current-turn [data-task]').dataset.task==='BE-A01'`),true);
     await evaluate(`document.querySelector('#tab-fe').click()`);
     assert.equal(await evaluate(`document.querySelector('#panel-be').hidden && !document.querySelector('#panel-fe').hidden && document.querySelector('#panel-fe').childElementCount===0 && document.querySelector('#panel-fe').textContent===''`),true);
     await evaluate(`document.querySelector('#tab-ai').click();document.querySelector('#tab-ai').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))`);
@@ -589,7 +590,19 @@ async function main() {
     assert.equal(await evaluate(`document.querySelector('#task-status').value==='Hoàn thành' && document.querySelector('#plan-metrics').textContent.includes('1/52 task hoàn thành')`),true);
     await page('Page.reload',{ignoreCache:true});
     await waitLive(evaluate,"document.querySelector('#task-dialog')?.open && document.querySelector('#task-status')?.value==='Hoàn thành'","team progress reload");
+    assert.equal(await evaluate(`document.querySelector('#current-turn [data-task]').dataset.task==='BE-B01' && document.querySelector('#task-status').disabled`),true);
     await evaluate(`document.querySelector('[data-close-task]').click()`);
+    // Even an independent owner must wait for the single queue's prior task.
+    await evaluate(`document.querySelector('[data-task="BE-A02"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#task-status').disabled && Array.from(document.querySelectorAll('#task-detail [data-check]')).every(n=>n.disabled) && document.querySelector('#turn-message').textContent.includes('BE-B01')`),true);
+    await evaluate(`document.querySelector('[data-close-task]').click()`);
+    for(const id of ['BE-B01','BE-C01','BE-A02']) {
+      assert.equal(await evaluate(`document.querySelector('#current-turn [data-task]').dataset.task`),id);
+      await evaluate(`document.querySelector('#current-turn [data-task]').click();document.querySelectorAll('#task-detail [data-check]').forEach(n=>n.click());document.querySelector('#task-pr').value='PR-${id}';document.querySelector('#task-pr').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('#task-status').value='Hoàn thành';document.querySelector('#task-status').dispatchEvent(new Event('change',{bubbles:true}))`);
+      assert.equal(await evaluate(`document.querySelector('#task-status').value==='Hoàn thành' && document.querySelector('#task-status').disabled`),true);
+      await evaluate(`document.querySelector('[data-close-task]').click()`);
+    }
+    assert.equal(await evaluate(`document.querySelector('#current-turn [data-task]').dataset.task==='BE-A03' && document.querySelector('#plan-metrics').textContent.includes('4/52 task hoàn thành') && document.querySelectorAll('.gate.pass').length===1`),true);
     await evaluate(`document.querySelector('[data-task="BE-B02"]').click();document.querySelectorAll('#task-detail [data-check]').forEach(n=>n.click());document.querySelector('#task-evidence').value='DB tests passed';document.querySelector('#task-evidence').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('#task-status').value='Hoàn thành';document.querySelector('#task-status').dispatchEvent(new Event('change',{bubbles:true}))`);
     assert.equal(await evaluate(`document.querySelector('#task-status').value!=='Hoàn thành' && document.querySelector('#task-message').textContent.includes('phụ thuộc')`),true);
     await evaluate(`document.querySelector('[data-close-task]').click()`);
@@ -606,10 +619,22 @@ async function main() {
     await evaluate(`document.querySelector('[data-view="handoff"]').click()`);
     assert.equal(await evaluate(`document.querySelector('#plan-results').textContent.includes('IF-VIEWING') && document.querySelectorAll('.rule-card').length===14`),true);
     // Import a matching snapshot and recover the previous local state without touching the demo data.
-    await evaluate(`{const p=window.TRODAY_WORK_PLAN;const payload={format:'troday-team-progress',version:1,sourceHash:p.sourceHashes['scripts/work-plan-blueprint.cjs'],progress:p.tasks.map(t=>({id:t.id,status:'Chưa làm',checks:p.checklist.map(()=>false),pr:'',evidence:'',notes:''}))};const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(payload)],'team-progress.json',{type:'application/json'}));const input=document.querySelector('#import-progress');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));}`);
+    await evaluate(`{const p=window.TRODAY_WORK_PLAN;const payload={format:'troday-team-progress',version:2,sourceHash:p.sourceHashes['scripts/work-plan-blueprint.cjs'],progress:p.tasks.map(t=>({id:t.id,status:'Chưa làm',checks:p.checklist.map(()=>false),pr:'',evidence:'',notes:''}))};const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(payload)],'team-progress.json',{type:'application/json'}));const input=document.querySelector('#import-progress');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));}`);
     await waitLive(evaluate,"!document.querySelector('#restore-progress').hidden && document.querySelector('#plan-metrics').textContent.includes('0/52 task hoàn thành')","progress import");
     await evaluate(`document.querySelector('#restore-progress').click()`);
-    assert.equal(await evaluate(`document.querySelector('#plan-metrics').textContent.includes('1/52 task hoàn thành')`),true);
+    assert.equal(await evaluate(`document.querySelector('#plan-metrics').textContent.includes('4/52 task hoàn thành')`),true);
+    // A v2 snapshot cannot claim a later task is complete before earlier tasks.
+    await evaluate(`{const p=window.TRODAY_WORK_PLAN;const payload={format:'troday-team-progress',version:2,sourceHash:p.sourceHashes['scripts/work-plan-blueprint.cjs'],progress:p.tasks.map(t=>({id:t.id,status:t.id==='BE-A03'?'Hoàn thành':'Chưa làm',checks:p.checklist.map(()=>t.id==='BE-A03'),pr:t.id==='BE-A03'?'PR-future':'',evidence:'',notes:''}))};const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(payload)],'invalid-order.json',{type:'application/json'}));const input=document.querySelector('#import-progress');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));}`);
+    await waitLive(evaluate,"document.querySelector('#plan-feedback').textContent.includes('ngoài thứ tự')","invalid serial import");
+    assert.equal(await evaluate(`document.querySelector('#plan-metrics').textContent.includes('4/52 task hoàn thành')`),true);
+    // Importing the previous plan preserves work/evidence but requires re-confirming the new order.
+    await evaluate(`{const p=window.TRODAY_WORK_PLAN;const payload={format:'troday-team-progress',version:1,sourceHash:p.sequencePolicy.legacyBlueprintHashes[0],progress:p.tasks.map(t=>({id:t.id,status:t.id==='BE-A01'?'Hoàn thành':'Chưa làm',checks:p.checklist.map(()=>t.id==='BE-A01'),pr:t.id==='BE-A01'?'PR-legacy-A01':'',evidence:'',notes:''}))};const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(payload)],'legacy-progress.json',{type:'application/json'}));const input=document.querySelector('#import-progress');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));}`);
+    await waitLive(evaluate,"document.querySelector('#plan-metrics').textContent.includes('0/52 task hoàn thành') && document.querySelector('.integrity-note')?.textContent.includes('kế hoạch tuần tự')","legacy progress migration");
+    await evaluate(`document.querySelector('#current-turn [data-task]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#task-status').value==='Chưa làm' && document.querySelector('#task-pr').value==='PR-legacy-A01' && document.querySelectorAll('#task-detail [data-check]:checked').length===7 && document.querySelector('#task-notes').value.includes('Hoàn thành')`),true);
+    await evaluate(`document.querySelector('[data-close-task]').click()`);
+    await evaluate(`document.querySelector('#restore-progress').click()`);
+    assert.equal(await evaluate(`document.querySelector('#plan-metrics').textContent.includes('4/52 task hoàn thành')`),true);
     await evaluate(`document.querySelector('[data-view="roadmap"]').click();document.querySelector('[data-task="BE-C12"]').click()`);
     for(const width of [320,390,768,1440]) {
       await page('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<650});
@@ -630,7 +655,7 @@ async function main() {
     await page('Page.navigate',{url:require('node:url').pathToFileURL(path.join(root,'work-plan.html')).href+'#BE-C12'});
     await waitLive(evaluate,"document.readyState==='complete' && document.querySelector('#task-dialog')?.open && document.querySelector('#task-title')?.textContent.includes('Gia hạn')","file team plan");
     assert.deepEqual(errors, []);
-    console.log('Team plan passed: 52 tasks, 176 API ownership, blank FE/AI tabs, keyboard tabs, completion/dependency guards, progress reload/import/restore, Excel download, file:// and 320–1440px layouts.');
+    console.log('Team plan passed: one serial queue of 52 tasks, A→B→C→A handoff, 176 API ownership, no future-task edits, legacy progress migration, blank FE/AI tabs, reload/import/restore, Excel, file:// and 320–1440px layouts.');
     console.log("Browser smoke passed: new house creation, required proof categories, IndexedDB uploads and reload, private previews, admin approval/revocation and mobile layouts; live message popups between two tabs, receiver isolation, direct chat opening, drafts, no replay and mobile dialog delivery; roommate tabs and profiles, contract renewal, rental workflows, listings, viewing flows, room detail and persistence; no runtime exceptions.");
     await call("Browser.close");
   } finally {

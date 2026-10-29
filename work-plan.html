@@ -7,9 +7,9 @@
   <meta name="description" content="Phân công Backend Trọday cho ba người theo module, task, phụ thuộc, bàn giao và checklist.">
   <title>Trọday · Phân công phát triển hệ thống</title>
   <link rel="stylesheet" href="api-guide.css?v=20261029">
-  <link rel="stylesheet" href="work-plan.css?v=20261029">
-  <script defer src="work-plan-data.js?v=20261029"></script>
-  <script defer src="work-plan.js?v=20261029"></script>
+  <link rel="stylesheet" href="work-plan.css?v=20261029-sequential-v2">
+  <script defer src="work-plan-data.js?v=20261029-sequential-v2"></script>
+  <script defer src="work-plan.js?v=20261029-sequential-v2"></script>
 </head>
 <body class="planning-page">
   <a class="skip" href="#plan-content">Đến kế hoạch</a>
@@ -21,7 +21,7 @@
         <nav id="plan-nav" class="section-nav" aria-label="Nội dung Backend"></nav>
         <div class="rail-label">THÀNH VIÊN</div>
         <nav id="people-nav" class="group-nav" aria-label="Lọc người phụ trách"></nav>
-        <div class="rail-card"><span class="status-dot"></span> Mỗi module, một owner<p>Chốt giao diện trước.<br>Viết và kiểm thử trong vùng code riêng.</p></div>
+        <div class="rail-card"><span class="status-dot"></span> Một hàng đợi · Một task<p>Làm xong, review và merge.<br>Bàn giao rồi mới chuyển lượt.</p></div>
       </div>
       <div class="rail-foot"><a href="api-guide.html">← Đặc tả 176 API</a><a href="index.html?view=business-guide">Logic nghiệp vụ ↗</a><small>Kế hoạch đề xuất · 29/10/2026</small></div>
     </aside>
@@ -34,14 +34,15 @@
           <button type="button" id="tab-ai" role="tab" aria-selected="false" aria-controls="panel-ai" tabindex="-1" data-tab="ai"><span>AI</span> AI</button>
         </div>
         <section id="panel-be" role="tabpanel" aria-labelledby="tab-be">
-          <section class="intro"><div class="eyebrow">DEVELOPMENT PLAN <span>•</span> NHÓM 3 NGƯỜI</div><h1>Phân công Backend.<br><span>Rõ việc. Rõ thứ tự. Rõ bàn giao.</span></h1><p>Chia theo module nghiệp vụ, giữ một người phụ trách xuyên suốt từ API đến kiểm thử. Đóng băng giao diện chung để ba người có thể phát triển song song.</p><div class="intro-meta"><code>176 API · CSDL v5</code><span>SP = độ lớn tương đối, chưa quy đổi thành ngày</span></div></section>
+          <section class="intro"><div class="eyebrow">SEQUENTIAL PLAN <span>•</span> THỨ TỰ CHUNG 01–52</div><h1>Backend theo từng bước.<br><span>Xong một task, bàn giao bước tiếp.</span></h1><p>Một hàng đợi chung cho A, B và C. Mỗi lần chỉ thực hiện một task; người tiếp theo nhận code đã review, merge và kiểm thử. Người phụ trách module vẫn được giữ rõ để tránh sửa chéo file.</p><div class="intro-meta"><code>176 API · 52 bước</code><span>SP là độ lớn tương đối, không phải lịch làm cùng lúc</span></div></section>
           <section id="plan-metrics" class="metrics" aria-label="Tổng quan kế hoạch"></section>
-          <section id="team-cards" class="team-cards" aria-label="Phân công ba người"></section>
-          <div class="scope-note"><strong>Cách dùng</strong><span>Mốc thể hiện thứ tự tích hợp, không bắt buộc cả nhóm chờ nhau. Sau khi chốt contract, có thể viết bằng mock; chỉ nghiệm thu khi dùng adapter thật và qua kiểm thử. Các đường dẫn <code>backend/**</code> là cấu trúc đề xuất.</span></div>
+          <section id="current-turn" aria-label="Task đang đến lượt"></section>
+          <details class="owner-summary"><summary>Phạm vi của A, B và C <span>Xem trách nhiệm module và khối lượng; thực hiện theo một hàng đợi</span></summary><section id="team-cards" class="team-cards" aria-label="Phân công ba người"></section></details>
+          <div class="scope-note"><strong>Quy tắc nhận lượt</strong><span>Chỉ bắt đầu bước đầu tiên chưa hoàn thành. Task trước phải đủ checklist, có bằng chứng và đã merge; provider thật được bàn giao trước consumer. Nếu bị chặn, giải quyết ngay tại bước đó. Các đường dẫn <code>backend/**</code> là cấu trúc đề xuất.</span></div>
           <div class="tracking-bar"><div><strong id="tracking-state">Tiến độ trên trình duyệt này</strong><small>Excel là bản mẫu riêng; không tự đồng bộ với trang hoặc máy khác.</small></div><div class="tracking-actions"><button type="button" id="export-progress">Xuất tiến độ JSON</button><label class="button import-button" for="import-progress">Nhập tiến độ JSON<input id="import-progress" type="file" accept="application/json,.json"></label><button type="button" id="restore-progress" hidden>Khôi phục lần trước</button></div></div>
           <div id="plan-filters"></div>
           <div id="plan-results" aria-live="polite"></div>
-          <footer>Trọday · Kế hoạch Backend v1<span>52 task · 3 owner · 176 API có người phụ trách</span></footer>
+          <footer>Trọday · Kế hoạch Backend v2 tuần tự<span>52 task · 1 hàng đợi · 176 API có người phụ trách</span></footer>
         </section>
         <section id="panel-fe" role="tabpanel" aria-labelledby="tab-fe" hidden></section>
         <section id="panel-ai" role="tabpanel" aria-labelledby="tab-ai" hidden></section>

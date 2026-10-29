@@ -1,16 +1,84 @@
 {
-  "version": "1.0-draft",
+  "version": "2.0-sequential",
+  "mode": "sequential",
   "date": "2026-10-29",
   "backendLayout": "Đề xuất modular monolith; chọn framework/ngôn ngữ trong BE-A01.",
   "assumptions": [
-    "Ba người có mức sẵn sàng tương đương; SP là độ lớn tương đối, không phải số ngày. Chưa đặt deadline vì chưa có năng lực/khung thời gian của team.",
-    "Đường dẫn backend/** là cấu trúc dự kiến. Trang này chỉ lập kế hoạch và checklist, không triển khai backend hoặc sửa CSDL.",
-    "Giai đoạn thể hiện thứ tự tích hợp; có thể chuẩn bị task sau bằng mock khi contract đã đóng băng, không phải chờ cả team hết giai đoạn.",
-    "API được chia đúng một owner/task chính; người review/hỗ trợ không đồng nghĩa được sửa file module đó."
+    "Một hàng đợi chung 01–52, tối đa một task đang thực hiện. A/B/C giữ owner theo module và nhận bàn giao khi đến lượt.",
+    "SP là độ lớn tương đối, không phải số ngày hay lịch làm việc ba người; chưa đặt deadline.",
+    "Đường dẫn backend/** là cấu trúc dự kiến. Trang này lập kế hoạch/checklist, không triển khai backend hoặc sửa CSDL.",
+    "Task trước phải review/merge và bàn giao provider thật, commit main, SQL/test trước khi mở task tiếp theo. Giữ task ID để đối chiếu tiến độ cũ."
   ],
   "sourceHashes": {
     "docs/api-catalog.json": "132a7f4a2a5f46f09ca959739ad3350b21cc9ff7ef14b3700c75d87f5d9c5f43",
-    "scripts/work-plan-blueprint.cjs": "03a29e465214408a5205f419f99e2ed8a4f9a18266685cb87e069c233ef99ed6"
+    "scripts/work-plan-blueprint.cjs": "07c6e1d0157545fa9b3588432b1f460f53bfcaee6168931c948b947b4a319902"
+  },
+  "executionOrder": [
+    "BE-A01",
+    "BE-B01",
+    "BE-C01",
+    "BE-A02",
+    "BE-A03",
+    "BE-A04",
+    "BE-A05",
+    "BE-A06",
+    "BE-A07",
+    "BE-B02",
+    "BE-B03",
+    "BE-B04",
+    "BE-C02",
+    "BE-C03",
+    "BE-B05",
+    "BE-B06",
+    "BE-B07",
+    "BE-C04",
+    "BE-A08",
+    "BE-A09",
+    "BE-B08",
+    "BE-B09",
+    "BE-C05",
+    "BE-B10",
+    "BE-C06",
+    "BE-C07",
+    "BE-C08",
+    "BE-B11",
+    "BE-B12",
+    "BE-B13",
+    "BE-A11",
+    "BE-C09",
+    "BE-A10",
+    "BE-A12",
+    "BE-A13",
+    "BE-C10",
+    "BE-C11",
+    "BE-C12",
+    "BE-A14",
+    "BE-B14",
+    "BE-A15",
+    "BE-B15",
+    "BE-B16",
+    "BE-B17",
+    "BE-B18",
+    "BE-C13",
+    "BE-C14",
+    "BE-C15",
+    "BE-B19",
+    "BE-A16",
+    "BE-C16",
+    "BE-A17"
+  ],
+  "sequencePolicy": {
+    "maxActiveTasks": 1,
+    "legacyBlueprintHashes": [
+      "03a29e465214408a5205f419f99e2ed8a4f9a18266685cb87e069c233ef99ed6"
+    ],
+    "handoffChecklist": [
+      "Hoàn tất 7 bước, reviewer duyệt và PR của task hiện tại đã merge vào main.",
+      "A tích hợp mọi SQL sinh ra/dependency dùng chung trong cùng lượt bàn giao; CI và db:check xanh.",
+      "Ghi commit main, chữ ký interface/procedure, migration và kết quả test vào bằng chứng task.",
+      "Người nhận cập nhật main, chạy lại các kiểm tra đầu vào rồi tạo nhánh mới từ commit đã bàn giao.",
+      "Chỉ mở task tiếp theo trong hàng đợi. Nếu thiếu quyết định hoặc provider thật, đánh Bị chặn và xử lý ngay tại task hiện tại."
+    ]
   },
   "people": [
     {
@@ -50,87 +118,97 @@
   "phases": [
     {
       "id": "P0",
-      "title": "Chốt giao diện & cách làm chung",
-      "goal": "Đóng băng contract v1, quyền sở hữu file và cách build/test; B/C chuẩn bị adapter, fixture song song với A dựng khung.",
+      "title": "Dựng khung → phân tích → chốt contract",
+      "goal": "A dựng khung; B phân tích nhà/phòng; C phân tích thuê; sau đó A chốt contract v1 từ hai bản bàn giao đã hoàn tất.",
       "gate": "G0",
       "index": 0,
       "taskIds": [
         "BE-A01",
-        "BE-A02",
         "BE-B01",
-        "BE-C01"
+        "BE-C01",
+        "BE-A02"
       ],
-      "points": 16
+      "points": 16,
+      "firstOrder": 1,
+      "lastOrder": 4
     },
     {
       "id": "P1",
-      "title": "Nền tảng & dữ liệu gốc",
-      "goal": "Có auth, tệp, idempotency, CRUD nhà/phòng, dịch vụ và các cổng đọc nghiệp vụ. Chưa phụ thuộc việc có người thuê thực tế.",
+      "title": "Hoàn tất nền tảng, danh tính & tệp",
+      "goal": "A lần lượt hoàn tất auth, idempotency/audit, kho tệp, xét duyệt tài khoản và OTP/TokenPort. Các module sau nhận provider thật đã merge.",
       "gate": "G1",
       "index": 1,
       "taskIds": [
         "BE-A03",
         "BE-A04",
         "BE-A05",
+        "BE-A06",
+        "BE-A07"
+      ],
+      "points": 31,
+      "firstOrder": 5,
+      "lastOrder": 9
+    },
+    {
+      "id": "P2",
+      "title": "Dữ liệu nhà/phòng → cổng đọc → tin công khai",
+      "goal": "Hoàn tất nhà/phòng, dịch vụ, cổng đọc, mẫu hợp đồng, quyền nhà và public post; bảo vệ expected revision trước khi code thao tác thuê.",
+      "gate": "G2",
+      "index": 2,
+      "taskIds": [
         "BE-B02",
         "BE-B03",
         "BE-B04",
         "BE-C02",
-        "BE-C03"
-      ],
-      "points": 45
-    },
-    {
-      "id": "P2",
-      "title": "Công khai phòng & chat hỏi phòng",
-      "goal": "Hoàn thành minh chứng nhà, quota tin, tìm phòng, xác minh tài khoản và chat để làm đầu vào cho lịch xem.",
-      "gate": "G2",
-      "index": 2,
-      "taskIds": [
-        "BE-A06",
-        "BE-A07",
-        "BE-A08",
+        "BE-C03",
         "BE-B05",
         "BE-B06",
         "BE-B07",
         "BE-C04"
       ],
-      "points": 44
+      "points": 50,
+      "firstOrder": 10,
+      "lastOrder": 18
     },
     {
       "id": "P3",
-      "title": "Hẹn xem → gửi hợp đồng",
-      "goal": "B chốt lịch/ý định thuê; C dùng lịch đủ điều kiện để giữ phòng và đóng lịch tương lai; A hoàn thiện thông báo.",
+      "title": "Chat → lịch xem → giữ phòng",
+      "goal": "A hoàn tất chat/thông báo; B hoàn tất đề nghị và lịch xem; C tạo hợp đồng; B kiểm thử việc đóng lịch bằng các API đã xong.",
       "gate": "G3",
       "index": 3,
       "taskIds": [
+        "BE-A08",
         "BE-A09",
         "BE-B08",
         "BE-B09",
-        "BE-B10",
-        "BE-C05"
+        "BE-C05",
+        "BE-B10"
       ],
-      "points": 24
+      "points": 32,
+      "firstOrder": 19,
+      "lastOrder": 24
     },
     {
       "id": "P4",
-      "title": "Xác nhận → vào ở → hóa đơn nháp",
-      "goal": "C xác nhận phiên bản và người ở thực tế; A lập hóa đơn bằng snapshot; B triển khai hồ sơ/kết nối và thẻ chat dùng cổng đã công bố.",
+      "title": "Vào ở → kết nối → hóa đơn nháp",
+      "goal": "C xác nhận và ghi cư trú thực tế; B tạo hồ sơ/kết nối; A hoàn tất thẻ chat rồi lập hóa đơn từ dịch vụ và cư trú đã chạy thật.",
       "gate": "G4",
       "index": 4,
       "taskIds": [
-        "BE-A10",
-        "BE-A11",
-        "BE-A12",
-        "BE-B11",
-        "BE-B12",
-        "BE-B13",
         "BE-C06",
         "BE-C07",
         "BE-C08",
-        "BE-C09"
+        "BE-B11",
+        "BE-B12",
+        "BE-B13",
+        "BE-A11",
+        "BE-C09",
+        "BE-A10",
+        "BE-A12"
       ],
-      "points": 48
+      "points": 48,
+      "firstOrder": 25,
+      "lastOrder": 34
     },
     {
       "id": "P5",
@@ -140,13 +218,15 @@
       "index": 5,
       "taskIds": [
         "BE-A13",
-        "BE-A14",
-        "BE-B14",
         "BE-C10",
         "BE-C11",
-        "BE-C12"
+        "BE-C12",
+        "BE-A14",
+        "BE-B14"
       ],
-      "points": 36
+      "points": 36,
+      "firstOrder": 35,
+      "lastOrder": 40
     },
     {
       "id": "P6",
@@ -163,22 +243,26 @@
         "BE-C13",
         "BE-C14"
       ],
-      "points": 29
+      "points": 29,
+      "firstOrder": 41,
+      "lastOrder": 47
     },
     {
       "id": "P7",
-      "title": "Kiểm thử tích hợp & bàn giao",
-      "goal": "Ba người kiểm thử các phạm vi riêng; A tích hợp bản release sau khi các gate, SQL và tài liệu đạt.",
+      "title": "Kiểm thử lần lượt → bàn giao bản release",
+      "goal": "C kiểm thử giao dịch thuê, B kiểm thử module nhà/tin, A kiểm thử hạ tầng, C chạy E2E toàn hệ thống, cuối cùng A tích hợp bản release.",
       "gate": "G7",
       "index": 7,
       "taskIds": [
-        "BE-A16",
-        "BE-A17",
-        "BE-B19",
         "BE-C15",
-        "BE-C16"
+        "BE-B19",
+        "BE-A16",
+        "BE-C16",
+        "BE-A17"
       ],
-      "points": 21
+      "points": 21,
+      "firstOrder": 48,
+      "lastOrder": 52
     }
   ],
   "modules": [
@@ -423,7 +507,11 @@
       "decisions": [
         "D15"
       ],
+      "order": 1,
+      "previousTaskId": null,
+      "nextTaskId": "BE-B01",
       "reviewer": "B",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "jobs": [],
       "qa": [],
@@ -443,7 +531,134 @@
         "backend/tests/e2e/release/**"
       ],
       "blockers": [],
-      "laneOrder": 1
+      "ownerOrder": 1
+    },
+    {
+      "id": "BE-B01",
+      "owner": "B",
+      "phase": "P0",
+      "title": "Chốt module nhà/tin/lịch và dữ liệu bàn giao",
+      "points": 3,
+      "apiIds": [],
+      "modules": [
+        "properties",
+        "posts",
+        "services",
+        "viewings",
+        "roommates"
+      ],
+      "dependsOn": [],
+      "detail": "B đọc rule/SQL và công bố DTO/port thuộc mình trước khi phát triển; không chọn cách code theo từng vai trò UI.",
+      "deliverables": [
+        "Phân biệt postId/roomId, quyền nhà, capacity load, quote service và trạng thái kết nối.",
+        "Tạo fixture trong backend/tests/fixtures/B/**; không sửa seed chung của A/C.",
+        "Gửi đề xuất IF-ROOM/IF-SERVICE/IF-CONNECTION để C01 phân tích thuê và A02 chốt contract v1 ở các lượt tiếp theo."
+      ],
+      "acceptance": [
+        "Bản đề xuất DTO/fixture đã review và bàn giao cho A02; chưa cần backend của A02 được triển khai.",
+        "D02/D07/D08/D13 được ghi rõ người đề xuất/người chốt và route bị ảnh hưởng."
+      ],
+      "priority": "P0",
+      "decisions": [
+        "D02",
+        "D07",
+        "D08",
+        "D13"
+      ],
+      "handoff": [
+        "IF-ROOM",
+        "IF-SERVICE",
+        "IF-CONNECTION"
+      ],
+      "order": 2,
+      "previousTaskId": "BE-A01",
+      "nextTaskId": "BE-C01",
+      "reviewer": "C",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "jobs": [],
+      "qa": [],
+      "files": [
+        "backend/src/modules/properties/**",
+        "backend/src/modules/house-rights/**",
+        "backend/tests/properties/**",
+        "backend/tests/fixtures/B/**",
+        "backend/tests/contracts/B/**",
+        "backend/tests/e2e/property-*/**",
+        "backend/contracts/properties.*",
+        "backend/src/modules/posts/**",
+        "backend/tests/posts/**",
+        "backend/contracts/posts.*",
+        "backend/src/modules/services/**",
+        "backend/tests/services/**",
+        "backend/contracts/services.*",
+        "backend/src/modules/viewings/**",
+        "backend/tests/viewings/**",
+        "backend/tests/e2e/viewing-contract/**",
+        "backend/contracts/viewings.*",
+        "backend/src/modules/roommates/**",
+        "backend/tests/roommates/**",
+        "backend/contracts/roommates.*"
+      ],
+      "blockers": [
+        "BE-A01"
+      ],
+      "ownerOrder": 1
+    },
+    {
+      "id": "BE-C01",
+      "owner": "C",
+      "phase": "P0",
+      "title": "Chốt trạng thái thuê, transaction và cổng cư trú",
+      "points": 5,
+      "apiIds": [],
+      "modules": [
+        "rentals",
+        "sql-rental"
+      ],
+      "dependsOn": [],
+      "detail": "C phân tích vòng đời contract/member/join/change/representative và công bố snapshot read/expected revision trước khi dựng endpoint.",
+      "deliverables": [
+        "Vẽ chuyển trạng thái và lock order roomId tăng dần; xác định procedure tự commit.",
+        "Công bố ResidencyReadPort/contract snapshot và fixture của C; A/B không join/ghi trực tiếp các bảng này trong service của họ.",
+        "D10 expectedRevision và D11 import được ghi là mở rộng cần làm; không xác nhận nhầm phiên bản."
+      ],
+      "acceptance": [
+        "Bản phân tích thuê đã review và bàn giao A02 để chốt contract; C01 không đợi code core A02.",
+        "Planned/active/left/cancelled, payer cũ, đại diện ban đầu/hiện tại được phân biệt."
+      ],
+      "priority": "P0",
+      "decisions": [
+        "D06",
+        "D10",
+        "D11"
+      ],
+      "handoff": [
+        "IF-RESIDENT"
+      ],
+      "order": 3,
+      "previousTaskId": "BE-B01",
+      "nextTaskId": "BE-A02",
+      "reviewer": "A",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "jobs": [],
+      "qa": [],
+      "files": [
+        "backend/src/modules/rentals/**",
+        "backend/tests/rentals/**",
+        "backend/tests/fixtures/C/**",
+        "backend/tests/contracts/C/**",
+        "backend/tests/e2e/rental-*/**",
+        "backend/contracts/rentals.*",
+        "database/source/workflows.sql",
+        "database/source/contract-viewing-cleanup.sql",
+        "backend/tests/sql-rental/**"
+      ],
+      "blockers": [
+        "BE-B01"
+      ],
+      "ownerOrder": 1
     },
     {
       "id": "BE-A02",
@@ -456,7 +671,9 @@
         "platform"
       ],
       "dependsOn": [
-        "BE-A01"
+        "BE-A01",
+        "BE-B01",
+        "BE-C01"
       ],
       "detail": "Cùng B/C chốt ActorContext, lỗi/envelope, tiền/ID/date, TokenPort, FilePort, AuditPort, EventPort và cách thực thi transaction.",
       "deliverables": [
@@ -465,8 +682,8 @@
         "Định nghĩa eventId/recipient/eventKey, idempotency scope và whitelist audit target; B/C có contract test dùng ngay."
       ],
       "acceptance": [
-        "B01/C01 cùng duyệt contract v1 trước khi merge code tích hợp.",
-        "Contract test chạy với mock và adapter thật mà không sửa code consumer."
+        "Đã nhận bản phân tích B01/C01 và chốt contract v1 trước khi code các provider.",
+        "Contract test quy định rõ đầu vào/đầu ra; test double chỉ dùng cô lập unit test, provider phải chạy thật ở task cung cấp."
       ],
       "priority": "P0",
       "handoff": [
@@ -481,7 +698,11 @@
         "D14",
         "D15"
       ],
+      "order": 4,
+      "previousTaskId": "BE-C01",
+      "nextTaskId": "BE-A03",
       "reviewer": "B",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "jobs": [],
       "qa": [],
@@ -497,9 +718,11 @@
         ".github/workflows/backend-*"
       ],
       "blockers": [
-        "BE-A01"
+        "BE-A01",
+        "BE-B01",
+        "BE-C01"
       ],
-      "laneOrder": 2
+      "ownerOrder": 2
     },
     {
       "id": "BE-A03",
@@ -544,7 +767,11 @@
       "handoff": [
         "Middleware + fixture phiên hợp lệ/hết hạn/bị khóa cho B/C."
       ],
+      "order": 5,
+      "previousTaskId": "BE-A02",
+      "nextTaskId": "BE-A04",
       "reviewer": "B",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "jobs": [],
       "files": [
@@ -555,7 +782,7 @@
       "blockers": [
         "BE-A02"
       ],
-      "laneOrder": 3
+      "ownerOrder": 3
     },
     {
       "id": "BE-A04",
@@ -575,7 +802,7 @@
       "deliverables": [
         "Store key+actor+route+request hash+kết quả; xử lý đang chạy, TTL và retry sau commit.",
         "EventPort append cùng transaction cho service; cơ chế lấy notifications sau CALL có checkpoint/dedupe và giới hạn bảo đảm được ghi rõ.",
-        "AuditPort nhận đúng một target hợp lệ; procedure đã ghi audit/notification thì adapter không ghi lặp."
+        "Chốt và triển khai mở rộng audit D14 ngay tại task này, gồm target template/review/criterion; procedure đã ghi audit thì adapter không ghi lặp."
       ],
       "acceptance": [
         "Cùng key/payload trả kết quả cũ; khác payload 409; retry không nhân đôi tác dụng phụ.",
@@ -594,7 +821,11 @@
         "IF-AUDIT",
         "Kho idempotency cho mọi module; migration do A tích hợp."
       ],
+      "order": 6,
+      "previousTaskId": "BE-A03",
+      "nextTaskId": "BE-A05",
       "reviewer": "B",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "jobs": [],
       "files": [
@@ -613,9 +844,10 @@
         "backend/tests/e2e/release/**"
       ],
       "blockers": [
-        "BE-A02"
+        "BE-A02",
+        "BE-A03"
       ],
-      "laneOrder": 4
+      "ownerOrder": 4
     },
     {
       "id": "BE-A05",
@@ -658,7 +890,11 @@
         "IF-FILES",
         "ID tệp mẫu ACTIVE/PRIVATE và contract test cho B05/B06/C13."
       ],
+      "order": 7,
+      "previousTaskId": "BE-A04",
+      "nextTaskId": "BE-A06",
       "reviewer": "B",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "jobs": [],
       "files": [
@@ -670,12 +906,12 @@
         "BE-A03",
         "BE-A04"
       ],
-      "laneOrder": 5
+      "ownerOrder": 5
     },
     {
       "id": "BE-A06",
       "owner": "A",
-      "phase": "P2",
+      "phase": "P1",
       "title": "Xác minh danh tính và cấp vai trò chủ trọ",
       "points": 5,
       "apiIds": [
@@ -715,7 +951,11 @@
       "handoff": [
         "Tài khoản TENANT/LANDLORD đã xét duyệt cho fixture tích hợp."
       ],
+      "order": 8,
+      "previousTaskId": "BE-A05",
+      "nextTaskId": "BE-A07",
       "reviewer": "B",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "jobs": [],
       "qa": [],
@@ -727,12 +967,12 @@
       "blockers": [
         "BE-A05"
       ],
-      "laneOrder": 6
+      "ownerOrder": 6
     },
     {
       "id": "BE-A07",
       "owner": "A",
-      "phase": "P2",
+      "phase": "P1",
       "title": "OTP, reset mật khẩu và TokenPort",
       "points": 5,
       "apiIds": [
@@ -767,7 +1007,11 @@
       "handoff": [
         "IF-TOKEN"
       ],
+      "order": 9,
+      "previousTaskId": "BE-A06",
+      "nextTaskId": "BE-B02",
       "reviewer": "B",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "jobs": [],
       "qa": [],
@@ -778,641 +1022,15 @@
       ],
       "blockers": [
         "BE-A03",
-        "BE-A04"
-      ],
-      "laneOrder": 7
-    },
-    {
-      "id": "BE-A08",
-      "owner": "A",
-      "phase": "P2",
-      "title": "Chat hỏi phòng và cổng hội thoại cho lịch xem",
-      "points": 8,
-      "apiIds": [
-        "API-076",
-        "API-077",
-        "API-078",
-        "API-079",
-        "API-080",
-        "API-081",
-        "API-082"
-      ],
-      "modules": [
-        "messaging"
-      ],
-      "dependsOn": [
-        "BE-A03",
         "BE-A04",
-        "BE-B04"
+        "BE-A06"
       ],
-      "detail": "Mở conversation đúng post/room, gửi/đọc tin và read-state. B cần tin nhắn thật làm điều kiện hẹn xem; không chờ hoàn tất toàn bộ matching.",
-      "deliverables": [
-        "Get-or-create inquiry có unique/khóa theo D08; một context ghi/post/room, gộp peer chỉ khi đọc.",
-        "Gửi TEXT/IMAGE chống trùng; cập nhật participant/read-state/last_message và sự kiện nguyên tử.",
-        "Công bố ensureRoommateConversation(tx) cho B13; ConnectionPort kiểm tra accepted từ DB/fixture dù endpoint kết nối chưa hoàn thiện."
-      ],
-      "acceptance": [
-        "Có tin người thuê về đúng phòng cho B08/B09; ROOMMATE không dùng hẹn chủ trọ.",
-        "Chỉ participant được đọc/gửi; sender+client key không tạo trùng."
-      ],
-      "priority": "P0",
-      "decisions": [
-        "D03",
-        "D08"
-      ],
-      "handoff": [
-        "IF-CHAT",
-        "conversationId + postId + roomId + tenantId chuẩn cho B."
-      ],
-      "reviewer": "B",
-      "integrationWith": [],
-      "jobs": [],
-      "qa": [],
-      "files": [
-        "backend/src/modules/messaging/**",
-        "backend/src/modules/notifications/**",
-        "backend/tests/messaging/**",
-        "backend/contracts/messaging.*"
-      ],
-      "blockers": [
-        "BE-A03",
-        "BE-A04",
-        "BE-B04"
-      ],
-      "laneOrder": 8
-    },
-    {
-      "id": "BE-A09",
-      "owner": "A",
-      "phase": "P3",
-      "title": "Feed thông báo, bộ đếm và đánh dấu đọc",
-      "points": 3,
-      "apiIds": [
-        "API-086",
-        "API-087",
-        "API-088",
-        "API-089"
-      ],
-      "modules": [
-        "messaging"
-      ],
-      "dependsOn": [
-        "BE-A04",
-        "BE-A08"
-      ],
-      "detail": "API thông báo đọc từ cùng dữ liệu nghiệp vụ, không phụ thuộc SSE để bảo đảm đúng kết quả.",
-      "deliverables": [
-        "Feed scoped user, counts, read một/tất cả đến mốc server.",
-        "Chống event_key trùng, mở tài nguyên vẫn kiểm tra quyền lại.",
-        "Chuẩn hóa thông báo do procedure và service phát, giữ popup là trạng thái UI."
-      ],
-      "acceptance": [
-        "Đọc thông báo của user khác bị chặn; read-all không đọc nhầm sự kiện đến sau mốc.",
-        "Tắt realtime không làm mất thông báo đã commit."
-      ],
-      "priority": "P0",
-      "handoff": [
-        "Notification DTO và event mapping để B/C đưa vào ca tích hợp."
-      ],
-      "reviewer": "B",
-      "integrationWith": [],
-      "decisions": [],
-      "jobs": [],
-      "qa": [],
-      "files": [
-        "backend/src/modules/messaging/**",
-        "backend/src/modules/notifications/**",
-        "backend/tests/messaging/**",
-        "backend/contracts/messaging.*"
-      ],
-      "blockers": [
-        "BE-A04",
-        "BE-A08"
-      ],
-      "laneOrder": 9
-    },
-    {
-      "id": "BE-A10",
-      "owner": "A",
-      "phase": "P4",
-      "title": "Hóa đơn nháp và snapshot giá/người trả",
-      "points": 5,
-      "apiIds": [
-        "API-145",
-        "API-146",
-        "API-147",
-        "API-148"
-      ],
-      "modules": [
-        "billing"
-      ],
-      "dependsOn": [
-        "BE-A04",
-        "BE-B03",
-        "BE-C02"
-      ],
-      "detail": "Dùng ServiceQuotePort của B và ResidencyReadPort của C để lập kỳ tiền, tách khỏi code cấu hình dịch vụ/hợp đồng.",
-      "deliverables": [
-        "Unique contract+kỳ chưa hủy; server tính quantity, meter, tiền thuê và giảm trừ bằng decimal.",
-        "Snapshot revision, representative/payer và số ACTIVE trong cùng transaction đọc hợp đồng.",
-        "Chỉ sửa DRAFT; hợp đồng ACTIVE thật cho E2E được bàn giao khi C07 hoàn thành."
-      ],
-      "acceptance": [
-        "Override=0 giữ 0; người PLANNED không tính dịch vụ theo người; chỉ số cuối<đầu bị chặn.",
-        "Đổi đại diện/giá sau lập không đổi snapshot hóa đơn cũ."
-      ],
-      "priority": "P0",
-      "decisions": [
-        "D12"
-      ],
-      "integrationWith": [
-        "BE-C07"
-      ],
-      "qa": [
-        "QA10"
-      ],
-      "handoff": [
-        "InvoiceReadPort/metrics cho B17 và contract detail nếu cần."
-      ],
-      "reviewer": "B",
-      "jobs": [],
-      "files": [
-        "backend/src/modules/billing/**",
-        "backend/tests/billing/**",
-        "backend/contracts/billing.*"
-      ],
-      "blockers": [
-        "BE-A04",
-        "BE-B03",
-        "BE-C02",
-        "BE-C07"
-      ],
-      "laneOrder": 10
-    },
-    {
-      "id": "BE-A11",
-      "owner": "A",
-      "phase": "P4",
-      "title": "Thẻ lịch, chat bạn ghép và chia sẻ đúng tin",
-      "points": 5,
-      "apiIds": [
-        "API-083",
-        "API-084",
-        "API-085"
-      ],
-      "modules": [
-        "messaging"
-      ],
-      "dependsOn": [
-        "BE-A08",
-        "BE-B04",
-        "BE-C02"
-      ],
-      "detail": "Hoàn thiện route chat cần dữ liệu B/C: timeline đọc lịch gốc, ROOMMATE và POST_SHARE; dùng cổng đọc đã chốt, không chép bảng.",
-      "deliverables": [
-        "Timeline lấy viewing/proposal theo conversation có quyền; share giữ đúng postId.",
-        "ROOMMATE chỉ mở/gửi khi accepted còn hiệu lực; inactive post trả unavailable không lộ ảnh/tiêu đề.",
-        "B13 dùng ensureRoommateConversation đã có ở A08; hai phần không phụ thuộc nhau theo vòng HTTP."
-      ],
-      "acceptance": [
-        "Accept kết nối xong mở cùng conversation; share không tạo join/hold/lịch.",
-        "Bài ẩn không tự đổi sang bài khác cùng phòng; chat inquiry và roommate không lẫn thẻ lịch."
-      ],
-      "priority": "P0",
-      "decisions": [
-        "D03"
-      ],
-      "integrationWith": [
-        "BE-B13",
-        "BE-B09"
-      ],
-      "qa": [
-        "QA13"
-      ],
-      "reviewer": "B",
-      "jobs": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/messaging/**",
-        "backend/src/modules/notifications/**",
-        "backend/tests/messaging/**",
-        "backend/contracts/messaging.*"
-      ],
-      "blockers": [
-        "BE-A08",
-        "BE-B04",
-        "BE-C02",
-        "BE-B13",
-        "BE-B09"
-      ],
-      "laneOrder": 11
-    },
-    {
-      "id": "BE-A12",
-      "owner": "A",
-      "phase": "P4",
-      "title": "Quản trị tài khoản và tra cứu audit",
-      "points": 5,
-      "apiIds": [
-        "API-161",
-        "API-162",
-        "API-163",
-        "API-164",
-        "API-168",
-        "API-169"
-      ],
-      "modules": [
-        "account-admin"
-      ],
-      "dependsOn": [
-        "BE-A03",
-        "BE-A04"
-      ],
-      "detail": "Các route /admin/users và /admin/moderation-actions thuộc A; B/C giữ các route /admin theo nghiệp vụ của họ.",
-      "deliverables": [
-        "Lock/unlock có reason, audit và revoke session; không xóa cư trú/nghĩa vụ.",
-        "Audit chỉ đọc, lọc đối tượng và che secret/PII khỏi snapshot.",
-        "Không sửa source SQL nhà của B để tính quyền; view hiệu lực đã xét trạng thái user."
-      ],
-      "acceptance": [
-        "Tài khoản bị khóa mất quyền trên mọi module qua cùng middleware.",
-        "Khóa landlord làm public view mất quyền, nhưng hợp đồng/người ở cũ được giữ."
-      ],
-      "priority": "P0",
-      "qa": [
-        "QA09",
-        "QA16"
-      ],
-      "reviewer": "B",
-      "integrationWith": [],
-      "decisions": [],
-      "jobs": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/account-admin/**",
-        "backend/src/modules/audit/**",
-        "backend/src/modules/admin-dashboard/**",
-        "backend/tests/account-admin/**"
-      ],
-      "blockers": [
-        "BE-A03",
-        "BE-A04"
-      ],
-      "laneOrder": 12
-    },
-    {
-      "id": "BE-A13",
-      "owner": "A",
-      "phase": "P5",
-      "title": "Phát hành, thu đủ, hủy và thay hóa đơn",
-      "points": 5,
-      "apiIds": [
-        "API-149",
-        "API-150",
-        "API-151",
-        "API-152"
-      ],
-      "modules": [
-        "billing"
-      ],
-      "dependsOn": [
-        "BE-A10"
-      ],
-      "detail": "Hoàn thiện vòng đời hóa đơn; chủ trọ ghi nhận thu đủ trong phạm vi hiện tại, chưa thêm cổng thanh toán hay thu một phần.",
-      "deliverables": [
-        "Issue DRAFT có dòng tiền → UNPAID; PAID có người ghi nhận/time; hủy chưa thu có lý do.",
-        "Replacement giữ cùng contract/kỳ và liên kết bản đã hủy; không sửa lines phát hành.",
-        "JOB04 chuyển UNPAID quá due_date VN sang OVERDUE, chạy lặp an toàn; giữ quyền người trả cũ sau bàn giao, không giả có issued_at riêng."
-      ],
-      "acceptance": [
-        "Hai lần thu cùng khóa không tạo thêm thu tiền; PAID/CANCELLED không sửa.",
-        "Kỳ mới lấy đại diện hiện tại, kỳ cũ vẫn đúng payer."
-      ],
-      "priority": "P0",
-      "decisions": [
-        "D12"
-      ],
-      "jobs": [
-        "JOB04"
-      ],
-      "qa": [
-        "QA10"
-      ],
-      "reviewer": "B",
-      "integrationWith": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/billing/**",
-        "backend/tests/billing/**",
-        "backend/contracts/billing.*"
-      ],
-      "blockers": [
-        "BE-A10"
-      ],
-      "laneOrder": 13
-    },
-    {
-      "id": "BE-A14",
-      "owner": "A",
-      "phase": "P5",
-      "title": "SSE có xác thực và nối lại sự kiện",
-      "points": 5,
-      "apiIds": [
-        "API-090"
-      ],
-      "modules": [
-        "messaging"
-      ],
-      "dependsOn": [
-        "BE-A04",
-        "BE-A09"
-      ],
-      "detail": "Triển khai kênh vận chuyển tách khỏi nghiệp vụ; B/C chỉ append/ghi sự kiện, không cùng sửa SSE controller.",
-      "deliverables": [
-        "Auth phiên, Last-Event-ID, replay trong cửa sổ lưu, recipient scope và dedupe eventId.",
-        "Phát sau commit; reconnect không coi popup đã đóng là đã đọc.",
-        "Tải trọng tối thiểu rồi client fetch resource; kiểm tra session revoked khi stream còn mở."
-      ],
-      "acceptance": [
-        "Mất kết nối/retry không mất nguồn dữ liệu gốc và không lộ sự kiện người khác.",
-        "Crash/delivery lặp vẫn cho client dedupe và đọc lại feed."
-      ],
-      "priority": "P0",
-      "decisions": [
-        "D09"
-      ],
-      "jobs": [
-        "JOB06"
-      ],
-      "qa": [
-        "QA12"
-      ],
-      "reviewer": "B",
-      "integrationWith": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/messaging/**",
-        "backend/src/modules/notifications/**",
-        "backend/tests/messaging/**",
-        "backend/contracts/messaging.*"
-      ],
-      "blockers": [
-        "BE-A04",
-        "BE-A09"
-      ],
-      "laneOrder": 14
-    },
-    {
-      "id": "BE-A15",
-      "owner": "A",
-      "phase": "P6",
-      "title": "Retention, audit mở rộng và dashboard quản trị",
-      "points": 3,
-      "apiIds": [
-        "API-176"
-      ],
-      "modules": [
-        "platform",
-        "account-admin",
-        "integration"
-      ],
-      "dependsOn": [
-        "BE-A05",
-        "BE-A12",
-        "BE-A14"
-      ],
-      "detail": "Chốt schema audit cho review/template/criterion và dọn phiên/token/tệp theo retention; dashboard đọc metric ports thay vì join tùy tiện trong controller.",
-      "deliverables": [
-        "D14 có migration/adapters và contract target mới trước B16; không gán nhầm review thành post.",
-        "JOB05 dọn đúng scope/hạn lưu, tệp bị giữ làm chứng cứ được bảo toàn.",
-        "Admin dashboard đếm riêng account identity/house proof/posts/reports; flags email/push chỉ bật khi provider được chốt."
-      ],
-      "acceptance": [
-        "Job lặp an toàn, không xóa bằng chứng đang tham chiếu.",
-        "Dashboard không công khai PII; số liệu có asOf và nguồn từng module."
-      ],
-      "priority": "P1",
-      "decisions": [
-        "D04",
-        "D05",
-        "D14"
-      ],
-      "jobs": [
-        "JOB05"
-      ],
-      "integrationWith": [
-        "BE-B14"
-      ],
-      "reviewer": "B",
-      "qa": [],
-      "handoff": [],
-      "files": [
-        "backend/src/core/**",
-        "backend/contracts/core.*",
-        "backend/tests/fixtures/A/**",
-        "backend/tests/contracts/A/**",
-        "backend/tests/e2e/platform-*/**",
-        "backend/bootstrap.*",
-        "backend/package*",
-        "backend/lockfile",
-        ".github/workflows/backend-*",
-        "backend/src/modules/account-admin/**",
-        "backend/src/modules/audit/**",
-        "backend/src/modules/admin-dashboard/**",
-        "backend/tests/account-admin/**",
-        "database/schema.sql",
-        "database/migrations/*",
-        "scripts/build-database.cjs",
-        "backend/tests/e2e/release/**"
-      ],
-      "blockers": [
-        "BE-A05",
-        "BE-A12",
-        "BE-A14",
-        "BE-B14"
-      ],
-      "laneOrder": 15
-    },
-    {
-      "id": "BE-A16",
-      "owner": "A",
-      "phase": "P7",
-      "title": "Kiểm thử bảo mật, hóa đơn và lỗi hạ tầng",
-      "points": 5,
-      "apiIds": [],
-      "modules": [
-        "platform",
-        "billing",
-        "messaging"
-      ],
-      "dependsOn": [
-        "BE-A15"
-      ],
-      "detail": "A giữ tests/e2e/platform-*; kiểm thử phần nền tảng và dòng tiền, tránh ba người sửa một kịch bản E2E lớn.",
-      "deliverables": [
-        "Test scope chéo ID, nhiều vai trò, revoke/LOCKED, OTP và tài liệu riêng.",
-        "Test idempotency sau commit/timeout, outbox/SSE reconnect và invoice snapshot.",
-        "Ghi bằng chứng chạy CI, migration mới và cách rollback/retry về mặt vận hành."
-      ],
-      "acceptance": [
-        "QA10/11/12/15/16 đạt trên DB tạm và storage test.",
-        "Không dùng localStorage wireframe làm bằng chứng backend đã chạy."
-      ],
-      "priority": "P0",
-      "qa": [
-        "QA10",
-        "QA11",
-        "QA12",
-        "QA15",
-        "QA16"
-      ],
-      "reviewer": "B",
-      "integrationWith": [],
-      "decisions": [],
-      "jobs": [],
-      "handoff": [],
-      "files": [
-        "backend/src/core/**",
-        "backend/contracts/core.*",
-        "backend/tests/fixtures/A/**",
-        "backend/tests/contracts/A/**",
-        "backend/tests/e2e/platform-*/**",
-        "backend/bootstrap.*",
-        "backend/package*",
-        "backend/lockfile",
-        ".github/workflows/backend-*",
-        "backend/src/modules/billing/**",
-        "backend/tests/billing/**",
-        "backend/contracts/billing.*",
-        "backend/src/modules/messaging/**",
-        "backend/src/modules/notifications/**",
-        "backend/tests/messaging/**",
-        "backend/contracts/messaging.*"
-      ],
-      "blockers": [
-        "BE-A15"
-      ],
-      "laneOrder": 16
-    },
-    {
-      "id": "BE-A17",
-      "owner": "A",
-      "phase": "P7",
-      "title": "Tích hợp bản bàn giao Backend",
-      "points": 3,
-      "apiIds": [],
-      "modules": [
-        "integration"
-      ],
-      "dependsOn": [
-        "BE-A16",
-        "BE-B19",
-        "BE-C16"
-      ],
-      "detail": "A là người tích hợp tệp dùng chung; việc phát hành thực tế là một bước riêng sau khi team duyệt bản release.",
-      "deliverables": [
-        "Tái sinh schema từ toàn bộ source, chốt thứ tự migration; test tạo mới/nâng cấp trên DB tạm.",
-        "Đối chiếu 176 API có đúng một task/module owner, gom collection/API docs và hướng dẫn chạy.",
-        "Xác nhận toàn bộ gate; ghi các quyết định ngoài phạm vi còn hoãn, không gọi backend hoàn tất nếu endpoint tương ứng chưa đạt."
-      ],
-      "acceptance": [
-        "Feature CI, DB check, contract tests và E2E ba lane đều xanh.",
-        "Không ai sửa tay schema sinh ra; không deploy hoặc áp dụng migration DB thật trong task tài liệu này."
-      ],
-      "priority": "P0",
-      "jobs": [
-        "OPS01"
-      ],
-      "handoff": [
-        "Bản release có thể review, checklist và hướng dẫn bàn giao."
-      ],
-      "reviewer": "B",
-      "integrationWith": [],
-      "decisions": [],
-      "qa": [],
-      "files": [
-        "database/schema.sql",
-        "database/migrations/*",
-        "scripts/build-database.cjs",
-        "backend/tests/e2e/release/**"
-      ],
-      "blockers": [
-        "BE-A16",
-        "BE-B19",
-        "BE-C16"
-      ],
-      "laneOrder": 17
-    },
-    {
-      "id": "BE-B01",
-      "owner": "B",
-      "phase": "P0",
-      "title": "Chốt module nhà/tin/lịch và dữ liệu bàn giao",
-      "points": 3,
-      "apiIds": [],
-      "modules": [
-        "properties",
-        "posts",
-        "services",
-        "viewings",
-        "roommates"
-      ],
-      "dependsOn": [],
-      "detail": "B đọc rule/SQL và công bố DTO/port thuộc mình trước khi phát triển; không chọn cách code theo từng vai trò UI.",
-      "deliverables": [
-        "Phân biệt postId/roomId, quyền nhà, capacity load, quote service và trạng thái kết nối.",
-        "Tạo fixture trong backend/tests/fixtures/B/**; không sửa seed chung của A/C.",
-        "Chốt cổng IF-ROOM/IF-SERVICE/IF-CONNECTION với A02/C01; các loại payload không đổi âm thầm."
-      ],
-      "acceptance": [
-        "Consumer có thể chạy contract test với fixture chưa cần endpoint thật.",
-        "D02/D07/D08/D13 được ghi rõ người đề xuất/người chốt và route bị ảnh hưởng."
-      ],
-      "priority": "P0",
-      "decisions": [
-        "D02",
-        "D07",
-        "D08",
-        "D13"
-      ],
-      "handoff": [
-        "IF-ROOM",
-        "IF-SERVICE",
-        "IF-CONNECTION"
-      ],
-      "reviewer": "C",
-      "integrationWith": [],
-      "jobs": [],
-      "qa": [],
-      "files": [
-        "backend/src/modules/properties/**",
-        "backend/src/modules/house-rights/**",
-        "backend/tests/properties/**",
-        "backend/tests/fixtures/B/**",
-        "backend/tests/contracts/B/**",
-        "backend/tests/e2e/property-*/**",
-        "backend/contracts/properties.*",
-        "backend/src/modules/posts/**",
-        "backend/tests/posts/**",
-        "backend/contracts/posts.*",
-        "backend/src/modules/services/**",
-        "backend/tests/services/**",
-        "backend/contracts/services.*",
-        "backend/src/modules/viewings/**",
-        "backend/tests/viewings/**",
-        "backend/tests/e2e/viewing-contract/**",
-        "backend/contracts/viewings.*",
-        "backend/src/modules/roommates/**",
-        "backend/tests/roommates/**",
-        "backend/contracts/roommates.*"
-      ],
-      "blockers": [],
-      "laneOrder": 1
+      "ownerOrder": 7
     },
     {
       "id": "BE-B02",
       "owner": "B",
-      "phase": "P1",
+      "phase": "P2",
       "title": "Nhà/phòng CRUD và sức chứa",
       "points": 8,
       "apiIds": [
@@ -1430,9 +1048,11 @@
       ],
       "dependsOn": [
         "BE-A02",
+        "BE-A03",
+        "BE-A06",
         "BE-B01"
       ],
-      "detail": "Tạo/sửa nhà nháp, phòng, tình trạng và capacity; khung auth đã có contract, có thể code với actor fixture trước A03.",
+      "detail": "Tạo/sửa nhà nháp, phòng, tình trạng và capacity bằng middleware auth và vai trò chủ trọ đã hoàn tất ở A03/A06; không giữ adapter chờ tích hợp.",
       "deliverables": [
         "Nhà create idempotency, update row_version/verification_version đúng procedure.",
         "Mã phòng duy nhất/nhà; giá và diện tích hợp lệ, status suy từ người/hợp đồng.",
@@ -1440,17 +1060,19 @@
       ],
       "acceptance": [
         "Không đặt phòng có ACTIVE thành AVAILABLE; không giảm dưới ACTIVE+PLANNED mở+hold còn hạn.",
-        "Dùng auth middleware A khi tích hợp, không hardcode user Quân/demo."
+        "Chạy test bằng auth middleware và tài khoản thật của A, không hardcode user Quân/demo."
       ],
       "priority": "P0",
-      "integrationWith": [
-        "BE-A03"
-      ],
       "qa": [
         "QA05",
         "QA09"
       ],
+      "order": 10,
+      "previousTaskId": "BE-A07",
+      "nextTaskId": "BE-B03",
       "reviewer": "C",
+      "requiredInterfaces": [],
+      "integrationWith": [],
       "decisions": [],
       "jobs": [],
       "handoff": [],
@@ -1465,15 +1087,17 @@
       ],
       "blockers": [
         "BE-A02",
+        "BE-A03",
+        "BE-A06",
         "BE-B01",
-        "BE-A03"
+        "BE-A07"
       ],
-      "laneOrder": 2
+      "ownerOrder": 2
     },
     {
       "id": "BE-B03",
       "owner": "B",
-      "phase": "P1",
+      "phase": "P2",
       "title": "Dịch vụ nhà/phòng và giá hiệu lực",
       "points": 5,
       "apiIds": [
@@ -1511,7 +1135,11 @@
       "qa": [
         "QA10"
       ],
+      "order": 11,
+      "previousTaskId": "BE-B02",
+      "nextTaskId": "BE-B04",
       "reviewer": "C",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -1524,12 +1152,12 @@
         "BE-A02",
         "BE-B02"
       ],
-      "laneOrder": 3
+      "ownerOrder": 3
     },
     {
       "id": "BE-B04",
       "owner": "B",
-      "phase": "P1",
+      "phase": "P2",
       "title": "Cổng đọc nhà/phòng và kết nối cho A/C",
       "points": 3,
       "apiIds": [],
@@ -1542,23 +1170,28 @@
         "BE-B02",
         "BE-B03"
       ],
-      "detail": "Cài adapter thật cho contract đã chốt ở B01; ưu tiên sớm để A/C viết nhanh mà không copy SQL/DTO.",
+      "detail": "Hoàn tất adapter SQL thật trước consumer. Mọi cổng được bàn giao đều có query, kiểm tra quyền và test DB, không chỉ có chữ ký hoặc mock.",
       "deliverables": [
-        "RoomSnapshot có capacity/status/effectiveRight/currentLoad, không chứa PII cư dân.",
-        "ConnectionPort đọc accepted/not-ended bằng transaction được truyền; dữ liệu test riêng dù B13 chưa tạo endpoint.",
-        "ServiceQuotePort và FileContext resolver không tạo import vòng; injection ở composition root do A quản lý."
+        "RoomSnapshot và PropertyMetrics đọc nguồn SQL hiện có: capacity/load/right, số nhà/phòng và pending post; không chứa PII cư dân.",
+        "ConnectionPort có query accepted/not-ended đầy đủ trên schema hiện có, test với DB fixture; không phụ thuộc endpoint tạo kết nối B13.",
+        "ServiceQuotePort và FileContext resolver chạy thật, không có import vòng hoặc provider rỗng."
       ],
       "acceptance": [
-        "Contract tests chạy cùng bộ fixture với mock B01.",
+        "Contract test và integration test dùng adapter SQL thật đều xanh trước khi bàn giao A/C.",
         "C vẫn recheck quyền/capacity dưới khóa trong procedure, không dùng snapshot cũ làm quyền thuê."
       ],
       "priority": "P0",
       "handoff": [
         "IF-ROOM",
         "IF-SERVICE",
-        "IF-CONNECTION"
+        "IF-CONNECTION",
+        "PropertyMetrics cho A15; không chờ B17."
       ],
+      "order": 12,
+      "previousTaskId": "BE-B03",
+      "nextTaskId": "BE-C02",
       "reviewer": "C",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -1582,7 +1215,132 @@
         "BE-B02",
         "BE-B03"
       ],
-      "laneOrder": 4
+      "ownerOrder": 4
+    },
+    {
+      "id": "BE-C02",
+      "owner": "C",
+      "phase": "P2",
+      "title": "Cổng đọc hợp đồng/cư trú, thành viên và lịch sử",
+      "points": 5,
+      "apiIds": [
+        "API-048",
+        "API-101",
+        "API-102",
+        "API-105",
+        "API-114",
+        "API-115",
+        "API-116",
+        "API-126",
+        "API-127"
+      ],
+      "modules": [
+        "rentals"
+      ],
+      "dependsOn": [
+        "BE-A02",
+        "BE-A03",
+        "BE-B04",
+        "BE-C01"
+      ],
+      "detail": "C giữ cả /rooms/{roomId}/residents vì đọc cùng bằng chứng cư trú; B giữ room detail public và chỉ dùng activeCount.",
+      "deliverables": [
+        "Danh sách/details/revisions/members/history, candidate representative và export CSV.",
+        "ResidencyReadPort và ResidencyMetrics có query thật trên schema hiện có, hỗ trợ UoW của consumer; test DB fixture không cần endpoint tạo hợp đồng viết trước.",
+        "Privacy theo quan hệ hợp đồng, không lộ CCCD thành viên khác; CSV chống formula injection."
+      ],
+      "acceptance": [
+        "A lập invoice/B xác định IN_SYSTEM bằng port thật mà không import repository C.",
+        "Không suy người ở chỉ từ representative; time không rõ trả null/chưa rõ."
+      ],
+      "priority": "P0",
+      "handoff": [
+        "IF-RESIDENT",
+        "Read-only metrics/snapshot cho A10 và B11."
+      ],
+      "qa": [
+        "QA11"
+      ],
+      "order": 13,
+      "previousTaskId": "BE-B04",
+      "nextTaskId": "BE-C03",
+      "reviewer": "A",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "decisions": [],
+      "jobs": [],
+      "files": [
+        "backend/src/modules/rentals/**",
+        "backend/tests/rentals/**",
+        "backend/tests/fixtures/C/**",
+        "backend/tests/contracts/C/**",
+        "backend/tests/e2e/rental-*/**",
+        "backend/contracts/rentals.*"
+      ],
+      "blockers": [
+        "BE-A02",
+        "BE-A03",
+        "BE-B04",
+        "BE-C01"
+      ],
+      "ownerOrder": 2
+    },
+    {
+      "id": "BE-C03",
+      "owner": "C",
+      "phase": "P2",
+      "title": "Mẫu hợp đồng và phiên bản mẫu",
+      "points": 3,
+      "apiIds": [
+        "API-165",
+        "API-166",
+        "API-167"
+      ],
+      "modules": [
+        "rentals"
+      ],
+      "dependsOn": [
+        "BE-C02",
+        "BE-A04"
+      ],
+      "detail": "Các /admin/contract-templates thuộc module rentals/templates của C, tách khỏi admin users của A.",
+      "deliverables": [
+        "Tạo version mới theo name có unique/khóa; không sửa nội dung bản đã dùng.",
+        "Chủ chỉ thấy active; admin bật/ngừng, snapshot revision giữ nội dung riêng.",
+        "Audit template dùng adapter/target D14 đã được A04 hoàn tất, không đợi task A15 ở cuối kế hoạch."
+      ],
+      "acceptance": [
+        "Hai lần tạo cùng name không đụng version; hợp đồng cũ không đổi khi ngừng mẫu.",
+        "Không thêm templateController vào file admin chung."
+      ],
+      "priority": "P0",
+      "decisions": [
+        "D14"
+      ],
+      "order": 14,
+      "previousTaskId": "BE-C02",
+      "nextTaskId": "BE-B05",
+      "reviewer": "A",
+      "requiredInterfaces": [
+        "IF-AUDIT"
+      ],
+      "integrationWith": [],
+      "jobs": [],
+      "qa": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/rentals/**",
+        "backend/tests/rentals/**",
+        "backend/tests/fixtures/C/**",
+        "backend/tests/contracts/C/**",
+        "backend/tests/e2e/rental-*/**",
+        "backend/contracts/rentals.*"
+      ],
+      "blockers": [
+        "BE-C02",
+        "BE-A04"
+      ],
+      "ownerOrder": 3
     },
     {
       "id": "BE-B05",
@@ -1607,7 +1365,8 @@
       ],
       "dependsOn": [
         "BE-B04",
-        "BE-A05"
+        "BE-A05",
+        "BE-A06"
       ],
       "detail": "B phụ trách cả /houses/.../verifications và /admin/house-verifications vì cùng một nghiệp vụ; A chỉ cung cấp tệp/auth/audit.",
       "deliverables": [
@@ -1627,7 +1386,11 @@
         "QA09",
         "QA15"
       ],
+      "order": 15,
+      "previousTaskId": "BE-C03",
+      "nextTaskId": "BE-B06",
       "reviewer": "C",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "jobs": [],
       "handoff": [],
@@ -1646,9 +1409,11 @@
       ],
       "blockers": [
         "BE-B04",
-        "BE-A05"
+        "BE-A05",
+        "BE-A06",
+        "BE-C03"
       ],
-      "laneOrder": 5
+      "ownerOrder": 5
     },
     {
       "id": "BE-B06",
@@ -1696,7 +1461,11 @@
       "handoff": [
         "PublicPost DTO/file resolver và tin mẫu đã duyệt cho A08/B07."
       ],
+      "order": 16,
+      "previousTaskId": "BE-B05",
+      "nextTaskId": "BE-B07",
       "reviewer": "C",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "jobs": [],
       "files": [
@@ -1713,7 +1482,7 @@
         "BE-A04",
         "BE-A05"
       ],
-      "laneOrder": 6
+      "ownerOrder": 6
     },
     {
       "id": "BE-B07",
@@ -1754,7 +1523,11 @@
         "QA09",
         "QA13"
       ],
+      "order": 17,
+      "previousTaskId": "BE-B06",
+      "nextTaskId": "BE-C04",
       "reviewer": "C",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -1773,7 +1546,197 @@
       "blockers": [
         "BE-B06"
       ],
-      "laneOrder": 7
+      "ownerOrder": 7
+    },
+    {
+      "id": "BE-C04",
+      "owner": "C",
+      "phase": "P2",
+      "title": "Bảo vệ expected revision và adapter procedure",
+      "points": 5,
+      "apiIds": [],
+      "modules": [
+        "rentals",
+        "sql-rental"
+      ],
+      "dependsOn": [
+        "BE-C01",
+        "BE-C02",
+        "BE-A04"
+      ],
+      "detail": "C sửa đúng file workflows.sql để đóng D10 trước route confirm; chuẩn bị adapter/test các giao dịch thuê bằng fixture, không chờ UI/hẹn xem thật.",
+      "deliverables": [
+        "Procedure confirm nhận expectedRevisionId và so dưới cùng khóa; stale 409 không xác nhận bản mới.",
+        "Mapper camelCase → SQL params/JSON snake_case; ProcedureRunner không bị bọc UoW ngoài.",
+        "Race/rollback fixture cho create/move-in/handover/transfer; đưa patch source cho A tái sinh SQL trước tích hợp."
+      ],
+      "acceptance": [
+        "QA06 xác nhận A sau khi B đã gửi bị chặn; test không chỉ check trước CALL ở controller.",
+        "Các OUT ID và lỗi SIGNAL được ánh xạ ổn định, không lộ SQL ra HTTP."
+      ],
+      "priority": "P0",
+      "decisions": [
+        "D10",
+        "D15"
+      ],
+      "qa": [
+        "QA06"
+      ],
+      "handoff": [
+        "Expected revision adapter và source SQL được A tích hợp."
+      ],
+      "order": 18,
+      "previousTaskId": "BE-B07",
+      "nextTaskId": "BE-A08",
+      "reviewer": "A",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "jobs": [],
+      "files": [
+        "backend/src/modules/rentals/**",
+        "backend/tests/rentals/**",
+        "backend/tests/fixtures/C/**",
+        "backend/tests/contracts/C/**",
+        "backend/tests/e2e/rental-*/**",
+        "backend/contracts/rentals.*",
+        "database/source/workflows.sql",
+        "database/source/contract-viewing-cleanup.sql",
+        "backend/tests/sql-rental/**"
+      ],
+      "blockers": [
+        "BE-C01",
+        "BE-C02",
+        "BE-A04",
+        "BE-B07"
+      ],
+      "ownerOrder": 4
+    },
+    {
+      "id": "BE-A08",
+      "owner": "A",
+      "phase": "P3",
+      "title": "Chat hỏi phòng và cổng hội thoại cho lịch xem",
+      "points": 8,
+      "apiIds": [
+        "API-076",
+        "API-077",
+        "API-078",
+        "API-079",
+        "API-080",
+        "API-081",
+        "API-082"
+      ],
+      "modules": [
+        "messaging"
+      ],
+      "dependsOn": [
+        "BE-A03",
+        "BE-A04",
+        "BE-A05",
+        "BE-B04",
+        "BE-B07"
+      ],
+      "detail": "Dùng tin công khai B07 và các cổng đọc B04 đã hoàn tất để mở conversation, gửi/đọc tin và read-state. B nhận tin nhắn thật làm điều kiện hẹn xem ở lượt sau.",
+      "deliverables": [
+        "Get-or-create inquiry có unique/khóa theo D08; một context ghi/post/room, gộp peer chỉ khi đọc.",
+        "Gửi TEXT/IMAGE chống trùng; cập nhật participant/read-state/last_message và sự kiện nguyên tử.",
+        "Công bố ensureRoommateConversation(tx) cho B13; ConnectionPort kiểm tra accepted từ DB/fixture dù endpoint kết nối chưa hoàn thiện."
+      ],
+      "acceptance": [
+        "Có tin người thuê về đúng phòng cho B08/B09; ROOMMATE không dùng hẹn chủ trọ.",
+        "Chỉ participant được đọc/gửi; sender+client key không tạo trùng."
+      ],
+      "priority": "P0",
+      "decisions": [
+        "D03",
+        "D08"
+      ],
+      "handoff": [
+        "IF-CHAT",
+        "conversationId + postId + roomId + tenantId chuẩn cho B."
+      ],
+      "order": 19,
+      "previousTaskId": "BE-C04",
+      "nextTaskId": "BE-A09",
+      "reviewer": "B",
+      "requiredInterfaces": [
+        "IF-CORE",
+        "IF-FILES",
+        "IF-ROOM",
+        "IF-CONNECTION"
+      ],
+      "integrationWith": [],
+      "jobs": [],
+      "qa": [],
+      "files": [
+        "backend/src/modules/messaging/**",
+        "backend/src/modules/notifications/**",
+        "backend/tests/messaging/**",
+        "backend/contracts/messaging.*"
+      ],
+      "blockers": [
+        "BE-A03",
+        "BE-A04",
+        "BE-A05",
+        "BE-B04",
+        "BE-B07",
+        "BE-C04"
+      ],
+      "ownerOrder": 8
+    },
+    {
+      "id": "BE-A09",
+      "owner": "A",
+      "phase": "P3",
+      "title": "Feed thông báo, bộ đếm và đánh dấu đọc",
+      "points": 3,
+      "apiIds": [
+        "API-086",
+        "API-087",
+        "API-088",
+        "API-089"
+      ],
+      "modules": [
+        "messaging"
+      ],
+      "dependsOn": [
+        "BE-A04",
+        "BE-A08"
+      ],
+      "detail": "API thông báo đọc từ cùng dữ liệu nghiệp vụ, không phụ thuộc SSE để bảo đảm đúng kết quả.",
+      "deliverables": [
+        "Feed scoped user, counts, read một/tất cả đến mốc server.",
+        "Chống event_key trùng, mở tài nguyên vẫn kiểm tra quyền lại.",
+        "Chuẩn hóa thông báo do procedure và service phát, giữ popup là trạng thái UI."
+      ],
+      "acceptance": [
+        "Đọc thông báo của user khác bị chặn; read-all không đọc nhầm sự kiện đến sau mốc.",
+        "Tắt realtime không làm mất thông báo đã commit."
+      ],
+      "priority": "P0",
+      "handoff": [
+        "Notification DTO và event mapping để B/C đưa vào ca tích hợp."
+      ],
+      "order": 20,
+      "previousTaskId": "BE-A08",
+      "nextTaskId": "BE-B08",
+      "reviewer": "B",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "decisions": [],
+      "jobs": [],
+      "qa": [],
+      "files": [
+        "backend/src/modules/messaging/**",
+        "backend/src/modules/notifications/**",
+        "backend/tests/messaging/**",
+        "backend/contracts/messaging.*"
+      ],
+      "blockers": [
+        "BE-A04",
+        "BE-A08"
+      ],
+      "ownerOrder": 9
     },
     {
       "id": "BE-B08",
@@ -1813,7 +1776,15 @@
       "handoff": [
         "ViewingReadPort cho A11 và C05."
       ],
+      "order": 21,
+      "previousTaskId": "BE-A09",
+      "nextTaskId": "BE-B09",
       "reviewer": "C",
+      "requiredInterfaces": [
+        "IF-CHAT",
+        "IF-ROOM",
+        "IF-EVENT"
+      ],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -1829,9 +1800,10 @@
       ],
       "blockers": [
         "BE-A08",
-        "BE-B07"
+        "BE-B07",
+        "BE-A09"
       ],
-      "laneOrder": 8
+      "ownerOrder": 8
     },
     {
       "id": "BE-B09",
@@ -1872,7 +1844,11 @@
       "handoff": [
         "COMPLETED + AGREED viewingId cho C05."
       ],
+      "order": 22,
+      "previousTaskId": "BE-B08",
+      "nextTaskId": "BE-C05",
       "reviewer": "C",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -1889,740 +1865,7 @@
       "blockers": [
         "BE-B08"
       ],
-      "laneOrder": 9
-    },
-    {
-      "id": "BE-B10",
-      "owner": "B",
-      "phase": "P3",
-      "title": "Bàn giao và kiểm tra lịch khi hợp đồng giữ phòng",
-      "points": 3,
-      "apiIds": [],
-      "modules": [
-        "viewings"
-      ],
-      "dependsOn": [
-        "BE-B09",
-        "BE-C05"
-      ],
-      "detail": "B giữ test backend/tests/e2e/viewing-contract/**; C giữ procedure tạo hợp đồng và đóng hoạt động xem.",
-      "deliverables": [
-        "Gửi contract từ lịch bàn giao, kiểm tra lịch/proposal ở mọi post cùng room.",
-        "Phân biệt lịch chưa bắt đầu với đang diễn ra/đã hết; trả event tổng hợp cho A.",
-        "Hủy contract không khôi phục lịch cũ; lập bug đúng owner file/SQL thay vì sửa chéo."
-      ],
-      "acceptance": [
-        "QA03/04 chạy với cả endpoint lịch và contract thật.",
-        "Timeline A11 và list lịch đều đọc cùng trạng thái."
-      ],
-      "priority": "P0",
-      "qa": [
-        "QA03",
-        "QA04"
-      ],
-      "handoff": [
-        "G3: phòng RESERVED và lịch đã đóng đúng phạm vi."
-      ],
-      "reviewer": "C",
-      "integrationWith": [],
-      "decisions": [],
-      "jobs": [],
-      "files": [
-        "backend/src/modules/viewings/**",
-        "backend/tests/viewings/**",
-        "backend/tests/e2e/viewing-contract/**",
-        "backend/contracts/viewings.*"
-      ],
-      "blockers": [
-        "BE-B09",
-        "BE-C05"
-      ],
-      "laneOrder": 10
-    },
-    {
-      "id": "BE-B11",
-      "owner": "B",
-      "phase": "P4",
-      "title": "Hồ sơ ở ghép và tình trạng nhà ở",
-      "points": 5,
-      "apiIds": [
-        "API-062",
-        "API-063",
-        "API-064",
-        "API-066",
-        "API-067"
-      ],
-      "modules": [
-        "roommates"
-      ],
-      "dependsOn": [
-        "BE-B04",
-        "BE-C02"
-      ],
-      "detail": "Tách giới thiệu hồ sơ khỏi thao tác mời; C cung cấp chứng cứ ACTIVE qua ResidencyReadPort.",
-      "deliverables": [
-        "PUT profile version, budget/location/available date; IN_SYSTEM do server suy từ đúng member ACTIVE.",
-        "EXTERNAL tối đa 1.000 ký tự và bỏ mô tả khi đổi trạng thái.",
-        "Giá trị lifestyle giữ schema JSON theo criterion, không thêm cột mỗi thói quen."
-      ],
-      "acceptance": [
-        "Không tự gắn memberId client gửi; stale version 409.",
-        "Người chưa có ACTIVE được tự khai chưa có chỗ/ngoài hệ thống đúng rule."
-      ],
-      "priority": "P0",
-      "reviewer": "C",
-      "integrationWith": [],
-      "decisions": [],
-      "jobs": [],
-      "qa": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/roommates/**",
-        "backend/tests/roommates/**",
-        "backend/contracts/roommates.*"
-      ],
-      "blockers": [
-        "BE-B04",
-        "BE-C02"
-      ],
-      "laneOrder": 11
-    },
-    {
-      "id": "BE-B12",
-      "owner": "B",
-      "phase": "P4",
-      "title": "Danh mục tiêu chí ghép linh động",
-      "points": 3,
-      "apiIds": [
-        "API-065",
-        "API-069",
-        "API-070"
-      ],
-      "modules": [
-        "roommates"
-      ],
-      "dependsOn": [
-        "BE-B11"
-      ],
-      "detail": "Quản lý tiêu chí và validate nghĩa của JSON; đây là phần chuẩn bị, chưa tự coi là thuật toán ghép đã chốt.",
-      "deliverables": [
-        "Code duy nhất, valueType/allowedValues hợp lệ; mandatory cần preferredValue, importance 0–5.",
-        "Không đổi kiểu khiến profile cũ mất nghĩa; thay đổi tương thích cần version/plan.",
-        "Đề xuất D02 cho người chốt; giải thích score v1 và xử lý thiếu dữ liệu."
-      ],
-      "acceptance": [
-        "Self/preferred JSON sai kiểu hoặc category ngoài tập bị chặn.",
-        "Ngừng tiêu chí vẫn giữ giá trị lịch sử theo chính sách."
-      ],
-      "priority": "P0",
-      "decisions": [
-        "D02"
-      ],
-      "reviewer": "C",
-      "integrationWith": [],
-      "jobs": [],
-      "qa": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/roommates/**",
-        "backend/tests/roommates/**",
-        "backend/contracts/roommates.*"
-      ],
-      "blockers": [
-        "BE-B11"
-      ],
-      "laneOrder": 12
-    },
-    {
-      "id": "BE-B13",
-      "owner": "B",
-      "phase": "P4",
-      "title": "Mời kết nối và tạo chat đúng một lần",
-      "points": 5,
-      "apiIds": [
-        "API-071",
-        "API-072",
-        "API-073",
-        "API-074",
-        "API-075"
-      ],
-      "modules": [
-        "roommates"
-      ],
-      "dependsOn": [
-        "BE-B12",
-        "BE-A08"
-      ],
-      "detail": "B sở hữu request/accept/cancel/end; A08 đã cung cấp cổng tạo conversation trong transaction do B mở.",
-      "deliverables": [
-        "Người gửi có profile, cặp chuẩn hóa chống hai chiều, receiver mới được phản hồi.",
-        "ACCEPT ghi request và ensureRoommateConversation(tx) nguyên tử, không tạo join/hold.",
-        "End ghi ended_at/reason, chặn gửi mới; policy đọc lịch sử D03 phải chốt cùng A."
-      ],
-      "acceptance": [
-        "Gửi chéo không tự accept; retry accept không sinh chat trùng.",
-        "Hồ sơ cũ vẫn phản hồi được; room capacity không chặn kết nối đơn thuần."
-      ],
-      "priority": "P0",
-      "decisions": [
-        "D03"
-      ],
-      "handoff": [
-        "Kết nối ACCEPTED và conversationId cho A11."
-      ],
-      "reviewer": "C",
-      "integrationWith": [],
-      "jobs": [],
-      "qa": [],
-      "files": [
-        "backend/src/modules/roommates/**",
-        "backend/tests/roommates/**",
-        "backend/contracts/roommates.*"
-      ],
-      "blockers": [
-        "BE-B12",
-        "BE-A08"
-      ],
-      "laneOrder": 13
-    },
-    {
-      "id": "BE-B14",
-      "owner": "B",
-      "phase": "P5",
-      "title": "Báo cáo vi phạm và kết luận",
-      "points": 5,
-      "apiIds": [
-        "API-156",
-        "API-157",
-        "API-158",
-        "API-159",
-        "API-160"
-      ],
-      "modules": [
-        "content-moderation"
-      ],
-      "dependsOn": [
-        "BE-B07",
-        "BE-A05",
-        "BE-A04"
-      ],
-      "detail": "B xử lý report/evidence/decision trong module reports; thay đổi trạng thái user/post là quyết định riêng theo owner tương ứng.",
-      "deliverables": [
-        "Target đúng một loại và người báo cáo có quyền đọc; file bằng chứng PRIVATE thuộc actor.",
-        "Hàng đợi/details/decision với actor/time/resolution; audit không tự khóa user hoặc hủy thuê.",
-        "Giữ các FK và che kết quả điều tra riêng tư khỏi reporter khi không được phép."
-      ],
-      "acceptance": [
-        "Không nhắm nhiều target cùng report; bản đóng không bị form cũ mở lại.",
-        "Nếu cần khóa account, gọi cổng A theo nghiệp vụ; không viết users repository mới."
-      ],
-      "priority": "P0",
-      "reviewer": "C",
-      "integrationWith": [],
-      "decisions": [],
-      "jobs": [],
-      "qa": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/reviews/**",
-        "backend/src/modules/reports/**",
-        "backend/tests/content-moderation/**"
-      ],
-      "blockers": [
-        "BE-B07",
-        "BE-A05",
-        "BE-A04"
-      ],
-      "laneOrder": 14
-    },
-    {
-      "id": "BE-B15",
-      "owner": "B",
-      "phase": "P6",
-      "title": "Danh sách người phù hợp theo chính sách đã chốt",
-      "points": 5,
-      "apiIds": [
-        "API-068"
-      ],
-      "modules": [
-        "roommates"
-      ],
-      "dependsOn": [
-        "BE-B13"
-      ],
-      "detail": "Chỉ triển khai score khi D02 đã chốt; không dùng thuật toán AI cho phần này và không điền tab AI.",
-      "deliverables": [
-        "Lọc self/inactive, location/budget và tiêu chí bắt buộc.",
-        "AlgorithmVersion/score/explanations cố định theo D02, test cùng dữ liệu thiếu/ngân sách biên.",
-        "Nếu D02 chưa chốt, ghi Bị chặn cho task; không trả score mẫu như kết quả thật."
-      ],
-      "acceptance": [
-        "Cùng input+algorithmVersion có kết quả xác định, không lộ PII cư dân.",
-        "Cấu trúc output giữ contract, có pagination/sort ổn định."
-      ],
-      "priority": "P1",
-      "decisions": [
-        "D02"
-      ],
-      "reviewer": "C",
-      "integrationWith": [],
-      "jobs": [],
-      "qa": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/roommates/**",
-        "backend/tests/roommates/**",
-        "backend/contracts/roommates.*"
-      ],
-      "blockers": [
-        "BE-B13"
-      ],
-      "laneOrder": 15
-    },
-    {
-      "id": "BE-B16",
-      "owner": "B",
-      "phase": "P6",
-      "title": "Đánh giá theo bằng chứng cư trú và audit",
-      "points": 5,
-      "apiIds": [
-        "API-153",
-        "API-154",
-        "API-155"
-      ],
-      "modules": [
-        "content-moderation"
-      ],
-      "dependsOn": [
-        "BE-B14",
-        "BE-C02",
-        "BE-A15"
-      ],
-      "detail": "Chốt D13 về thời điểm/hạn sửa trước khi mở review; dữ liệu chứng cứ lấy từ C, audit target review do A mở rộng D14.",
-      "deliverables": [
-        "Unique reviewer+room+contract; đúng roomTenant evidence của actor, rating 1–5.",
-        "Public chỉ PUBLISHED, moderation không sửa bằng chứng hợp đồng/cư trú.",
-        "Giữ trạng thái cần chốt nếu D13/D14 chưa có quyết định, không ghi nhầm target_post_id."
-      ],
-      "acceptance": [
-        "Tài khoản chỉ từng xem phòng không được review; không đánh giá trùng.",
-        "Ẩn review giữ audit đúng đối tượng và không làm mất cư trú."
-      ],
-      "priority": "P1",
-      "decisions": [
-        "D13",
-        "D14"
-      ],
-      "reviewer": "C",
-      "integrationWith": [],
-      "jobs": [],
-      "qa": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/reviews/**",
-        "backend/src/modules/reports/**",
-        "backend/tests/content-moderation/**"
-      ],
-      "blockers": [
-        "BE-B14",
-        "BE-C02",
-        "BE-A15"
-      ],
-      "laneOrder": 16
-    },
-    {
-      "id": "BE-B17",
-      "owner": "B",
-      "phase": "P6",
-      "title": "Dashboard chủ trọ bằng metric ports",
-      "points": 3,
-      "apiIds": [
-        "API-175"
-      ],
-      "modules": [
-        "properties"
-      ],
-      "dependsOn": [
-        "BE-B16",
-        "BE-A13",
-        "BE-C12"
-      ],
-      "detail": "B sở hữu API dashboard landlord; tổng hợp read-only từ properties/viewings của B, invoice của A và rental của C.",
-      "deliverables": [
-        "Scope landlord cho từng metric; ACTIVE tính occupied, không đồng nhất reserved với occupied.",
-        "Lịch chưa hết giờ, hóa đơn UNPAID/OVERDUE và pending requests có nguồn đúng module.",
-        "Có asOf, tách truy vấn count khỏi trả danh tính cư dân."
-      ],
-      "acceptance": [
-        "Không cộng nhầm dữ liệu chủ khác; amount decimal và status phù hợp.",
-        "Contract tests của metric ports phát hiện consumer dùng field cũ."
-      ],
-      "priority": "P1",
-      "reviewer": "C",
-      "integrationWith": [],
-      "decisions": [],
-      "jobs": [],
-      "qa": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/properties/**",
-        "backend/src/modules/house-rights/**",
-        "backend/tests/properties/**",
-        "backend/tests/fixtures/B/**",
-        "backend/tests/contracts/B/**",
-        "backend/tests/e2e/property-*/**",
-        "backend/contracts/properties.*"
-      ],
-      "blockers": [
-        "BE-B16",
-        "BE-A13",
-        "BE-C12"
-      ],
-      "laneOrder": 17
-    },
-    {
-      "id": "BE-B18",
-      "owner": "B",
-      "phase": "P6",
-      "title": "Worker hết quyền nhà và bảo toàn dữ liệu cũ",
-      "points": 2,
-      "apiIds": [],
-      "modules": [
-        "properties",
-        "sql-property"
-      ],
-      "dependsOn": [
-        "BE-B05"
-      ],
-      "detail": "Đưa JOB03 vào lịch chạy mà A cung cấp; nguồn quyền hiệu lực vẫn được kiểm tra ngay khi truy vấn.",
-      "deliverables": [
-        "APPROVED valid_until<todayVN → EXPIRED theo chính sách, giữ proof/history.",
-        "Không xóa/ẩn vật lý từng post hoặc kết thúc contract để giả mất quyền.",
-        "Đăng ký worker qua manifest riêng, không sửa worker registry chung."
-      ],
-      "acceptance": [
-        "Job chậm vẫn không công khai tin hết quyền; chạy lặp an toàn.",
-        "Luồng rời/kết thúc hợp đồng cũ tiếp tục dùng được."
-      ],
-      "priority": "P1",
-      "jobs": [
-        "JOB03"
-      ],
-      "qa": [
-        "QA09"
-      ],
-      "reviewer": "C",
-      "integrationWith": [],
-      "decisions": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/properties/**",
-        "backend/src/modules/house-rights/**",
-        "backend/tests/properties/**",
-        "backend/tests/fixtures/B/**",
-        "backend/tests/contracts/B/**",
-        "backend/tests/e2e/property-*/**",
-        "backend/contracts/properties.*",
-        "database/source/house-rights.sql",
-        "database/source/post-review-quota.sql",
-        "database/source/viewing-proposals.sql",
-        "backend/tests/sql-property/**"
-      ],
-      "blockers": [
-        "BE-B05"
-      ],
-      "laneOrder": 18
-    },
-    {
-      "id": "BE-B19",
-      "owner": "B",
-      "phase": "P7",
-      "title": "Kiểm thử module nhà/tin/lịch và nội dung",
-      "points": 5,
-      "apiIds": [],
-      "modules": [
-        "properties",
-        "posts",
-        "viewings",
-        "roommates",
-        "content-moderation"
-      ],
-      "dependsOn": [
-        "BE-B10",
-        "BE-B15",
-        "BE-B16",
-        "BE-B17",
-        "BE-B18"
-      ],
-      "detail": "B giữ tests/e2e/property-* và viewing-contract; kiểm thử quota, quyền nhà, lịch, kết nối và privacy trước bàn giao.",
-      "deliverables": [
-        "QA01/02/04/09/13/14/15 có test concurrency và quyền chéo tài khoản.",
-        "Kiểm tra D07 upload+post rollback; search/favorites/shared card sau mất quyền.",
-        "Nộp report test, collection requests và danh sách source SQL đã thay cho A."
-      ],
-      "acceptance": [
-        "Mỗi endpoint B có DTO/auth/logic/test/docs/review và phạm vi file đúng owner.",
-        "Không sửa generated SQL/seed/tests của C để làm CI xanh."
-      ],
-      "priority": "P0",
-      "qa": [
-        "QA01",
-        "QA02",
-        "QA04",
-        "QA09",
-        "QA13",
-        "QA14",
-        "QA15"
-      ],
-      "reviewer": "C",
-      "integrationWith": [],
-      "decisions": [],
-      "jobs": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/properties/**",
-        "backend/src/modules/house-rights/**",
-        "backend/tests/properties/**",
-        "backend/tests/fixtures/B/**",
-        "backend/tests/contracts/B/**",
-        "backend/tests/e2e/property-*/**",
-        "backend/contracts/properties.*",
-        "backend/src/modules/posts/**",
-        "backend/tests/posts/**",
-        "backend/contracts/posts.*",
-        "backend/src/modules/viewings/**",
-        "backend/tests/viewings/**",
-        "backend/tests/e2e/viewing-contract/**",
-        "backend/contracts/viewings.*",
-        "backend/src/modules/roommates/**",
-        "backend/tests/roommates/**",
-        "backend/contracts/roommates.*",
-        "backend/src/modules/reviews/**",
-        "backend/src/modules/reports/**",
-        "backend/tests/content-moderation/**"
-      ],
-      "blockers": [
-        "BE-B10",
-        "BE-B15",
-        "BE-B16",
-        "BE-B17",
-        "BE-B18"
-      ],
-      "laneOrder": 19
-    },
-    {
-      "id": "BE-C01",
-      "owner": "C",
-      "phase": "P0",
-      "title": "Chốt trạng thái thuê, transaction và cổng cư trú",
-      "points": 5,
-      "apiIds": [],
-      "modules": [
-        "rentals",
-        "sql-rental"
-      ],
-      "dependsOn": [],
-      "detail": "C phân tích vòng đời contract/member/join/change/representative và công bố snapshot read/expected revision trước khi dựng endpoint.",
-      "deliverables": [
-        "Vẽ chuyển trạng thái và lock order roomId tăng dần; xác định procedure tự commit.",
-        "Công bố ResidencyReadPort/contract snapshot và fixture của C; A/B không join/ghi trực tiếp các bảng này trong service của họ.",
-        "D10 expectedRevision và D11 import được ghi là mở rộng cần làm; không xác nhận nhầm phiên bản."
-      ],
-      "acceptance": [
-        "A02/B01 cùng duyệt contract; chưa chọn framework vẫn chuẩn bị SQL/fixture được.",
-        "Planned/active/left/cancelled, payer cũ, đại diện ban đầu/hiện tại được phân biệt."
-      ],
-      "priority": "P0",
-      "decisions": [
-        "D06",
-        "D10",
-        "D11"
-      ],
-      "handoff": [
-        "IF-RESIDENT"
-      ],
-      "reviewer": "A",
-      "integrationWith": [],
-      "jobs": [],
-      "qa": [],
-      "files": [
-        "backend/src/modules/rentals/**",
-        "backend/tests/rentals/**",
-        "backend/tests/fixtures/C/**",
-        "backend/tests/contracts/C/**",
-        "backend/tests/e2e/rental-*/**",
-        "backend/contracts/rentals.*",
-        "database/source/workflows.sql",
-        "database/source/contract-viewing-cleanup.sql",
-        "backend/tests/sql-rental/**"
-      ],
-      "blockers": [],
-      "laneOrder": 1
-    },
-    {
-      "id": "BE-C02",
-      "owner": "C",
-      "phase": "P1",
-      "title": "Cổng đọc hợp đồng/cư trú, thành viên và lịch sử",
-      "points": 5,
-      "apiIds": [
-        "API-048",
-        "API-101",
-        "API-102",
-        "API-105",
-        "API-114",
-        "API-115",
-        "API-116",
-        "API-126",
-        "API-127"
-      ],
-      "modules": [
-        "rentals"
-      ],
-      "dependsOn": [
-        "BE-A02",
-        "BE-C01"
-      ],
-      "detail": "C giữ cả /rooms/{roomId}/residents vì đọc cùng bằng chứng cư trú; B giữ room detail public và chỉ dùng activeCount.",
-      "deliverables": [
-        "Danh sách/details/revisions/members/history, candidate representative và export CSV.",
-        "ResidencyReadPort lấy ACTIVE kể cả contract đóng sai, hỗ trợ connection/UoW của consumer.",
-        "Privacy theo quan hệ hợp đồng, không lộ CCCD thành viên khác; CSV chống formula injection."
-      ],
-      "acceptance": [
-        "A lập invoice/B xác định IN_SYSTEM bằng port thật mà không import repository C.",
-        "Không suy người ở chỉ từ representative; time không rõ trả null/chưa rõ."
-      ],
-      "priority": "P0",
-      "handoff": [
-        "IF-RESIDENT",
-        "Read-only metrics/snapshot cho A10 và B11."
-      ],
-      "qa": [
-        "QA11"
-      ],
-      "reviewer": "A",
-      "integrationWith": [],
-      "decisions": [],
-      "jobs": [],
-      "files": [
-        "backend/src/modules/rentals/**",
-        "backend/tests/rentals/**",
-        "backend/tests/fixtures/C/**",
-        "backend/tests/contracts/C/**",
-        "backend/tests/e2e/rental-*/**",
-        "backend/contracts/rentals.*"
-      ],
-      "blockers": [
-        "BE-A02",
-        "BE-C01"
-      ],
-      "laneOrder": 2
-    },
-    {
-      "id": "BE-C03",
-      "owner": "C",
-      "phase": "P1",
-      "title": "Mẫu hợp đồng và phiên bản mẫu",
-      "points": 3,
-      "apiIds": [
-        "API-165",
-        "API-166",
-        "API-167"
-      ],
-      "modules": [
-        "rentals"
-      ],
-      "dependsOn": [
-        "BE-C02"
-      ],
-      "detail": "Các /admin/contract-templates thuộc module rentals/templates của C, tách khỏi admin users của A.",
-      "deliverables": [
-        "Tạo version mới theo name có unique/khóa; không sửa nội dung bản đã dùng.",
-        "Chủ chỉ thấy active; admin bật/ngừng, snapshot revision giữ nội dung riêng.",
-        "Nếu cần audit template, dùng A port và D14 sau khi đã mở rộng target."
-      ],
-      "acceptance": [
-        "Hai lần tạo cùng name không đụng version; hợp đồng cũ không đổi khi ngừng mẫu.",
-        "Không thêm templateController vào file admin chung."
-      ],
-      "priority": "P0",
-      "decisions": [
-        "D14"
-      ],
-      "reviewer": "A",
-      "integrationWith": [],
-      "jobs": [],
-      "qa": [],
-      "handoff": [],
-      "files": [
-        "backend/src/modules/rentals/**",
-        "backend/tests/rentals/**",
-        "backend/tests/fixtures/C/**",
-        "backend/tests/contracts/C/**",
-        "backend/tests/e2e/rental-*/**",
-        "backend/contracts/rentals.*"
-      ],
-      "blockers": [
-        "BE-C02"
-      ],
-      "laneOrder": 3
-    },
-    {
-      "id": "BE-C04",
-      "owner": "C",
-      "phase": "P2",
-      "title": "Bảo vệ expected revision và adapter procedure",
-      "points": 5,
-      "apiIds": [],
-      "modules": [
-        "rentals",
-        "sql-rental"
-      ],
-      "dependsOn": [
-        "BE-C01",
-        "BE-A04"
-      ],
-      "detail": "C sửa đúng file workflows.sql để đóng D10 trước route confirm; chuẩn bị adapter/test các giao dịch thuê bằng fixture, không chờ UI/hẹn xem thật.",
-      "deliverables": [
-        "Procedure confirm nhận expectedRevisionId và so dưới cùng khóa; stale 409 không xác nhận bản mới.",
-        "Mapper camelCase → SQL params/JSON snake_case; ProcedureRunner không bị bọc UoW ngoài.",
-        "Race/rollback fixture cho create/move-in/handover/transfer; đưa patch source cho A tái sinh SQL trước tích hợp."
-      ],
-      "acceptance": [
-        "QA06 xác nhận A sau khi B đã gửi bị chặn; test không chỉ check trước CALL ở controller.",
-        "Các OUT ID và lỗi SIGNAL được ánh xạ ổn định, không lộ SQL ra HTTP."
-      ],
-      "priority": "P0",
-      "decisions": [
-        "D10",
-        "D15"
-      ],
-      "qa": [
-        "QA06"
-      ],
-      "handoff": [
-        "Expected revision adapter và source SQL được A tích hợp."
-      ],
-      "reviewer": "A",
-      "integrationWith": [],
-      "jobs": [],
-      "files": [
-        "backend/src/modules/rentals/**",
-        "backend/tests/rentals/**",
-        "backend/tests/fixtures/C/**",
-        "backend/tests/contracts/C/**",
-        "backend/tests/e2e/rental-*/**",
-        "backend/contracts/rentals.*",
-        "database/source/workflows.sql",
-        "database/source/contract-viewing-cleanup.sql",
-        "backend/tests/sql-rental/**"
-      ],
-      "blockers": [
-        "BE-C01",
-        "BE-A04"
-      ],
-      "laneOrder": 4
+      "ownerOrder": 9
     },
     {
       "id": "BE-C05",
@@ -2661,7 +1904,14 @@
       "handoff": [
         "Contract PENDING_CONFIRMATION, room RESERVED và member PLANNED cho C06/A."
       ],
+      "order": 23,
+      "previousTaskId": "BE-B09",
+      "nextTaskId": "BE-B10",
       "reviewer": "A",
+      "requiredInterfaces": [
+        "IF-ROOM",
+        "IF-VIEWING"
+      ],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -2681,7 +1931,59 @@
         "BE-C04",
         "BE-B09"
       ],
-      "laneOrder": 5
+      "ownerOrder": 5
+    },
+    {
+      "id": "BE-B10",
+      "owner": "B",
+      "phase": "P3",
+      "title": "Bàn giao và kiểm tra lịch khi hợp đồng giữ phòng",
+      "points": 3,
+      "apiIds": [],
+      "modules": [
+        "viewings"
+      ],
+      "dependsOn": [
+        "BE-B09",
+        "BE-C05"
+      ],
+      "detail": "B giữ test backend/tests/e2e/viewing-contract/**; C giữ procedure tạo hợp đồng và đóng hoạt động xem.",
+      "deliverables": [
+        "Gửi contract từ lịch bàn giao, kiểm tra lịch/proposal ở mọi post cùng room.",
+        "Phân biệt lịch chưa bắt đầu với đang diễn ra/đã hết; trả event tổng hợp cho A.",
+        "Hủy contract không khôi phục lịch cũ; lập bug đúng owner file/SQL thay vì sửa chéo."
+      ],
+      "acceptance": [
+        "QA03/04 chạy với cả endpoint lịch và contract thật.",
+        "Timeline A11 và list lịch đều đọc cùng trạng thái."
+      ],
+      "priority": "P0",
+      "qa": [
+        "QA03",
+        "QA04"
+      ],
+      "handoff": [
+        "G3: phòng RESERVED và lịch đã đóng đúng phạm vi."
+      ],
+      "order": 24,
+      "previousTaskId": "BE-C05",
+      "nextTaskId": "BE-C06",
+      "reviewer": "C",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "decisions": [],
+      "jobs": [],
+      "files": [
+        "backend/src/modules/viewings/**",
+        "backend/tests/viewings/**",
+        "backend/tests/e2e/viewing-contract/**",
+        "backend/contracts/viewings.*"
+      ],
+      "blockers": [
+        "BE-B09",
+        "BE-C05"
+      ],
+      "ownerOrder": 10
     },
     {
       "id": "BE-C06",
@@ -2719,7 +2021,11 @@
       "qa": [
         "QA06"
       ],
+      "order": 25,
+      "previousTaskId": "BE-B10",
+      "nextTaskId": "BE-C07",
       "reviewer": "A",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "jobs": [],
       "handoff": [],
@@ -2735,9 +2041,10 @@
         "backend/tests/sql-rental/**"
       ],
       "blockers": [
-        "BE-C05"
+        "BE-C05",
+        "BE-B10"
       ],
-      "laneOrder": 6
+      "ownerOrder": 6
     },
     {
       "id": "BE-C07",
@@ -2774,7 +2081,11 @@
       "handoff": [
         "Contract ACTIVE + ACTIVE residents thực cho A10, B11 và C09."
       ],
+      "order": 26,
+      "previousTaskId": "BE-C06",
+      "nextTaskId": "BE-C08",
       "reviewer": "A",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -2792,7 +2103,7 @@
       "blockers": [
         "BE-C06"
       ],
-      "laneOrder": 7
+      "ownerOrder": 7
     },
     {
       "id": "BE-C08",
@@ -2828,7 +2139,13 @@
       "handoff": [
         "Contract test TokenPort + UoW cho A review."
       ],
+      "order": 27,
+      "previousTaskId": "BE-C07",
+      "nextTaskId": "BE-B11",
       "reviewer": "A",
+      "requiredInterfaces": [
+        "IF-TOKEN"
+      ],
       "integrationWith": [],
       "jobs": [],
       "qa": [],
@@ -2844,7 +2161,236 @@
         "BE-C07",
         "BE-A07"
       ],
-      "laneOrder": 8
+      "ownerOrder": 8
+    },
+    {
+      "id": "BE-B11",
+      "owner": "B",
+      "phase": "P4",
+      "title": "Hồ sơ ở ghép và tình trạng nhà ở",
+      "points": 5,
+      "apiIds": [
+        "API-062",
+        "API-063",
+        "API-064",
+        "API-066",
+        "API-067"
+      ],
+      "modules": [
+        "roommates"
+      ],
+      "dependsOn": [
+        "BE-B04",
+        "BE-C02",
+        "BE-C07"
+      ],
+      "detail": "Tách giới thiệu hồ sơ khỏi thao tác mời; C cung cấp chứng cứ ACTIVE qua ResidencyReadPort.",
+      "deliverables": [
+        "PUT profile version, budget/location/available date; IN_SYSTEM do server suy từ đúng member ACTIVE.",
+        "EXTERNAL tối đa 1.000 ký tự và bỏ mô tả khi đổi trạng thái.",
+        "Giá trị lifestyle giữ schema JSON theo criterion, không thêm cột mỗi thói quen."
+      ],
+      "acceptance": [
+        "Không tự gắn memberId client gửi; stale version 409.",
+        "Người chưa có ACTIVE được tự khai chưa có chỗ/ngoài hệ thống đúng rule."
+      ],
+      "priority": "P0",
+      "order": 28,
+      "previousTaskId": "BE-C08",
+      "nextTaskId": "BE-B12",
+      "reviewer": "C",
+      "requiredInterfaces": [
+        "IF-RESIDENT",
+        "IF-CONNECTION"
+      ],
+      "integrationWith": [],
+      "decisions": [],
+      "jobs": [],
+      "qa": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/roommates/**",
+        "backend/tests/roommates/**",
+        "backend/contracts/roommates.*"
+      ],
+      "blockers": [
+        "BE-B04",
+        "BE-C02",
+        "BE-C07",
+        "BE-C08"
+      ],
+      "ownerOrder": 11
+    },
+    {
+      "id": "BE-B12",
+      "owner": "B",
+      "phase": "P4",
+      "title": "Danh mục tiêu chí ghép linh động",
+      "points": 3,
+      "apiIds": [
+        "API-065",
+        "API-069",
+        "API-070"
+      ],
+      "modules": [
+        "roommates"
+      ],
+      "dependsOn": [
+        "BE-B11"
+      ],
+      "detail": "Quản lý tiêu chí và validate nghĩa của JSON; đây là phần chuẩn bị, chưa tự coi là thuật toán ghép đã chốt.",
+      "deliverables": [
+        "Code duy nhất, valueType/allowedValues hợp lệ; mandatory cần preferredValue, importance 0–5.",
+        "Không đổi kiểu khiến profile cũ mất nghĩa; thay đổi tương thích cần version/plan.",
+        "Đề xuất D02 cho người chốt; giải thích score v1 và xử lý thiếu dữ liệu."
+      ],
+      "acceptance": [
+        "Self/preferred JSON sai kiểu hoặc category ngoài tập bị chặn.",
+        "Ngừng tiêu chí vẫn giữ giá trị lịch sử theo chính sách."
+      ],
+      "priority": "P0",
+      "decisions": [
+        "D02"
+      ],
+      "order": 29,
+      "previousTaskId": "BE-B11",
+      "nextTaskId": "BE-B13",
+      "reviewer": "C",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "jobs": [],
+      "qa": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/roommates/**",
+        "backend/tests/roommates/**",
+        "backend/contracts/roommates.*"
+      ],
+      "blockers": [
+        "BE-B11"
+      ],
+      "ownerOrder": 12
+    },
+    {
+      "id": "BE-B13",
+      "owner": "B",
+      "phase": "P4",
+      "title": "Mời kết nối và tạo chat đúng một lần",
+      "points": 5,
+      "apiIds": [
+        "API-071",
+        "API-072",
+        "API-073",
+        "API-074",
+        "API-075"
+      ],
+      "modules": [
+        "roommates"
+      ],
+      "dependsOn": [
+        "BE-B12",
+        "BE-A08"
+      ],
+      "detail": "B sở hữu request/accept/cancel/end; A08 đã cung cấp cổng tạo conversation trong transaction do B mở.",
+      "deliverables": [
+        "Người gửi có profile, cặp chuẩn hóa chống hai chiều, receiver mới được phản hồi.",
+        "ACCEPT ghi request và ensureRoommateConversation(tx) nguyên tử, không tạo join/hold.",
+        "End ghi ended_at/reason, chặn gửi mới; policy đọc lịch sử D03 phải chốt cùng A."
+      ],
+      "acceptance": [
+        "Gửi chéo không tự accept; retry accept không sinh chat trùng.",
+        "Hồ sơ cũ vẫn phản hồi được; room capacity không chặn kết nối đơn thuần."
+      ],
+      "priority": "P0",
+      "decisions": [
+        "D03"
+      ],
+      "handoff": [
+        "Kết nối ACCEPTED và conversationId cho A11."
+      ],
+      "order": 30,
+      "previousTaskId": "BE-B12",
+      "nextTaskId": "BE-A11",
+      "reviewer": "C",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "jobs": [],
+      "qa": [],
+      "files": [
+        "backend/src/modules/roommates/**",
+        "backend/tests/roommates/**",
+        "backend/contracts/roommates.*"
+      ],
+      "blockers": [
+        "BE-B12",
+        "BE-A08"
+      ],
+      "ownerOrder": 13
+    },
+    {
+      "id": "BE-A11",
+      "owner": "A",
+      "phase": "P4",
+      "title": "Thẻ lịch, chat bạn ghép và chia sẻ đúng tin",
+      "points": 5,
+      "apiIds": [
+        "API-083",
+        "API-084",
+        "API-085"
+      ],
+      "modules": [
+        "messaging"
+      ],
+      "dependsOn": [
+        "BE-A08",
+        "BE-B04",
+        "BE-C02",
+        "BE-B13",
+        "BE-B09"
+      ],
+      "detail": "Hoàn thiện route chat cần dữ liệu B/C: timeline đọc lịch gốc, ROOMMATE và POST_SHARE; dùng cổng đọc đã chốt, không chép bảng.",
+      "deliverables": [
+        "Timeline lấy viewing/proposal theo conversation có quyền; share giữ đúng postId.",
+        "ROOMMATE chỉ mở/gửi khi accepted còn hiệu lực; inactive post trả unavailable không lộ ảnh/tiêu đề.",
+        "B13 dùng ensureRoommateConversation đã có ở A08; hai phần không phụ thuộc nhau theo vòng HTTP."
+      ],
+      "acceptance": [
+        "Accept kết nối đã chạy ở B13 mở đúng conversation; share không tạo join/hold/lịch.",
+        "Bài ẩn không tự đổi sang bài khác cùng phòng; timeline dùng lịch B09 đã hoàn tất."
+      ],
+      "priority": "P0",
+      "decisions": [
+        "D03"
+      ],
+      "qa": [
+        "QA13"
+      ],
+      "order": 31,
+      "previousTaskId": "BE-B13",
+      "nextTaskId": "BE-C09",
+      "reviewer": "B",
+      "requiredInterfaces": [
+        "IF-CHAT",
+        "IF-VIEWING",
+        "IF-CONNECTION"
+      ],
+      "integrationWith": [],
+      "jobs": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/messaging/**",
+        "backend/src/modules/notifications/**",
+        "backend/tests/messaging/**",
+        "backend/contracts/messaging.*"
+      ],
+      "blockers": [
+        "BE-A08",
+        "BE-B04",
+        "BE-C02",
+        "BE-B13",
+        "BE-B09"
+      ],
+      "ownerOrder": 10
     },
     {
       "id": "BE-C09",
@@ -2875,7 +2421,11 @@
         "Hợp đồng/đại diện không còn ACTIVE thì không gửi/duyệt tiếp."
       ],
       "priority": "P0",
+      "order": 32,
+      "previousTaskId": "BE-A11",
+      "nextTaskId": "BE-A10",
       "reviewer": "A",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -2890,9 +2440,189 @@
         "backend/contracts/rentals.*"
       ],
       "blockers": [
+        "BE-C07",
+        "BE-A11"
+      ],
+      "ownerOrder": 9
+    },
+    {
+      "id": "BE-A10",
+      "owner": "A",
+      "phase": "P4",
+      "title": "Hóa đơn nháp và snapshot giá/người trả",
+      "points": 5,
+      "apiIds": [
+        "API-145",
+        "API-146",
+        "API-147",
+        "API-148"
+      ],
+      "modules": [
+        "billing"
+      ],
+      "dependsOn": [
+        "BE-A04",
+        "BE-B03",
+        "BE-C02",
         "BE-C07"
       ],
-      "laneOrder": 9
+      "detail": "Dùng ServiceQuotePort của B và ResidencyReadPort của C để lập kỳ tiền, tách khỏi code cấu hình dịch vụ/hợp đồng.",
+      "deliverables": [
+        "Unique contract+kỳ chưa hủy; server tính quantity, meter, tiền thuê và giảm trừ bằng decimal.",
+        "Snapshot revision, representative/payer và số ACTIVE trong cùng transaction đọc hợp đồng.",
+        "Chỉ sửa DRAFT; kiểm thử ngay bằng hợp đồng ACTIVE và người ở thật do C07 đã bàn giao."
+      ],
+      "acceptance": [
+        "Override=0 giữ 0; người PLANNED không tính dịch vụ theo người; chỉ số cuối<đầu bị chặn.",
+        "Đổi giá giữ snapshot; trường hợp bàn giao đại diện do C11 kiểm thử sau khi API bàn giao được viết."
+      ],
+      "priority": "P0",
+      "decisions": [
+        "D12"
+      ],
+      "qa": [
+        "QA10"
+      ],
+      "handoff": [
+        "InvoiceReadPort/metrics cho B17; invoice thật cho ca bàn giao C11."
+      ],
+      "order": 33,
+      "previousTaskId": "BE-C09",
+      "nextTaskId": "BE-A12",
+      "reviewer": "B",
+      "requiredInterfaces": [
+        "IF-SERVICE",
+        "IF-RESIDENT"
+      ],
+      "integrationWith": [],
+      "jobs": [],
+      "files": [
+        "backend/src/modules/billing/**",
+        "backend/tests/billing/**",
+        "backend/contracts/billing.*"
+      ],
+      "blockers": [
+        "BE-A04",
+        "BE-B03",
+        "BE-C02",
+        "BE-C07",
+        "BE-C09"
+      ],
+      "ownerOrder": 11
+    },
+    {
+      "id": "BE-A12",
+      "owner": "A",
+      "phase": "P4",
+      "title": "Quản trị tài khoản và tra cứu audit",
+      "points": 5,
+      "apiIds": [
+        "API-161",
+        "API-162",
+        "API-163",
+        "API-164",
+        "API-168",
+        "API-169"
+      ],
+      "modules": [
+        "account-admin"
+      ],
+      "dependsOn": [
+        "BE-A03",
+        "BE-A04"
+      ],
+      "detail": "Các route /admin/users và /admin/moderation-actions thuộc A; B/C giữ các route /admin theo nghiệp vụ của họ.",
+      "deliverables": [
+        "Lock/unlock có reason, audit và revoke session; không xóa cư trú/nghĩa vụ.",
+        "Audit chỉ đọc, lọc đối tượng và che secret/PII khỏi snapshot.",
+        "Không sửa source SQL nhà của B để tính quyền; view hiệu lực đã xét trạng thái user."
+      ],
+      "acceptance": [
+        "Tài khoản bị khóa mất quyền trên mọi module qua cùng middleware.",
+        "Khóa landlord làm public view mất quyền, nhưng hợp đồng/người ở cũ được giữ."
+      ],
+      "priority": "P0",
+      "qa": [
+        "QA09",
+        "QA16"
+      ],
+      "order": 34,
+      "previousTaskId": "BE-A10",
+      "nextTaskId": "BE-A13",
+      "reviewer": "B",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "decisions": [],
+      "jobs": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/account-admin/**",
+        "backend/src/modules/audit/**",
+        "backend/src/modules/admin-dashboard/**",
+        "backend/tests/account-admin/**"
+      ],
+      "blockers": [
+        "BE-A03",
+        "BE-A04",
+        "BE-A10"
+      ],
+      "ownerOrder": 12
+    },
+    {
+      "id": "BE-A13",
+      "owner": "A",
+      "phase": "P5",
+      "title": "Phát hành, thu đủ, hủy và thay hóa đơn",
+      "points": 5,
+      "apiIds": [
+        "API-149",
+        "API-150",
+        "API-151",
+        "API-152"
+      ],
+      "modules": [
+        "billing"
+      ],
+      "dependsOn": [
+        "BE-A10"
+      ],
+      "detail": "Hoàn thiện vòng đời hóa đơn; chủ trọ ghi nhận thu đủ trong phạm vi hiện tại, chưa thêm cổng thanh toán hay thu một phần.",
+      "deliverables": [
+        "Issue DRAFT có dòng tiền → UNPAID; PAID có người ghi nhận/time; hủy chưa thu có lý do.",
+        "Replacement giữ cùng contract/kỳ và liên kết bản đã hủy; không sửa lines phát hành.",
+        "JOB04 chuyển UNPAID quá due_date VN sang OVERDUE, chạy lặp an toàn; giữ quyền người trả cũ sau bàn giao, không giả có issued_at riêng."
+      ],
+      "acceptance": [
+        "Hai lần thu cùng khóa không tạo thêm thu tiền; PAID/CANCELLED không sửa.",
+        "Kỳ mới lấy đại diện hiện tại, kỳ cũ vẫn đúng payer."
+      ],
+      "priority": "P0",
+      "decisions": [
+        "D12"
+      ],
+      "jobs": [
+        "JOB04"
+      ],
+      "qa": [
+        "QA10"
+      ],
+      "order": 35,
+      "previousTaskId": "BE-A12",
+      "nextTaskId": "BE-C10",
+      "reviewer": "B",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/billing/**",
+        "backend/tests/billing/**",
+        "backend/contracts/billing.*"
+      ],
+      "blockers": [
+        "BE-A10",
+        "BE-A12"
+      ],
+      "ownerOrder": 13
     },
     {
       "id": "BE-C10",
@@ -2927,7 +2657,11 @@
       "qa": [
         "QA05"
       ],
+      "order": 36,
+      "previousTaskId": "BE-A13",
+      "nextTaskId": "BE-C11",
       "reviewer": "A",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -2944,9 +2678,10 @@
         "backend/tests/sql-rental/**"
       ],
       "blockers": [
-        "BE-C09"
+        "BE-C09",
+        "BE-A13"
       ],
-      "laneOrder": 10
+      "ownerOrder": 10
     },
     {
       "id": "BE-C11",
@@ -2963,7 +2698,8 @@
         "sql-rental"
       ],
       "dependsOn": [
-        "BE-C10"
+        "BE-C10",
+        "BE-A13"
       ],
       "detail": "C giữ transaction handover/move-out, không chia một phần history cho A hay phần status phòng cho B.",
       "deliverables": [
@@ -2972,7 +2708,7 @@
         "Người cuối rời xử lý mọi member mở; không đổi payer invoice cũ, viewing gốc hoặc terms cũ."
       ],
       "acceptance": [
-        "QA07 giữ nguyên giá/cọc/thời hạn/contract; không chọn planned/left/locked.",
+        "QA07 kiểm thử bằng hóa đơn A13 đã phát hành/thu tiền, giữ nguyên giá/cọc/thời hạn/contract.",
         "Nhà hết quyền vẫn rời/kết thúc được; thiếu chứng cứ không tự đoán ngày."
       ],
       "priority": "P0",
@@ -2980,13 +2716,15 @@
         "QA07",
         "QA09"
       ],
-      "integrationWith": [
-        "BE-A13"
-      ],
       "handoff": [
-        "Payer/history case cho A kiểm thử hóa đơn sau handover."
+        "Kết quả bàn giao và payer/history cho lượt kiểm thử A16."
       ],
+      "order": 37,
+      "previousTaskId": "BE-C10",
+      "nextTaskId": "BE-C12",
       "reviewer": "A",
+      "requiredInterfaces": [],
+      "integrationWith": [],
       "decisions": [],
       "jobs": [],
       "files": [
@@ -3004,7 +2742,7 @@
         "BE-C10",
         "BE-A13"
       ],
-      "laneOrder": 11
+      "ownerOrder": 11
     },
     {
       "id": "BE-C12",
@@ -3048,7 +2786,11 @@
       "handoff": [
         "Contract/resultContractId và case history cho dashboard/review."
       ],
+      "order": 38,
+      "previousTaskId": "BE-C11",
+      "nextTaskId": "BE-A14",
       "reviewer": "A",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -3067,7 +2809,427 @@
         "BE-C11",
         "BE-B04"
       ],
-      "laneOrder": 12
+      "ownerOrder": 12
+    },
+    {
+      "id": "BE-A14",
+      "owner": "A",
+      "phase": "P5",
+      "title": "SSE có xác thực và nối lại sự kiện",
+      "points": 5,
+      "apiIds": [
+        "API-090"
+      ],
+      "modules": [
+        "messaging"
+      ],
+      "dependsOn": [
+        "BE-A04",
+        "BE-A09"
+      ],
+      "detail": "Triển khai kênh vận chuyển tách khỏi nghiệp vụ; B/C chỉ append/ghi sự kiện, không cùng sửa SSE controller.",
+      "deliverables": [
+        "Auth phiên, Last-Event-ID, replay trong cửa sổ lưu, recipient scope và dedupe eventId.",
+        "Phát sau commit; reconnect không coi popup đã đóng là đã đọc.",
+        "Tải trọng tối thiểu rồi client fetch resource; kiểm tra session revoked khi stream còn mở."
+      ],
+      "acceptance": [
+        "Mất kết nối/retry không mất nguồn dữ liệu gốc và không lộ sự kiện người khác.",
+        "Crash/delivery lặp vẫn cho client dedupe và đọc lại feed."
+      ],
+      "priority": "P0",
+      "decisions": [
+        "D09"
+      ],
+      "jobs": [
+        "JOB06"
+      ],
+      "qa": [
+        "QA12"
+      ],
+      "order": 39,
+      "previousTaskId": "BE-C12",
+      "nextTaskId": "BE-B14",
+      "reviewer": "B",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/messaging/**",
+        "backend/src/modules/notifications/**",
+        "backend/tests/messaging/**",
+        "backend/contracts/messaging.*"
+      ],
+      "blockers": [
+        "BE-A04",
+        "BE-A09",
+        "BE-C12"
+      ],
+      "ownerOrder": 14
+    },
+    {
+      "id": "BE-B14",
+      "owner": "B",
+      "phase": "P5",
+      "title": "Báo cáo vi phạm và kết luận",
+      "points": 5,
+      "apiIds": [
+        "API-156",
+        "API-157",
+        "API-158",
+        "API-159",
+        "API-160"
+      ],
+      "modules": [
+        "content-moderation"
+      ],
+      "dependsOn": [
+        "BE-B07",
+        "BE-A05",
+        "BE-A04"
+      ],
+      "detail": "B xử lý report/evidence/decision trong module reports; thay đổi trạng thái user/post là quyết định riêng theo owner tương ứng.",
+      "deliverables": [
+        "Target đúng một loại và người báo cáo có quyền đọc; file bằng chứng PRIVATE thuộc actor.",
+        "Hàng đợi/details/decision với actor/time/resolution; audit không tự khóa user hoặc hủy thuê.",
+        "Bàn giao ReportMetrics chạy SQL thật cho A15, giữ FK và che kết quả điều tra riêng tư khỏi reporter."
+      ],
+      "acceptance": [
+        "Không nhắm nhiều target cùng report; bản đóng không bị form cũ mở lại.",
+        "Nếu cần khóa account, gọi cổng A theo nghiệp vụ; không viết users repository mới."
+      ],
+      "priority": "P0",
+      "order": 40,
+      "previousTaskId": "BE-A14",
+      "nextTaskId": "BE-A15",
+      "reviewer": "C",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "decisions": [],
+      "jobs": [],
+      "qa": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/reviews/**",
+        "backend/src/modules/reports/**",
+        "backend/tests/content-moderation/**"
+      ],
+      "blockers": [
+        "BE-B07",
+        "BE-A05",
+        "BE-A04",
+        "BE-A14"
+      ],
+      "ownerOrder": 14
+    },
+    {
+      "id": "BE-A15",
+      "owner": "A",
+      "phase": "P6",
+      "title": "Retention, kiểm tra audit và dashboard quản trị",
+      "points": 3,
+      "apiIds": [
+        "API-176"
+      ],
+      "modules": [
+        "platform",
+        "account-admin",
+        "integration"
+      ],
+      "dependsOn": [
+        "BE-A05",
+        "BE-A06",
+        "BE-A12",
+        "BE-A14",
+        "BE-B04",
+        "BE-B14",
+        "BE-C02"
+      ],
+      "detail": "Dùng audit adapter đã hoàn tất tại A04; dọn phiên/token/tệp và tổng hợp dashboard bằng các metric port đã bàn giao, không chờ endpoint dashboard B17.",
+      "deliverables": [
+        "Kiểm tra migration/adapters D14 từ A04 vẫn đúng target; không gán nhầm review thành post.",
+        "JOB05 dọn đúng scope/hạn lưu, tệp bị giữ làm chứng cứ được bảo toàn.",
+        "Admin dashboard dùng IdentityMetrics A06, PropertyMetrics B04, ReportMetrics B14 và ResidencyMetrics C02; flags email/push chỉ bật khi provider được chốt."
+      ],
+      "acceptance": [
+        "Job lặp an toàn, không xóa bằng chứng đang tham chiếu.",
+        "Mọi provider metric đã merge trước task; dashboard không công khai PII và trả asOf."
+      ],
+      "priority": "P1",
+      "decisions": [
+        "D04",
+        "D05",
+        "D14"
+      ],
+      "jobs": [
+        "JOB05"
+      ],
+      "order": 41,
+      "previousTaskId": "BE-B14",
+      "nextTaskId": "BE-B15",
+      "reviewer": "B",
+      "requiredInterfaces": [
+        "IF-ROOM",
+        "IF-RESIDENT",
+        "IF-AUDIT"
+      ],
+      "integrationWith": [],
+      "qa": [],
+      "handoff": [],
+      "files": [
+        "backend/src/core/**",
+        "backend/contracts/core.*",
+        "backend/tests/fixtures/A/**",
+        "backend/tests/contracts/A/**",
+        "backend/tests/e2e/platform-*/**",
+        "backend/bootstrap.*",
+        "backend/package*",
+        "backend/lockfile",
+        ".github/workflows/backend-*",
+        "backend/src/modules/account-admin/**",
+        "backend/src/modules/audit/**",
+        "backend/src/modules/admin-dashboard/**",
+        "backend/tests/account-admin/**",
+        "database/schema.sql",
+        "database/migrations/*",
+        "scripts/build-database.cjs",
+        "backend/tests/e2e/release/**"
+      ],
+      "blockers": [
+        "BE-A05",
+        "BE-A06",
+        "BE-A12",
+        "BE-A14",
+        "BE-B04",
+        "BE-B14",
+        "BE-C02"
+      ],
+      "ownerOrder": 15
+    },
+    {
+      "id": "BE-B15",
+      "owner": "B",
+      "phase": "P6",
+      "title": "Danh sách người phù hợp theo chính sách đã chốt",
+      "points": 5,
+      "apiIds": [
+        "API-068"
+      ],
+      "modules": [
+        "roommates"
+      ],
+      "dependsOn": [
+        "BE-B13"
+      ],
+      "detail": "Chỉ triển khai score khi D02 đã chốt; không dùng thuật toán AI cho phần này và không điền tab AI.",
+      "deliverables": [
+        "Lọc self/inactive, location/budget và tiêu chí bắt buộc.",
+        "AlgorithmVersion/score/explanations cố định theo D02, test cùng dữ liệu thiếu/ngân sách biên.",
+        "Nếu D02 chưa chốt, ghi Bị chặn cho task; không trả score mẫu như kết quả thật."
+      ],
+      "acceptance": [
+        "Cùng input+algorithmVersion có kết quả xác định, không lộ PII cư dân.",
+        "Cấu trúc output giữ contract, có pagination/sort ổn định."
+      ],
+      "priority": "P1",
+      "decisions": [
+        "D02"
+      ],
+      "order": 42,
+      "previousTaskId": "BE-A15",
+      "nextTaskId": "BE-B16",
+      "reviewer": "C",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "jobs": [],
+      "qa": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/roommates/**",
+        "backend/tests/roommates/**",
+        "backend/contracts/roommates.*"
+      ],
+      "blockers": [
+        "BE-B13",
+        "BE-A15"
+      ],
+      "ownerOrder": 15
+    },
+    {
+      "id": "BE-B16",
+      "owner": "B",
+      "phase": "P6",
+      "title": "Đánh giá theo bằng chứng cư trú và audit",
+      "points": 5,
+      "apiIds": [
+        "API-153",
+        "API-154",
+        "API-155"
+      ],
+      "modules": [
+        "content-moderation"
+      ],
+      "dependsOn": [
+        "BE-B14",
+        "BE-C02",
+        "BE-C12",
+        "BE-A04"
+      ],
+      "detail": "Chốt D13 về thời điểm/hạn sửa trước khi mở review; dữ liệu chứng cứ lấy từ C, audit target review do A mở rộng D14.",
+      "deliverables": [
+        "Unique reviewer+room+contract; đúng roomTenant evidence của actor, rating 1–5.",
+        "Public chỉ PUBLISHED, moderation không sửa bằng chứng hợp đồng/cư trú.",
+        "Giữ trạng thái cần chốt nếu D13/D14 chưa có quyết định, không ghi nhầm target_post_id."
+      ],
+      "acceptance": [
+        "Tài khoản chỉ từng xem phòng không được review; không đánh giá trùng.",
+        "Ẩn review giữ audit đúng đối tượng và không làm mất cư trú."
+      ],
+      "priority": "P1",
+      "decisions": [
+        "D13",
+        "D14"
+      ],
+      "order": 43,
+      "previousTaskId": "BE-B15",
+      "nextTaskId": "BE-B17",
+      "reviewer": "C",
+      "requiredInterfaces": [
+        "IF-AUDIT",
+        "IF-RESIDENT"
+      ],
+      "integrationWith": [],
+      "jobs": [],
+      "qa": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/reviews/**",
+        "backend/src/modules/reports/**",
+        "backend/tests/content-moderation/**"
+      ],
+      "blockers": [
+        "BE-B14",
+        "BE-C02",
+        "BE-C12",
+        "BE-A04",
+        "BE-B15"
+      ],
+      "ownerOrder": 16
+    },
+    {
+      "id": "BE-B17",
+      "owner": "B",
+      "phase": "P6",
+      "title": "Dashboard chủ trọ bằng metric ports",
+      "points": 3,
+      "apiIds": [
+        "API-175"
+      ],
+      "modules": [
+        "properties"
+      ],
+      "dependsOn": [
+        "BE-B02",
+        "BE-B09",
+        "BE-A13",
+        "BE-C12"
+      ],
+      "detail": "B sở hữu API dashboard landlord; tổng hợp read-only từ properties/viewings của B, invoice của A và rental của C.",
+      "deliverables": [
+        "Scope landlord cho từng metric; ACTIVE tính occupied, không đồng nhất reserved với occupied.",
+        "Lịch chưa hết giờ, hóa đơn UNPAID/OVERDUE và pending requests có nguồn đúng module.",
+        "Có asOf, tách truy vấn count khỏi trả danh tính cư dân."
+      ],
+      "acceptance": [
+        "Không cộng nhầm dữ liệu chủ khác; amount decimal và status phù hợp.",
+        "Contract tests của metric ports phát hiện consumer dùng field cũ."
+      ],
+      "priority": "P1",
+      "order": 44,
+      "previousTaskId": "BE-B16",
+      "nextTaskId": "BE-B18",
+      "reviewer": "C",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "decisions": [],
+      "jobs": [],
+      "qa": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/properties/**",
+        "backend/src/modules/house-rights/**",
+        "backend/tests/properties/**",
+        "backend/tests/fixtures/B/**",
+        "backend/tests/contracts/B/**",
+        "backend/tests/e2e/property-*/**",
+        "backend/contracts/properties.*"
+      ],
+      "blockers": [
+        "BE-B02",
+        "BE-B09",
+        "BE-A13",
+        "BE-C12",
+        "BE-B16"
+      ],
+      "ownerOrder": 17
+    },
+    {
+      "id": "BE-B18",
+      "owner": "B",
+      "phase": "P6",
+      "title": "Worker hết quyền nhà và bảo toàn dữ liệu cũ",
+      "points": 2,
+      "apiIds": [],
+      "modules": [
+        "properties",
+        "sql-property"
+      ],
+      "dependsOn": [
+        "BE-B05"
+      ],
+      "detail": "Đưa JOB03 vào lịch chạy mà A cung cấp; nguồn quyền hiệu lực vẫn được kiểm tra ngay khi truy vấn.",
+      "deliverables": [
+        "APPROVED valid_until<todayVN → EXPIRED theo chính sách, giữ proof/history.",
+        "Không xóa/ẩn vật lý từng post hoặc kết thúc contract để giả mất quyền.",
+        "Đăng ký worker qua manifest riêng, không sửa worker registry chung."
+      ],
+      "acceptance": [
+        "Job chậm vẫn không công khai tin hết quyền; chạy lặp an toàn.",
+        "Luồng rời/kết thúc hợp đồng cũ tiếp tục dùng được."
+      ],
+      "priority": "P1",
+      "jobs": [
+        "JOB03"
+      ],
+      "qa": [
+        "QA09"
+      ],
+      "order": 45,
+      "previousTaskId": "BE-B17",
+      "nextTaskId": "BE-C13",
+      "reviewer": "C",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "decisions": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/properties/**",
+        "backend/src/modules/house-rights/**",
+        "backend/tests/properties/**",
+        "backend/tests/fixtures/B/**",
+        "backend/tests/contracts/B/**",
+        "backend/tests/e2e/property-*/**",
+        "backend/contracts/properties.*",
+        "database/source/house-rights.sql",
+        "database/source/post-review-quota.sql",
+        "database/source/viewing-proposals.sql",
+        "backend/tests/sql-property/**"
+      ],
+      "blockers": [
+        "BE-B05",
+        "BE-B17"
+      ],
+      "ownerOrder": 18
     },
     {
       "id": "BE-C13",
@@ -3100,7 +3262,13 @@
       "decisions": [
         "D11"
       ],
+      "order": 46,
+      "previousTaskId": "BE-B18",
+      "nextTaskId": "BE-C14",
       "reviewer": "A",
+      "requiredInterfaces": [
+        "IF-FILES"
+      ],
       "integrationWith": [],
       "jobs": [],
       "qa": [],
@@ -3118,9 +3286,10 @@
       ],
       "blockers": [
         "BE-C12",
-        "BE-A05"
+        "BE-A05",
+        "BE-B18"
       ],
-      "laneOrder": 13
+      "ownerOrder": 13
     },
     {
       "id": "BE-C14",
@@ -3153,7 +3322,11 @@
         "OPS02",
         "OPS03"
       ],
+      "order": 47,
+      "previousTaskId": "BE-C13",
+      "nextTaskId": "BE-C15",
       "reviewer": "A",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "decisions": [],
       "qa": [],
@@ -3170,9 +3343,10 @@
         "backend/tests/sql-rental/**"
       ],
       "blockers": [
-        "BE-C12"
+        "BE-C12",
+        "BE-C13"
       ],
-      "laneOrder": 14
+      "ownerOrder": 14
     },
     {
       "id": "BE-C15",
@@ -3209,7 +3383,11 @@
         "QA08",
         "QA09"
       ],
+      "order": 48,
+      "previousTaskId": "BE-C14",
+      "nextTaskId": "BE-B19",
       "reviewer": "A",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -3230,7 +3408,155 @@
         "BE-C14",
         "BE-B10"
       ],
-      "laneOrder": 15
+      "ownerOrder": 15
+    },
+    {
+      "id": "BE-B19",
+      "owner": "B",
+      "phase": "P7",
+      "title": "Kiểm thử module nhà/tin/lịch và nội dung",
+      "points": 5,
+      "apiIds": [],
+      "modules": [
+        "properties",
+        "posts",
+        "viewings",
+        "roommates",
+        "content-moderation"
+      ],
+      "dependsOn": [
+        "BE-B10",
+        "BE-B15",
+        "BE-B16",
+        "BE-B17",
+        "BE-B18"
+      ],
+      "detail": "B giữ tests/e2e/property-* và viewing-contract; kiểm thử quota, quyền nhà, lịch, kết nối và privacy trước bàn giao.",
+      "deliverables": [
+        "QA01/02/04/09/13/14/15 có test concurrency và quyền chéo tài khoản.",
+        "Kiểm tra D07 upload+post rollback; search/favorites/shared card sau mất quyền.",
+        "Nộp report test, collection requests và danh sách source SQL đã thay cho A."
+      ],
+      "acceptance": [
+        "Mỗi endpoint B có DTO/auth/logic/test/docs/review và phạm vi file đúng owner.",
+        "Không sửa generated SQL/seed/tests của C để làm CI xanh."
+      ],
+      "priority": "P0",
+      "qa": [
+        "QA01",
+        "QA02",
+        "QA04",
+        "QA09",
+        "QA13",
+        "QA14",
+        "QA15"
+      ],
+      "order": 49,
+      "previousTaskId": "BE-C15",
+      "nextTaskId": "BE-A16",
+      "reviewer": "C",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "decisions": [],
+      "jobs": [],
+      "handoff": [],
+      "files": [
+        "backend/src/modules/properties/**",
+        "backend/src/modules/house-rights/**",
+        "backend/tests/properties/**",
+        "backend/tests/fixtures/B/**",
+        "backend/tests/contracts/B/**",
+        "backend/tests/e2e/property-*/**",
+        "backend/contracts/properties.*",
+        "backend/src/modules/posts/**",
+        "backend/tests/posts/**",
+        "backend/contracts/posts.*",
+        "backend/src/modules/viewings/**",
+        "backend/tests/viewings/**",
+        "backend/tests/e2e/viewing-contract/**",
+        "backend/contracts/viewings.*",
+        "backend/src/modules/roommates/**",
+        "backend/tests/roommates/**",
+        "backend/contracts/roommates.*",
+        "backend/src/modules/reviews/**",
+        "backend/src/modules/reports/**",
+        "backend/tests/content-moderation/**"
+      ],
+      "blockers": [
+        "BE-B10",
+        "BE-B15",
+        "BE-B16",
+        "BE-B17",
+        "BE-B18",
+        "BE-C15"
+      ],
+      "ownerOrder": 19
+    },
+    {
+      "id": "BE-A16",
+      "owner": "A",
+      "phase": "P7",
+      "title": "Kiểm thử bảo mật, hóa đơn và lỗi hạ tầng",
+      "points": 5,
+      "apiIds": [],
+      "modules": [
+        "platform",
+        "billing",
+        "messaging"
+      ],
+      "dependsOn": [
+        "BE-A15"
+      ],
+      "detail": "A giữ tests/e2e/platform-*; kiểm thử phần nền tảng và dòng tiền, tránh ba người sửa một kịch bản E2E lớn.",
+      "deliverables": [
+        "Test scope chéo ID, nhiều vai trò, revoke/LOCKED, OTP và tài liệu riêng.",
+        "Test idempotency sau commit/timeout, outbox/SSE reconnect và invoice snapshot.",
+        "Ghi bằng chứng chạy CI, migration mới và cách rollback/retry về mặt vận hành."
+      ],
+      "acceptance": [
+        "QA10/11/12/15/16 đạt trên DB tạm và storage test.",
+        "Không dùng localStorage wireframe làm bằng chứng backend đã chạy."
+      ],
+      "priority": "P0",
+      "qa": [
+        "QA10",
+        "QA11",
+        "QA12",
+        "QA15",
+        "QA16"
+      ],
+      "order": 50,
+      "previousTaskId": "BE-B19",
+      "nextTaskId": "BE-C16",
+      "reviewer": "B",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "decisions": [],
+      "jobs": [],
+      "handoff": [],
+      "files": [
+        "backend/src/core/**",
+        "backend/contracts/core.*",
+        "backend/tests/fixtures/A/**",
+        "backend/tests/contracts/A/**",
+        "backend/tests/e2e/platform-*/**",
+        "backend/bootstrap.*",
+        "backend/package*",
+        "backend/lockfile",
+        ".github/workflows/backend-*",
+        "backend/src/modules/billing/**",
+        "backend/tests/billing/**",
+        "backend/contracts/billing.*",
+        "backend/src/modules/messaging/**",
+        "backend/src/modules/notifications/**",
+        "backend/tests/messaging/**",
+        "backend/contracts/messaging.*"
+      ],
+      "blockers": [
+        "BE-A15",
+        "BE-B19"
+      ],
+      "ownerOrder": 16
     },
     {
       "id": "BE-C16",
@@ -3261,7 +3587,11 @@
       "handoff": [
         "Báo cáo E2E liên module cho A17."
       ],
+      "order": 51,
+      "previousTaskId": "BE-A16",
+      "nextTaskId": "BE-A17",
       "reviewer": "A",
+      "requiredInterfaces": [],
       "integrationWith": [],
       "decisions": [],
       "jobs": [],
@@ -3279,7 +3609,60 @@
         "BE-A16",
         "BE-B19"
       ],
-      "laneOrder": 16
+      "ownerOrder": 16
+    },
+    {
+      "id": "BE-A17",
+      "owner": "A",
+      "phase": "P7",
+      "title": "Tích hợp bản bàn giao Backend",
+      "points": 3,
+      "apiIds": [],
+      "modules": [
+        "integration"
+      ],
+      "dependsOn": [
+        "BE-A16",
+        "BE-B19",
+        "BE-C16"
+      ],
+      "detail": "A là người tích hợp tệp dùng chung; việc phát hành thực tế là một bước riêng sau khi team duyệt bản release.",
+      "deliverables": [
+        "Tái sinh schema từ toàn bộ source, chốt thứ tự migration; test tạo mới/nâng cấp trên DB tạm.",
+        "Đối chiếu 176 API có đúng một task/module owner, gom collection/API docs và hướng dẫn chạy.",
+        "Xác nhận G0–G6 và report E2E C16 trước bàn giao; chốt G7 sau khi A17 hoàn thành, không dùng gate chứa chính A17 làm điều kiện bắt đầu."
+      ],
+      "acceptance": [
+        "Feature CI, DB check, contract tests và E2E ba lane đều xanh.",
+        "Không ai sửa tay schema sinh ra; không deploy hoặc áp dụng migration DB thật trong task tài liệu này."
+      ],
+      "priority": "P0",
+      "jobs": [
+        "OPS01"
+      ],
+      "handoff": [
+        "Bản release có thể review, checklist và hướng dẫn bàn giao."
+      ],
+      "order": 52,
+      "previousTaskId": "BE-C16",
+      "nextTaskId": null,
+      "reviewer": "B",
+      "requiredInterfaces": [],
+      "integrationWith": [],
+      "decisions": [],
+      "qa": [],
+      "files": [
+        "database/schema.sql",
+        "database/migrations/*",
+        "scripts/build-database.cjs",
+        "backend/tests/e2e/release/**"
+      ],
+      "blockers": [
+        "BE-A16",
+        "BE-B19",
+        "BE-C16"
+      ],
+      "ownerOrder": 17
     }
   ],
   "interfaces": [
@@ -3293,7 +3676,8 @@
       ],
       "signature": "ActorContext; ResultEnvelope; DomainError; UnitOfWork; ProcedureRunner",
       "payload": "actor.userId/roles/sessionId/requestId; ID string; decimal/date; UoW(connection) hoặc CALL tự transaction",
-      "rule": "Không tin actor trong body; CALL không chạy bên trong transaction app."
+      "rule": "Không tin actor trong body; CALL không chạy bên trong transaction app.",
+      "order": 4
     },
     {
       "id": "IF-TOKEN",
@@ -3304,7 +3688,8 @@
       ],
       "signature": "TokenPort.issue/consume(purpose,target,actor,tx)",
       "payload": "Purpose OCCUPANT_LINK; targetRoomTenantId; expiresAt; attempt/consumed/revoked",
-      "rule": "C mở UoW khi liên kết; adapter A dùng cùng tx, không gọi HTTP hoặc commit riêng."
+      "rule": "C mở UoW khi liên kết; adapter A dùng cùng tx, không gọi HTTP hoặc commit riêng.",
+      "order": 9
     },
     {
       "id": "IF-FILES",
@@ -3316,7 +3701,8 @@
       ],
       "signature": "FilePort.assertUsable/authorizeDownload(actor,fileId,purpose,context,tx?)",
       "payload": "Metadata PRIVATE/ACTIVE, owner, MIME/size/hash/expiry; fileId, không có bucket URL cố định",
-      "rule": "Context resolver đăng ký theo module; proof đã nộp bất biến, không tạo import vòng."
+      "rule": "Context resolver đăng ký theo module; proof đã nộp bất biến, không tạo import vòng.",
+      "order": 7
     },
     {
       "id": "IF-ROOM",
@@ -3326,9 +3712,10 @@
         "A",
         "C"
       ],
-      "signature": "PropertyReadPort.getRentalSnapshot(roomId,actor,tx?)",
-      "payload": "houseId/landlordId/status/capacity/load/effectiveRight/verificationVersion/asOf",
-      "rule": "Chỉ snapshot; khi giữ phòng/gia hạn/chuyển phải kiểm tra lại dưới khóa SQL."
+      "signature": "PropertyReadPort.getRentalSnapshot/getMetrics(actor,roomId?,tx?)",
+      "payload": "house/room/post counts và rental snapshot; asOf, không PII; provider SQL thật hoàn tất tại B04",
+      "rule": "Khi giữ phòng/gia hạn/chuyển phải kiểm tra lại dưới khóa SQL; metrics không đợi dashboard B17.",
+      "order": 12
     },
     {
       "id": "IF-SERVICE",
@@ -3339,7 +3726,8 @@
       ],
       "signature": "ServiceQuotePort.getEffective(roomId,tx)",
       "payload": "name/unit/method/unitPrice từ active_room_services, null kế thừa/0 giữ 0",
-      "rule": "A chốt bản sao invoice dưới UoW; B đổi bảng giá không sửa invoice_items."
+      "rule": "A chốt bản sao invoice dưới UoW; B đổi bảng giá không sửa invoice_items.",
+      "order": 11
     },
     {
       "id": "IF-RESIDENT",
@@ -3349,9 +3737,10 @@
         "A",
         "B"
       ],
-      "signature": "ResidencyReadPort.getContractSnapshot/getActiveStay(actor,contractId?,tx?)",
-      "payload": "currentRevision/payer/member ACTIVE+PLANNED/roomId; field privacy theo actor",
-      "rule": "Không tính cư trú chỉ bằng status contract/representative. Consumer không ghi room_tenants."
+      "signature": "ResidencyReadPort.getContractSnapshot/getActiveStay/getMetrics(actor,contractId?,tx?)",
+      "payload": "currentRevision/payer/member, contract/join metrics và roomId; SQL thật đã kiểm thử ở C02",
+      "rule": "Không tính cư trú chỉ bằng status contract/representative. Consumer không ghi room_tenants.",
+      "order": 13
     },
     {
       "id": "IF-CHAT",
@@ -3363,7 +3752,8 @@
       ],
       "signature": "ConversationPort.assertInquiry/ensureRoommateConversation(tx,request)",
       "payload": "conversationId/postId/roomId/tenantId/landlordId; đúng hai participant",
-      "rule": "B13 accept và tạo chat dùng cùng tx; không gọi API A qua mạng trong transaction."
+      "rule": "B13 accept và tạo chat dùng cùng tx; không gọi API A qua mạng trong transaction.",
+      "order": 19
     },
     {
       "id": "IF-VIEWING",
@@ -3375,7 +3765,8 @@
       ],
       "signature": "ViewingReadPort.getTimeline/getRentalEvidence(actor,context,tx?)",
       "payload": "Proposal/schedule hiện tại theo conversation, viewingId/status/tenantDecision cho hợp đồng",
-      "rule": "Chỉ đọc bảng lịch gốc; người gọi kiểm tra quyền, không tạo bản sao trạng thái trong chat."
+      "rule": "Chỉ đọc bảng lịch gốc; người gọi kiểm tra quyền, không tạo bản sao trạng thái trong chat.",
+      "order": 21
     },
     {
       "id": "IF-CONNECTION",
@@ -3387,7 +3778,8 @@
       ],
       "signature": "ConnectionReadPort.assertAccepted(actor,connectionId,tx?)",
       "payload": "sender/receiver/status/endedAt, không dùng làm consent thuê",
-      "rule": "A kiểm tra khi mở/gửi, C lấy consent riêng từ đại diện và applicant."
+      "rule": "A kiểm tra khi mở/gửi, C lấy consent riêng từ đại diện và applicant.",
+      "order": 12
     },
     {
       "id": "IF-EVENT",
@@ -3399,7 +3791,8 @@
       ],
       "signature": "EventPort.append(tx,event) + procedure notification dispatcher",
       "payload": "eventId/eventKey/recipient/resource/occurredAt; business event version",
-      "rule": "Service append cùng tx; procedure theo cơ chế sau COMMIT đã chốt, không insert thông báo trùng."
+      "rule": "Service append cùng tx; procedure theo cơ chế sau COMMIT đã chốt, không insert thông báo trùng.",
+      "order": 6
     },
     {
       "id": "IF-AUDIT",
@@ -3410,8 +3803,9 @@
         "C"
       ],
       "signature": "AuditPort.append(tx,actor,action,target,before,after,reason)",
-      "payload": "Đúng target FK hiện có; extension D14 có migration trước khi dùng",
-      "rule": "Procedure đã audit thì không ghi lần hai. Không nhét review/template vào target_post_id."
+      "payload": "D14 được chốt và triển khai tại A04, có target template/review/criterion trước mọi consumer",
+      "rule": "Procedure đã audit thì không ghi lần hai. Không nhét review/template vào target_post_id.",
+      "order": 6
     }
   ],
   "gates": [
@@ -3421,71 +3815,73 @@
       "title": "Contract v1 và quyền file được chốt",
       "taskIds": [
         "BE-A01",
-        "BE-A02",
         "BE-B01",
-        "BE-C01"
+        "BE-C01",
+        "BE-A02"
       ],
-      "acceptance": "Cả ba duyệt core/domain contracts và fixture; manifest, nhánh và quy tắc thay đổi chung đã rõ."
+      "acceptance": "A01 → B01 → C01 → A02 đã merge/review; bản contract chốt dùng hai bản phân tích đã bàn giao."
     },
     {
       "id": "G1",
       "phase": "P1",
-      "title": "Có bộ nền tảng dùng được",
+      "title": "Nền tảng hoạt động thật",
       "taskIds": [
         "BE-A03",
         "BE-A04",
         "BE-A05",
-        "BE-B04",
-        "BE-C02",
-        "BE-C03"
+        "BE-A06",
+        "BE-A07"
       ],
-      "acceptance": "Auth thật, kho tệp test, idempotency và các cổng đọc đạt contract test; test DB độc lập."
+      "acceptance": "Auth, audit mở rộng, idempotency, tệp, cấp vai trò và TokenPort đã chạy với DB/kho test, sẵn sàng cho module nghiệp vụ."
     },
     {
       "id": "G2",
       "phase": "P2",
-      "title": "Tin công khai và chat đúng ngữ cảnh",
+      "title": "Nhà/phòng và các provider đã sẵn sàng",
       "taskIds": [
-        "BE-A06",
-        "BE-A07",
-        "BE-A08",
+        "BE-B02",
+        "BE-B03",
+        "BE-B04",
+        "BE-C02",
+        "BE-C03",
         "BE-B05",
         "BE-B06",
         "BE-B07",
         "BE-C04"
       ],
-      "acceptance": "Có quyền nhà, post đã duyệt và tin tenant gửi đúng room; expected revision được bảo vệ trong SQL."
+      "acceptance": "Có cổng đọc SQL thật, mẫu hợp đồng, quyền nhà, tin public và expected revision; consumer ở lượt sau không phải chờ implementation."
     },
     {
       "id": "G3",
       "phase": "P3",
-      "title": "Hẹn xem → giữ phòng nguyên tử",
+      "title": "Chat → hẹn xem → giữ phòng nguyên tử",
       "taskIds": [
+        "BE-A08",
         "BE-A09",
         "BE-B08",
         "BE-B09",
-        "BE-B10",
-        "BE-C05"
+        "BE-C05",
+        "BE-B10"
       ],
-      "acceptance": "Tenant COMPLETED+AGREED → contract pending giữ room; lịch/proposal đóng đúng, hai người tranh phòng chỉ một thắng."
+      "acceptance": "Chat/thông báo đã xong trước lịch xem; contract dùng COMPLETED+AGREED rồi đóng lịch tương lai, có test tranh giữ phòng."
     },
     {
       "id": "G4",
       "phase": "P4",
       "title": "Cư trú thực tế và hóa đơn nháp",
       "taskIds": [
-        "BE-A10",
-        "BE-A11",
-        "BE-A12",
-        "BE-B11",
-        "BE-B12",
-        "BE-B13",
         "BE-C06",
         "BE-C07",
         "BE-C08",
-        "BE-C09"
+        "BE-B11",
+        "BE-B12",
+        "BE-B13",
+        "BE-A11",
+        "BE-C09",
+        "BE-A10",
+        "BE-A12"
       ],
-      "acceptance": "Move-in mới ACTIVE, invoice đếm đúng người, kết nối/chat không tự thành thuê chung, token link nguyên tử."
+      "acceptance": "Move-in xong trước hồ sơ IN_SYSTEM/hóa đơn; kết nối xong trước thẻ chia sẻ; token link, consent và quản trị tài khoản đạt."
     },
     {
       "id": "G5",
@@ -3493,13 +3889,13 @@
       "title": "Bàn giao/đổi phòng/thu tiền đúng lịch sử",
       "taskIds": [
         "BE-A13",
-        "BE-A14",
-        "BE-B14",
         "BE-C10",
         "BE-C11",
-        "BE-C12"
+        "BE-C12",
+        "BE-A14",
+        "BE-B14"
       ],
-      "acceptance": "Giữ invoice/payer cũ, chuyển đủ nhóm và rollback, hold 48h đúng, SSE phát sau commit."
+      "acceptance": "Thu tiền hoàn tất trước ca bàn giao; đổi phòng rollback đúng, hold 48h hợp lệ, báo cáo và SSE dùng provider đã hoàn tất."
     },
     {
       "id": "G6",
@@ -3514,20 +3910,20 @@
         "BE-C13",
         "BE-C14"
       ],
-      "acceptance": "D02/D11/D13/D14 được chốt trước tính năng tương ứng; worker không tự kết thúc cư trú bằng suy đoán."
+      "acceptance": "D02/D11/D13 được chốt tại task dùng; D14 đã xong từ A04. Metrics không chờ dashboard; worker giữ lịch sử."
     },
     {
       "id": "G7",
       "phase": "P7",
       "title": "Bản bàn giao có bằng chứng",
       "taskIds": [
-        "BE-A16",
-        "BE-A17",
-        "BE-B19",
         "BE-C15",
-        "BE-C16"
+        "BE-B19",
+        "BE-A16",
+        "BE-C16",
+        "BE-A17"
       ],
-      "acceptance": "Module tests, concurrency, E2E, SQL tạo mới/nâng cấp và 176 API coverage đạt; không có stub trong cấu hình production."
+      "acceptance": "C15 → B19 → A16 → C16 → A17 đã review/merge; đủ 176 API và SQL/E2E, không còn provider rỗng ở production."
     }
   ],
   "rules": [
@@ -3543,13 +3939,13 @@
     },
     {
       "id": "RULE-03",
-      "title": "Chạy song song khi contract đã chốt",
-      "body": "Sau G0, B/C có thể code adapter/DTO/test bằng mock cùng contract v1 trước khi A hoàn tất provider. Chỉ coi tích hợp đạt khi adapter thật và gate tương ứng xanh; mock không chứng minh backend production hoàn tất."
+      "title": "Một hàng đợi, một task đang thực hiện",
+      "body": "Làm theo số thứ tự toàn cục 01–52. Chỉ nhận task đầu tiên chưa hoàn thành; hai người còn lại review khi được yêu cầu, không mở một luồng code riêng."
     },
     {
       "id": "RULE-04",
-      "title": "Giai đoạn không phải hàng rào chờ cả team",
-      "body": "Mỗi người lấy task sẵn sàng kế tiếp trong lane của mình. Có thể chuẩn bị code/test task sau bằng contract/fixture đã chốt; các cạnh phụ thuộc chỉ ra điều kiện tích hợp. Không đợi toàn bộ Pn xong mới bắt đầu mọi việc của Pn+1."
+      "title": "Hoàn tất và merge trước khi chuyển lượt",
+      "body": "Task hiện tại phải đủ 7 bước, có PR/commit và bằng chứng test, đã merge main cùng SQL sinh ra nếu có. Người nhận cập nhật main từ commit bàn giao rồi mới tạo nhánh/task kế tiếp."
     },
     {
       "id": "RULE-05",
@@ -3588,13 +3984,13 @@
     },
     {
       "id": "RULE-12",
-      "title": "Định nghĩa hoàn thành chung",
-      "body": "Task hoàn thành có thiết kế/contract, code+validation+scope, kiểm thử DB/integration, tài liệu và review/merge đủ bằng chứng. Đã merge với mock và Chờ tích hợp là trạng thái riêng; chỉ đánh Hoàn thành khi các điều kiện nghiệm thu liên quan đã đạt."
+      "title": "Provider thật trước consumer",
+      "body": "Port/query/procedure được bàn giao phải có implementation và test DB thật ở task cung cấp. Mock chỉ dùng cô lập unit test; không lấy provider rỗng hoặc một task tương lai làm điều kiện hoàn thành task hiện tại. Nếu thiếu đầu vào, dừng tại task hiện tại để xử lý."
     },
     {
       "id": "RULE-13",
-      "title": "Không cân việc chỉ bằng số endpoint",
-      "body": "Độ lớn dùng điểm tương đối (SP), không phải ngày công hay deadline. A có chi phí nền tảng/hạ tầng, B nhiều API CRUD, C ít route nhưng nhiều race/rollback. Rà soát điểm sau G1 theo năng lực thực tế và giữ nguyên module owner khi điều chỉnh việc hỗ trợ."
+      "title": "Phân công theo trách nhiệm, thực hiện theo số thứ tự",
+      "body": "A/B/C vẫn giữ module của mình để tránh sửa chéo file. SP chỉ mô tả độ lớn tương đối, không dùng để xếp ba người làm cùng thời điểm. Các mốc P0–P7 là các đoạn liên tiếp của một hàng đợi."
     },
     {
       "id": "RULE-14",
@@ -3632,7 +4028,7 @@
       "detail": "Wireframe chỉ mở/gửi khi kết nối còn hiệu lực; đề xuất giữ lịch sử đọc cho hai bên sau ended, chặn gửi. Chưa coi đề xuất là rule đã duyệt.",
       "owner": "A",
       "priority": "P1",
-      "taskId": "BE-A11",
+      "taskId": "BE-A08",
       "approver": "Người phụ trách sản phẩm + B",
       "originalStatus": "Cần chốt"
     },
@@ -3731,7 +4127,7 @@
       "detail": "Chỉ thu toàn bộ do chủ ghi nhận; kiểm tra paid_by_id/payer theo schema. Thanh toán online, trả một phần, hoàn cọc và đối soát cần bảng giao dịch mới, không thuộc API cơ sở.",
       "owner": "A",
       "priority": "P1",
-      "taskId": "BE-A13",
+      "taskId": "BE-A10",
       "approver": "Người phụ trách sản phẩm + C",
       "originalStatus": "Giới hạn phạm vi"
     },
@@ -3753,8 +4149,8 @@
       "detail": "moderation_actions chưa có target review/template/criterion/service. Nếu audit các đối tượng này cần mở rộng mô hình hoặc event audit riêng; không gán nhầm target_post_id.",
       "owner": "A",
       "priority": "P1",
-      "taskId": "BE-A15",
-      "approver": "A đề xuất, B/C chốt target",
+      "taskId": "BE-A04",
+      "approver": "A đề xuất, B/C chốt target trước khi consumer được viết",
       "originalStatus": "Cần thiết kế"
     },
     {
@@ -3779,7 +4175,8 @@
       "logic": "PENDING có starts_at≤UTC now → EXPIRED. Read/write vẫn kiểm tra thời gian ngay cả khi job trễ.",
       "acceptance": "Retry không tạo thêm lịch; không công khai API job.",
       "owner": "C",
-      "taskId": "BE-C14"
+      "taskId": "BE-C14",
+      "order": 47
     },
     {
       "id": "JOB02",
@@ -3790,7 +4187,8 @@
       "logic": "APPROVED hold_expires_at≤now → EXPIRED; không chạm COMPLETED/member đã tạo.",
       "acceptance": "Capacity không tính hold quá hạn kể cả job chưa chạy.",
       "owner": "C",
-      "taskId": "BE-C14"
+      "taskId": "BE-C14",
+      "order": 47
     },
     {
       "id": "JOB03",
@@ -3801,7 +4199,8 @@
       "logic": "APPROVED valid_until < todayVN → EXPIRED, giữ hồ sơ/tệp; view hiệu lực chặn ngay.",
       "acceptance": "Không tự kết thúc hợp đồng cũ, không tự xóa tin.",
       "owner": "B",
-      "taskId": "BE-B18"
+      "taskId": "BE-B18",
+      "order": 45
     },
     {
       "id": "JOB04",
@@ -3812,7 +4211,8 @@
       "logic": "UNPAID có due_date<todayVN → OVERDUE; không sửa PAID/CANCELLED.",
       "acceptance": "Lặp không gửi trùng nhắc nợ; event_key ổn định.",
       "owner": "A",
-      "taskId": "BE-A13"
+      "taskId": "BE-A13",
+      "order": 35
     },
     {
       "id": "JOB05",
@@ -3823,7 +4223,8 @@
       "logic": "Thu hồi/xóa theo chính sách D01/D05, không xóa tệp proof/hợp đồng đang được giữ.",
       "acceptance": "Kiểm tra tham chiếu trước khi xóa object; không log OTP.",
       "owner": "A",
-      "taskId": "BE-A15"
+      "taskId": "BE-A15",
+      "order": 41
     },
     {
       "id": "JOB06",
@@ -3834,7 +4235,8 @@
       "logic": "Delivery theo eventId/recipient, retry/backoff/dedupe; chỉ phát dữ liệu tối thiểu.",
       "acceptance": "Giữ nghiệp vụ đúng nếu kênh SSE mất kết nối; client fetch lại.",
       "owner": "A",
-      "taskId": "BE-A14"
+      "taskId": "BE-A14",
+      "order": 39
     },
     {
       "id": "OPS01",
@@ -3845,7 +4247,8 @@
       "logic": "Tạo mới HOẶC nâng cấp theo thứ tự README; dừng khi preflight lỗi; không có HTTP endpoint chạy SQL.",
       "acceptance": "Sao lưu + dry run trên DB tạm; không dùng --force.",
       "owner": "A",
-      "taskId": "BE-A17"
+      "taskId": "BE-A17",
+      "order": 52
     },
     {
       "id": "OPS02",
@@ -3856,7 +4259,8 @@
       "logic": "ACTIVE trên contract đóng vẫn tính tải; báo cáo lỗi thay vì đoán ngày rời/nhận đại diện.",
       "acceptance": "Không tự mở lại hợp đồng, không xóa lịch sử.",
       "owner": "C",
-      "taskId": "BE-C14"
+      "taskId": "BE-C14",
+      "order": 47
     },
     {
       "id": "OPS03",
@@ -3867,7 +4271,8 @@
       "logic": "Không tự đóng hợp đồng bỏ lại cư dân ACTIVE. EXPIRED có trong schema; cần quy trình bàn giao/kết thúc/đối soát rõ.",
       "acceptance": "Giữ nghĩa vụ hóa đơn và người ở, không suy đoán đã rời.",
       "owner": "C",
-      "taskId": "BE-C14"
+      "taskId": "BE-C14",
+      "order": 47
     }
   ],
   "qa": [
@@ -3904,13 +4309,13 @@
       "flow": "create-contract",
       "scenario": "2 lịch COMPLETED+AGREED cùng room tạo hợp đồng: chỉ một open contract; rollback mọi side effect bên thua.",
       "taskIds": [
-        "BE-B10",
         "BE-C05",
+        "BE-B10",
         "BE-C15"
       ],
       "owners": [
-        "B",
-        "C"
+        "C",
+        "B"
       ]
     },
     {
@@ -3919,13 +4324,13 @@
       "flow": "reserve-cleanup",
       "scenario": "Hủy SCHEDULED tương lai và reject pending còn hạn trên tất cả bài cùng room; giữ lịch đang diễn ra/đã kết thúc. Hủy contract không hồi lịch.",
       "taskIds": [
+        "BE-C05",
         "BE-B10",
-        "BE-B19",
-        "BE-C05"
+        "BE-B19"
       ],
       "owners": [
-        "B",
-        "C"
+        "C",
+        "B"
       ]
     },
     {
@@ -3990,20 +4395,20 @@
       "flow": "house-rights-expiry",
       "scenario": "Hết hạn/thu hồi/đổi định danh/khóa landlord: public ẩn ngay, thuê mới/gia hạn/đích bị chặn, rời/kết thúc cũ vẫn hoạt động.",
       "taskIds": [
-        "BE-A12",
         "BE-B02",
         "BE-B05",
         "BE-B06",
         "BE-B07",
-        "BE-B18",
-        "BE-B19",
+        "BE-A12",
         "BE-C11",
         "BE-C12",
-        "BE-C15"
+        "BE-B18",
+        "BE-C15",
+        "BE-B19"
       ],
       "owners": [
-        "A",
         "B",
+        "A",
         "C"
       ]
     },
@@ -4013,14 +4418,14 @@
       "flow": "pay-invoice",
       "scenario": "Đổi giá dịch vụ/đại diện sau phát hành: invoice cũ không đổi. Kỳ trùng bị chặn; override=0 giữ 0; meter cuối<đầu bị chặn.",
       "taskIds": [
+        "BE-B03",
         "BE-A10",
         "BE-A13",
-        "BE-A16",
-        "BE-B03"
+        "BE-A16"
       ],
       "owners": [
-        "A",
-        "B"
+        "B",
+        "A"
       ]
     },
     {
@@ -4029,12 +4434,12 @@
       "flow": "data-safety",
       "scenario": "Thử ID nhà/contract/member/file/chat/invoice của người khác, bao gồm nested route không khớp parent; không lộ PII.",
       "taskIds": [
-        "BE-A16",
-        "BE-C02"
+        "BE-C02",
+        "BE-A16"
       ],
       "owners": [
-        "A",
-        "C"
+        "C",
+        "A"
       ]
     },
     {
@@ -4057,13 +4462,13 @@
       "flow": "share-post",
       "scenario": "Ẩn đúng postId đã share: sharedPost null/unavailable, không lộ ảnh/tiêu đề hoặc tự đổi sang tin khác của phòng.",
       "taskIds": [
-        "BE-A11",
         "BE-B07",
+        "BE-A11",
         "BE-B19"
       ],
       "owners": [
-        "A",
-        "B"
+        "B",
+        "A"
       ]
     },
     {
@@ -4087,9 +4492,9 @@
       "scenario": "MIME giả, size vượt, file của người khác, PRIVATE đổi PUBLIC, file proof đã nộp bị xóa/đổi bytes: đều bị từ chối.",
       "taskIds": [
         "BE-A05",
-        "BE-A16",
         "BE-B05",
-        "BE-B19"
+        "BE-B19",
+        "BE-A16"
       ],
       "owners": [
         "A",
@@ -4125,6 +4530,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 5,
       "decision": null
     },
     {
@@ -4140,6 +4546,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 5,
       "decision": null
     },
     {
@@ -4155,6 +4562,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 5,
       "decision": null
     },
     {
@@ -4170,6 +4578,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 5,
       "decision": null
     },
     {
@@ -4185,6 +4594,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 5,
       "decision": "D04"
     },
     {
@@ -4199,7 +4609,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": "D05"
     },
     {
@@ -4214,7 +4625,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": null
     },
     {
@@ -4229,7 +4641,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": null
     },
     {
@@ -4244,7 +4657,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": null
     },
     {
@@ -4259,7 +4673,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": null
     },
     {
@@ -4274,7 +4689,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": null
     },
     {
@@ -4289,7 +4705,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": null
     },
     {
@@ -4304,7 +4721,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": null
     },
     {
@@ -4319,7 +4737,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": null
     },
     {
@@ -4334,7 +4753,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": null
     },
     {
@@ -4349,7 +4769,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": null
     },
     {
@@ -4364,7 +4785,8 @@
       "taskId": "BE-A06",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 8,
       "decision": null
     },
     {
@@ -4380,6 +4802,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 5,
       "decision": null
     },
     {
@@ -4395,6 +4818,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 5,
       "decision": null
     },
     {
@@ -4410,6 +4834,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 5,
       "decision": null
     },
     {
@@ -4425,6 +4850,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 5,
       "decision": null
     },
     {
@@ -4439,7 +4865,8 @@
       "taskId": "BE-A07",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 9,
       "decision": "D01"
     },
     {
@@ -4454,7 +4881,8 @@
       "taskId": "BE-A07",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 9,
       "decision": null
     },
     {
@@ -4469,7 +4897,8 @@
       "taskId": "BE-A07",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 9,
       "decision": "D01"
     },
     {
@@ -4484,7 +4913,8 @@
       "taskId": "BE-A07",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 9,
       "decision": null
     },
     {
@@ -4499,7 +4929,8 @@
       "taskId": "BE-A07",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P1",
+      "order": 9,
       "decision": null
     },
     {
@@ -4515,6 +4946,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 27,
       "decision": "D06"
     },
     {
@@ -4530,6 +4962,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 27,
       "decision": "D06"
     },
     {
@@ -4544,7 +4977,8 @@
       "taskId": "BE-B02",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 10,
       "decision": null
     },
     {
@@ -4559,7 +4993,8 @@
       "taskId": "BE-B02",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 10,
       "decision": null
     },
     {
@@ -4574,7 +5009,8 @@
       "taskId": "BE-B02",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 10,
       "decision": null
     },
     {
@@ -4589,7 +5025,8 @@
       "taskId": "BE-B02",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 10,
       "decision": null
     },
     {
@@ -4605,6 +5042,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 15,
       "decision": null
     },
     {
@@ -4620,6 +5058,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 15,
       "decision": null
     },
     {
@@ -4635,6 +5074,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 15,
       "decision": null
     },
     {
@@ -4650,6 +5090,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 15,
       "decision": null
     },
     {
@@ -4665,6 +5106,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 15,
       "decision": null
     },
     {
@@ -4680,6 +5122,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 15,
       "decision": null
     },
     {
@@ -4695,6 +5138,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 15,
       "decision": null
     },
     {
@@ -4710,6 +5154,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 15,
       "decision": null
     },
     {
@@ -4725,6 +5170,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 15,
       "decision": null
     },
     {
@@ -4739,7 +5185,8 @@
       "taskId": "BE-B02",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 10,
       "decision": null
     },
     {
@@ -4754,7 +5201,8 @@
       "taskId": "BE-B02",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 10,
       "decision": null
     },
     {
@@ -4769,7 +5217,8 @@
       "taskId": "BE-B02",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 10,
       "decision": null
     },
     {
@@ -4784,7 +5233,8 @@
       "taskId": "BE-B02",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 10,
       "decision": null
     },
     {
@@ -4800,6 +5250,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 17,
       "decision": null
     },
     {
@@ -4815,6 +5266,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 16,
       "decision": null
     },
     {
@@ -4829,7 +5281,8 @@
       "taskId": "BE-C02",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 13,
       "decision": null
     },
     {
@@ -4844,7 +5297,8 @@
       "taskId": "BE-B03",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 11,
       "decision": null
     },
     {
@@ -4860,6 +5314,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 16,
       "decision": null
     },
     {
@@ -4875,6 +5330,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 16,
       "decision": "D07"
     },
     {
@@ -4890,6 +5346,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 16,
       "decision": "D07"
     },
     {
@@ -4905,6 +5362,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 16,
       "decision": null
     },
     {
@@ -4920,6 +5378,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 16,
       "decision": null
     },
     {
@@ -4935,6 +5394,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 16,
       "decision": null
     },
     {
@@ -4950,6 +5410,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 16,
       "decision": null
     },
     {
@@ -4965,6 +5426,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 17,
       "decision": null
     },
     {
@@ -4980,6 +5442,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 17,
       "decision": null
     },
     {
@@ -4995,6 +5458,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 17,
       "decision": null
     },
     {
@@ -5010,6 +5474,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 17,
       "decision": null
     },
     {
@@ -5025,6 +5490,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P2",
+      "order": 17,
       "decision": null
     },
     {
@@ -5040,6 +5506,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 28,
       "decision": null
     },
     {
@@ -5055,6 +5522,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 28,
       "decision": null
     },
     {
@@ -5070,6 +5538,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 28,
       "decision": null
     },
     {
@@ -5085,6 +5554,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 29,
       "decision": null
     },
     {
@@ -5100,6 +5570,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 28,
       "decision": null
     },
     {
@@ -5115,6 +5586,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 28,
       "decision": null
     },
     {
@@ -5130,6 +5602,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P6",
+      "order": 42,
       "decision": "D02"
     },
     {
@@ -5145,6 +5618,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 29,
       "decision": null
     },
     {
@@ -5160,6 +5634,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 29,
       "decision": "D02"
     },
     {
@@ -5175,6 +5650,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 30,
       "decision": null
     },
     {
@@ -5190,6 +5666,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 30,
       "decision": null
     },
     {
@@ -5205,6 +5682,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 30,
       "decision": null
     },
     {
@@ -5220,6 +5698,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 30,
       "decision": null
     },
     {
@@ -5235,6 +5714,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P4",
+      "order": 30,
       "decision": "D03"
     },
     {
@@ -5249,7 +5729,8 @@
       "taskId": "BE-A08",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P3",
+      "order": 19,
       "decision": "D08"
     },
     {
@@ -5264,7 +5745,8 @@
       "taskId": "BE-A08",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P3",
+      "order": 19,
       "decision": null
     },
     {
@@ -5279,7 +5761,8 @@
       "taskId": "BE-A08",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P3",
+      "order": 19,
       "decision": null
     },
     {
@@ -5294,7 +5777,8 @@
       "taskId": "BE-A08",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P3",
+      "order": 19,
       "decision": null
     },
     {
@@ -5309,7 +5793,8 @@
       "taskId": "BE-A08",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P3",
+      "order": 19,
       "decision": null
     },
     {
@@ -5324,7 +5809,8 @@
       "taskId": "BE-A08",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P3",
+      "order": 19,
       "decision": null
     },
     {
@@ -5339,7 +5825,8 @@
       "taskId": "BE-A08",
       "owner": "A",
       "reviewer": "B",
-      "phase": "P2",
+      "phase": "P3",
+      "order": 19,
       "decision": null
     },
     {
@@ -5357,6 +5844,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 31,
       "decision": null
     },
     {
@@ -5372,6 +5860,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 31,
       "decision": null
     },
     {
@@ -5387,6 +5876,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 31,
       "decision": null
     },
     {
@@ -5402,6 +5892,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P3",
+      "order": 20,
       "decision": null
     },
     {
@@ -5417,6 +5908,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P3",
+      "order": 20,
       "decision": null
     },
     {
@@ -5432,6 +5924,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P3",
+      "order": 20,
       "decision": null
     },
     {
@@ -5447,6 +5940,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P3",
+      "order": 20,
       "decision": null
     },
     {
@@ -5462,6 +5956,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P5",
+      "order": 39,
       "decision": "D09"
     },
     {
@@ -5477,6 +5972,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P3",
+      "order": 21,
       "decision": null
     },
     {
@@ -5492,6 +5988,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P3",
+      "order": 21,
       "decision": null
     },
     {
@@ -5507,6 +6004,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P3",
+      "order": 21,
       "decision": null
     },
     {
@@ -5522,6 +6020,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P3",
+      "order": 21,
       "decision": null
     },
     {
@@ -5537,6 +6036,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P3",
+      "order": 22,
       "decision": null
     },
     {
@@ -5552,6 +6052,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P3",
+      "order": 22,
       "decision": null
     },
     {
@@ -5567,6 +6068,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P3",
+      "order": 22,
       "decision": null
     },
     {
@@ -5582,6 +6084,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P3",
+      "order": 22,
       "decision": null
     },
     {
@@ -5597,6 +6100,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P3",
+      "order": 22,
       "decision": null
     },
     {
@@ -5612,6 +6116,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P3",
+      "order": 22,
       "decision": null
     },
     {
@@ -5626,7 +6131,8 @@
       "taskId": "BE-C02",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 13,
       "decision": null
     },
     {
@@ -5641,7 +6147,8 @@
       "taskId": "BE-C02",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 13,
       "decision": null
     },
     {
@@ -5658,6 +6165,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P3",
+      "order": 23,
       "decision": null
     },
     {
@@ -5673,6 +6181,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P3",
+      "order": 23,
       "decision": null
     },
     {
@@ -5687,7 +6196,8 @@
       "taskId": "BE-C02",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 13,
       "decision": null
     },
     {
@@ -5703,6 +6213,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 25,
       "decision": null
     },
     {
@@ -5718,6 +6229,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 25,
       "decision": null
     },
     {
@@ -5733,6 +6245,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 25,
       "decision": null
     },
     {
@@ -5748,6 +6261,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 25,
       "decision": "D10"
     },
     {
@@ -5763,6 +6277,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 26,
       "decision": null
     },
     {
@@ -5778,6 +6293,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 26,
       "decision": null
     },
     {
@@ -5793,6 +6309,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 26,
       "decision": null
     },
     {
@@ -5808,6 +6325,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P6",
+      "order": 46,
       "decision": "D11"
     },
     {
@@ -5822,7 +6340,8 @@
       "taskId": "BE-C02",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 13,
       "decision": null
     },
     {
@@ -5837,7 +6356,8 @@
       "taskId": "BE-C02",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 13,
       "decision": null
     },
     {
@@ -5852,7 +6372,8 @@
       "taskId": "BE-C02",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 13,
       "decision": null
     },
     {
@@ -5868,6 +6389,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 32,
       "decision": null
     },
     {
@@ -5883,6 +6405,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 32,
       "decision": null
     },
     {
@@ -5898,6 +6421,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 32,
       "decision": null
     },
     {
@@ -5913,6 +6437,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P4",
+      "order": 32,
       "decision": null
     },
     {
@@ -5928,6 +6453,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 36,
       "decision": null
     },
     {
@@ -5943,6 +6469,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 36,
       "decision": null
     },
     {
@@ -5958,6 +6485,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 36,
       "decision": null
     },
     {
@@ -5973,6 +6501,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 36,
       "decision": null
     },
     {
@@ -5988,6 +6517,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 37,
       "decision": null
     },
     {
@@ -6002,7 +6532,8 @@
       "taskId": "BE-C02",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 13,
       "decision": null
     },
     {
@@ -6017,7 +6548,8 @@
       "taskId": "BE-C02",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 13,
       "decision": null
     },
     {
@@ -6033,6 +6565,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 37,
       "decision": null
     },
     {
@@ -6048,6 +6581,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 38,
       "decision": null
     },
     {
@@ -6066,6 +6600,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 38,
       "decision": null
     },
     {
@@ -6081,6 +6616,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 38,
       "decision": null
     },
     {
@@ -6096,6 +6632,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 38,
       "decision": null
     },
     {
@@ -6111,6 +6648,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 38,
       "decision": null
     },
     {
@@ -6126,6 +6664,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 38,
       "decision": null
     },
     {
@@ -6144,6 +6683,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 38,
       "decision": null
     },
     {
@@ -6159,6 +6699,7 @@
       "owner": "C",
       "reviewer": "A",
       "phase": "P5",
+      "order": 38,
       "decision": null
     },
     {
@@ -6173,7 +6714,8 @@
       "taskId": "BE-B03",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 11,
       "decision": null
     },
     {
@@ -6188,7 +6730,8 @@
       "taskId": "BE-B03",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 11,
       "decision": null
     },
     {
@@ -6203,7 +6746,8 @@
       "taskId": "BE-B03",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 11,
       "decision": null
     },
     {
@@ -6218,7 +6762,8 @@
       "taskId": "BE-B03",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 11,
       "decision": null
     },
     {
@@ -6233,7 +6778,8 @@
       "taskId": "BE-B03",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 11,
       "decision": null
     },
     {
@@ -6248,7 +6794,8 @@
       "taskId": "BE-B03",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 11,
       "decision": null
     },
     {
@@ -6263,7 +6810,8 @@
       "taskId": "BE-B03",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 11,
       "decision": null
     },
     {
@@ -6278,7 +6826,8 @@
       "taskId": "BE-B03",
       "owner": "B",
       "reviewer": "C",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 11,
       "decision": null
     },
     {
@@ -6294,6 +6843,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 33,
       "decision": null
     },
     {
@@ -6309,6 +6859,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 33,
       "decision": null
     },
     {
@@ -6324,6 +6875,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 33,
       "decision": null
     },
     {
@@ -6339,6 +6891,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 33,
       "decision": null
     },
     {
@@ -6354,6 +6907,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P5",
+      "order": 35,
       "decision": null
     },
     {
@@ -6369,6 +6923,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P5",
+      "order": 35,
       "decision": "D12"
     },
     {
@@ -6384,6 +6939,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P5",
+      "order": 35,
       "decision": null
     },
     {
@@ -6399,6 +6955,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P5",
+      "order": 35,
       "decision": null
     },
     {
@@ -6414,6 +6971,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P6",
+      "order": 43,
       "decision": null
     },
     {
@@ -6429,6 +6987,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P6",
+      "order": 43,
       "decision": "D13"
     },
     {
@@ -6444,6 +7003,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P6",
+      "order": 43,
       "decision": "D14"
     },
     {
@@ -6459,6 +7019,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P5",
+      "order": 40,
       "decision": null
     },
     {
@@ -6474,6 +7035,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P5",
+      "order": 40,
       "decision": null
     },
     {
@@ -6489,6 +7051,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P5",
+      "order": 40,
       "decision": null
     },
     {
@@ -6504,6 +7067,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P5",
+      "order": 40,
       "decision": null
     },
     {
@@ -6519,6 +7083,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P5",
+      "order": 40,
       "decision": null
     },
     {
@@ -6534,6 +7099,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 34,
       "decision": null
     },
     {
@@ -6549,6 +7115,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 34,
       "decision": null
     },
     {
@@ -6564,6 +7131,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 34,
       "decision": null
     },
     {
@@ -6579,6 +7147,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 34,
       "decision": null
     },
     {
@@ -6593,7 +7162,8 @@
       "taskId": "BE-C03",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 14,
       "decision": null
     },
     {
@@ -6608,7 +7178,8 @@
       "taskId": "BE-C03",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 14,
       "decision": null
     },
     {
@@ -6623,7 +7194,8 @@
       "taskId": "BE-C03",
       "owner": "C",
       "reviewer": "A",
-      "phase": "P1",
+      "phase": "P2",
+      "order": 14,
       "decision": "D14"
     },
     {
@@ -6639,6 +7211,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 34,
       "decision": null
     },
     {
@@ -6654,6 +7227,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P4",
+      "order": 34,
       "decision": null
     },
     {
@@ -6669,6 +7243,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 7,
       "decision": "D05"
     },
     {
@@ -6684,6 +7259,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 7,
       "decision": null
     },
     {
@@ -6699,6 +7275,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 7,
       "decision": null
     },
     {
@@ -6714,6 +7291,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 7,
       "decision": null
     },
     {
@@ -6729,6 +7307,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P1",
+      "order": 7,
       "decision": "D05"
     },
     {
@@ -6744,6 +7323,7 @@
       "owner": "B",
       "reviewer": "C",
       "phase": "P6",
+      "order": 44,
       "decision": null
     },
     {
@@ -6759,6 +7339,7 @@
       "owner": "A",
       "reviewer": "B",
       "phase": "P6",
+      "order": 41,
       "decision": null
     }
   ],
@@ -7236,32 +7817,61 @@
   "statuses": [
     "Chưa làm",
     "Đang làm",
-    "Chờ tích hợp",
     "Chờ review",
     "Bị chặn",
     "Hoàn thành"
   ],
   "dependencyChain": [
     "BE-A01",
+    "BE-B01",
+    "BE-C01",
     "BE-A02",
     "BE-A03",
+    "BE-A04",
+    "BE-A05",
+    "BE-A06",
+    "BE-A07",
     "BE-B02",
     "BE-B03",
     "BE-B04",
+    "BE-C02",
+    "BE-C03",
     "BE-B05",
     "BE-B06",
     "BE-B07",
+    "BE-C04",
+    "BE-A08",
+    "BE-A09",
     "BE-B08",
     "BE-B09",
     "BE-C05",
+    "BE-B10",
     "BE-C06",
     "BE-C07",
+    "BE-C08",
+    "BE-B11",
+    "BE-B12",
+    "BE-B13",
+    "BE-A11",
     "BE-C09",
+    "BE-A10",
+    "BE-A12",
+    "BE-A13",
     "BE-C10",
     "BE-C11",
     "BE-C12",
+    "BE-A14",
+    "BE-B14",
+    "BE-A15",
+    "BE-B15",
+    "BE-B16",
+    "BE-B17",
+    "BE-B18",
     "BE-C13",
+    "BE-C14",
     "BE-C15",
+    "BE-B19",
+    "BE-A16",
     "BE-C16",
     "BE-A17"
   ],
