@@ -533,6 +533,46 @@ async function main() {
       assert.equal(await evaluate(`__troday.getState().role===${JSON.stringify(role)} && __troday.getState().view==='business-guide'`),true);
     }
     assert.equal(await evaluate(`JSON.stringify([__troday.getState().houses,__troday.getState().contracts,__troday.getState().invoices,__troday.getState().viewings,__troday.getState().roommateInvites])===sessionStorage.getItem('guideDomainBefore')`),true);
+    // The API reference works independently of the rental demo and links to a real workbook.
+    await page("Emulation.setDeviceMetricsOverride",{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+    await evaluate(`document.querySelector('a[href="api-guide.html"]').click()`);
+    await waitLive(evaluate,"Boolean(window.TRODAY_API_CATALOG) && document.readyState==='complete' && document.querySelectorAll('.endpoint').length===window.TRODAY_API_CATALOG.endpoints.length","API reference load");
+    assert.equal(await evaluate(`document.querySelectorAll('.endpoint').length`),176);
+    await evaluate(`{const f=document.querySelector('#search-form');f.elements.query.value='/occupant-join-requests/{requestId}/approve';f.requestSubmit();}`);
+    assert.equal(await evaluate(`document.querySelectorAll('.endpoint').length===1 && document.querySelector('.endpoint').textContent.includes('48 giờ')`),true);
+    await evaluate(`document.querySelector('.endpoint > summary').click()`);
+    assert.equal(await evaluate(`document.querySelector('.endpoint').open && document.querySelector('.endpoint').textContent.includes('holdExpiresAt')`),true);
+    await evaluate(`document.querySelector('[data-reset]').click();{const f=document.querySelector('#search-form');f.elements.query.value='giu 48 gio';f.requestSubmit();}`);
+    assert.equal(await evaluate(`document.querySelectorAll('.endpoint').length>0`),true);
+    await evaluate(`document.querySelector('[data-reset]').click();{const f=document.querySelector('#search-form');f.elements.method.value='GET';f.elements.role.value='ADMIN';f.requestSubmit();}`);
+    assert.equal(await evaluate(`Array.from(document.querySelectorAll('.endpoint')).every(d=>d.querySelector('.method').textContent==='GET') && document.querySelectorAll('.endpoint').length>0`),true);
+    await evaluate(`document.querySelector('[data-reset]').click();location.hash='API-001'`);
+    await waitLive(evaluate,"document.querySelector('#API-001').open","API permalink");
+    await evaluate(`document.querySelector('#API-001 [data-table="users"]').click()`);
+    await waitLive(evaluate,"document.querySelector('#table-users')?.open","API table navigation");
+    assert.equal(await evaluate(`document.querySelector('#table-users').textContent.includes('password_hash')`),true);
+    await evaluate(`document.querySelector('[data-section="flows"]').click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('.flow').length`),47);
+    await evaluate(`document.querySelector('[data-section="standards"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#results').textContent.includes('Idempotency') && document.querySelector('#results').textContent.includes('VALIDATION_ERROR')`),true);
+    await evaluate(`document.querySelector('[data-section="decisions"]').click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('.decision').length===15 && document.querySelector('#results').textContent.includes('OPS03')`),true);
+    await evaluate(`document.querySelector('[data-section="endpoints"]').click();{const f=document.querySelector('#search-form');f.elements.query.value='"><img src=x onerror=alert(1)>';f.requestSubmit();}`);
+    assert.equal(await evaluate(`!document.querySelector('img[src="x"]') && document.querySelector('.empty').textContent.includes('Không tìm thấy')`),true);
+    await evaluate(`document.querySelector('[data-reset]').click();location.hash='API-001'`);
+    for(const width of [320,390,768,1440]) {
+      await page("Emulation.setDeviceMetricsOverride",{width,height:1000,deviceScaleFactor:1,mobile:width<650});
+      assert.equal(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth`),true,`API reference overflow at ${width}px`);
+    }
+    const workbook=await evaluate(`(async()=>{const r=await fetch('docs/api-development-checklist.xlsx');const b=new Uint8Array(await r.arrayBuffer());return {ok:r.ok,signature:Array.from(b.slice(0,4)).join(','),size:b.length};})()`);
+    assert.equal(workbook.ok,true);assert.equal(workbook.signature,'80,75,3,4');assert.ok(workbook.size>25000);
+    if(process.env.GUIDE_SCREENSHOTS) {
+      await evaluate(`document.querySelector('[data-expand="false"]').click();window.scrollTo(0,0)`);
+      const shot=await page("Page.captureScreenshot",{format:"png"});fs.writeFileSync(path.join(root,'docs','api-guide-desktop.png'),Buffer.from(shot.data,"base64"));
+    }
+    // Direct file:// entry is supported, without fetch/CDN/module imports.
+    await page('Page.navigate',{url:require('node:url').pathToFileURL(path.join(root,'api-guide.html')).href+'#API-001'});
+    await waitLive(evaluate,"document.readyState==='complete' && Boolean(document.querySelector('#API-001')?.open)","file API reference");
     assert.deepEqual(errors, []);
     console.log("Browser smoke passed: new house creation, required proof categories, IndexedDB uploads and reload, private previews, admin approval/revocation and mobile layouts; live message popups between two tabs, receiver isolation, direct chat opening, drafts, no replay and mobile dialog delivery; roommate tabs and profiles, contract renewal, rental workflows, listings, viewing flows, room detail and persistence; no runtime exceptions.");
     await call("Browser.close");

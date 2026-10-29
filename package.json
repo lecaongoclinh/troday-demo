@@ -11,6 +11,9 @@
     "test:browser": "node tests/browser.test.cjs",
     "test:database": "node tests/database.test.cjs",
     "db:build": "node scripts/build-database.cjs",
-    "db:check": "node scripts/build-database.cjs --check"
+    "db:check": "node scripts/build-database.cjs --check",
+    "api:build": "node scripts/build-api-guide.cjs",
+    "api:check": "node scripts/build-api-guide.cjs --check",
+    "test:api-guide": "node --test tests/api-guide.test.cjs"
   }
 }

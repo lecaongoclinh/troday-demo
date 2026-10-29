@@ -1,6 +1,17 @@
 .topbar-actions { flex: none; gap: 12px; }
 .business-guide-tab { font-size: 11px; white-space: nowrap; }
 .business-guide-tab.active { background: var(--teal-soft); border-color: #8bbeb4; color: var(--teal); }
+.api-guide-link { white-space: nowrap; font-size: 11px; min-width: 0; }
+@media (max-width: 900px) {
+  .api-guide-link { padding: 7px 8px; }
+  .api-guide-link > svg { display: none; }
+  .api-guide-link > span { font-size: 0; }
+  .api-guide-link > span::after { content: "API"; font-size: 10px; }
+}
+@media (max-width: 360px) {
+  .topbar-actions { gap: 4px; }
+  .api-guide-link { padding: 6px; }
+}
 .business-guide { max-width: 1460px; margin: auto; }
 .guide-eyebrow { color: var(--teal) !important; font-size: 10px !important; font-weight: 800; letter-spacing: .12em; margin-bottom: 8px !important; }
 .business-guide .page-heading { align-items: flex-start; }

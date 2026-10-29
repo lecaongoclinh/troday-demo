@@ -26,6 +26,14 @@ Tab **Logic nghiệp vụ** nằm cạnh bộ chọn vai trò, dùng được �
 - [Giới hạn 3 bài chờ duyệt/phòng](database/migrations/20261025_post_review_quota.sql): giữ tổng bài không giới hạn, kiểm soát chờ duyệt bằng ràng buộc và thủ tục giao dịch.
 - [Xác minh quyền cho thuê từng nhà](database/migrations/20261025_house_right_verification.sql): nhà nháp, minh chứng riêng tư, xét duyệt và điều kiện công khai tin/thuê mới; chạy sau giới hạn bài chờ.
 
+## Đặc tả API và checklist phát triển
+
+Trang **Đặc tả API** ở thanh trên mở [`api-guide.html`](api-guide.html), chạy trực tiếp bằng trình duyệt. Danh mục gồm **176 endpoint / 47 luồng / 43 bảng**, có tìm kiếm không dấu, lọc nhóm/phương thức/quyền, request/response, điều kiện nghiệp vụ, giao dịch SQL, mã lỗi, tiêu chí nghiệm thu và liên kết tới từng API. Các tab còn lại trình bày luồng, quy ước chung, từ điển dữ liệu lấy từ SQL, **15 điểm cần chốt** và **9 tác vụ nền/vận hành**. Đây là đặc tả backend cần xây dựng; chưa có API đang chạy.
+
+File Excel [`docs/api-development-checklist.xlsx`](docs/api-development-checklist.xlsx) có **10 sheet**: hướng dẫn, tổng quan tự tính tiến độ, checklist từng API, luồng nghiệp vụ, ràng buộc, trường request, từ điển SQL, quyết định cần chốt, tác vụ nền và kiểm thử tích hợp. Có bộ lọc, cố định hàng/cột, dropdown trạng thái/ưu tiên, 8 bước thực hiện và liên kết mở đặc tả. **Lưu một bản sao Excel trước khi theo dõi thực tế**; lệnh sinh lại sẽ ghi đè bản master do máy tạo.
+
+Nguồn endpoint nằm trong `scripts/api-blueprint.cjs`; các bước/rule dùng lại `business-guide.js`, từ điển đọc `database/schema.sql` gồm cả ALTER TABLE. Chạy `npm.cmd run api:build` để đồng bộ `api-catalog.js`, `docs/api-catalog.json` và Excel (Node 22+, Python 3; không cần thư viện cài thêm). `npm.cmd run api:check` kiểm tra đồng bộ/cấu trúc workbook, `npm.cmd run test:api-guide` kiểm tra liên kết với nguồn nghiệp vụ/SQL. Không thay schema hoặc chạy migration để tạo tài liệu.
+
 ## Cấu trúc thư mục
 
 ```text
