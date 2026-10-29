@@ -34,6 +34,14 @@ File Excel [`docs/api-development-checklist.xlsx`](docs/api-development-checklis
 
 Nguồn endpoint nằm trong `scripts/api-blueprint.cjs`; các bước/rule dùng lại `business-guide.js`, từ điển đọc `database/schema.sql` gồm cả ALTER TABLE. Chạy `npm.cmd run api:build` để đồng bộ `api-catalog.js`, `docs/api-catalog.json` và Excel (Node 22+, Python 3; không cần thư viện cài thêm). `npm.cmd run api:check` kiểm tra đồng bộ/cấu trúc workbook, `npm.cmd run test:api-guide` kiểm tra liên kết với nguồn nghiệp vụ/SQL. Không thay schema hoặc chạy migration để tạo tài liệu.
 
+## Phân công công việc BE / FE / AI
+
+Mở [`work-plan.html`](work-plan.html) trực tiếp hoặc bấm **Phân công BE / FE / AI** trên trang đặc tả API. Tab **BE** có **52 task / 8 mốc**, gán đủ 176 API đúng một owner/task. Tab **FE** và **AI** để trống. A giữ nền tảng/tài khoản/tệp/chat/hóa đơn (**17 task, 61 API, 86 SP**); B giữ nhà/phòng/tin/dịch vụ/lịch xem/ở ghép và nội dung (**19 task, 73 API, 91 SP**); C giữ hợp đồng/cư trú/thay đổi thuê (**16 task, 42 API, 86 SP**). SP là độ lớn tương đối; chưa quy đổi thành ngày hoặc deadline. Các thư mục backend trong kế hoạch là cấu trúc đề xuất, chưa có backend được tạo.
+
+Trang có lộ trình ba cột, bộ lọc task/owner/mốc/trạng thái, chi tiết đầu ra/phụ thuộc/nghiệm thu, phạm vi file, giao diện bàn giao, quy tắc merge và bảng phân công từng API. Checklist trên trang lưu riêng trong trình duyệt; có xuất/nhập JSON. Chỉ đánh **Hoàn thành** khi đủ 7 bước, có PR/bằng chứng và các phụ thuộc đã đạt. Dữ liệu trang không tự đồng bộ với Excel hoặc máy khác.
+
+File [`docs/backend-team-checklist.xlsx`](docs/backend-team-checklist.xlsx) có **12 sheet**, gồm task BE, 176 API liên kết task, owner/file, mốc/gate, bàn giao, quyết định, worker và kiểm thử; hai sheet **FE/AI trống**. Cột trạng thái task là nguồn chính, các sheet API/gate/tổng quan tính lại từ đó. Lưu một bản sao trước khi dùng để theo dõi thực tế. Nguồn kế hoạch ở `scripts/work-plan-blueprint.cjs`; chạy `npm.cmd run plan:build`, `npm.cmd run plan:check`, `npm.cmd run test:work-plan` để sinh/kiểm tra trang dữ liệu và workbook (Node 22+, Python 3, không cần cài thư viện).
+
 ## Cấu trúc thư mục
 
 ```text

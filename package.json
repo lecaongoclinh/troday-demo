@@ -14,6 +14,9 @@
     "db:check": "node scripts/build-database.cjs --check",
     "api:build": "node scripts/build-api-guide.cjs",
     "api:check": "node scripts/build-api-guide.cjs --check",
-    "test:api-guide": "node --test tests/api-guide.test.cjs"
+    "test:api-guide": "node --test tests/api-guide.test.cjs",
+    "plan:build": "node scripts/build-work-plan.cjs",
+    "plan:check": "node scripts/build-work-plan.cjs --check",
+    "test:work-plan": "node --test tests/work-plan.test.cjs"
   }
 }

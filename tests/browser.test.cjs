@@ -573,7 +573,64 @@ async function main() {
     // Direct file:// entry is supported, without fetch/CDN/module imports.
     await page('Page.navigate',{url:require('node:url').pathToFileURL(path.join(root,'api-guide.html')).href+'#API-001'});
     await waitLive(evaluate,"document.readyState==='complete' && Boolean(document.querySelector('#API-001')?.open)","file API reference");
+    // The team plan covers all APIs, leaves FE/AI blank, and tracks progress independently.
+    await page('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/work-plan.html`});
+    await waitLive(evaluate,"Boolean(window.TRODAY_WORK_PLAN) && document.readyState==='complete' && document.querySelectorAll('.task-card').length===52","team plan load");
+    assert.equal(await evaluate(`document.querySelector('#tab-be').getAttribute('aria-selected')==='true' && document.querySelectorAll('.person-card').length===3`),true);
+    await evaluate(`document.querySelector('#tab-fe').click()`);
+    assert.equal(await evaluate(`document.querySelector('#panel-be').hidden && !document.querySelector('#panel-fe').hidden && document.querySelector('#panel-fe').childElementCount===0 && document.querySelector('#panel-fe').textContent===''`),true);
+    await evaluate(`document.querySelector('#tab-ai').click();document.querySelector('#tab-ai').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))`);
+    assert.equal(await evaluate(`document.activeElement===document.querySelector('#tab-fe') && document.querySelector('#panel-ai').childElementCount===0`),true);
+    await evaluate(`document.querySelector('#tab-be').click();document.querySelector('[data-task="BE-A01"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#task-dialog').open && document.querySelectorAll('#task-detail [data-check]').length===7 && document.querySelector('#task-detail').textContent.includes('backend/src/core')`),true);
+    await evaluate(`document.querySelector('#task-status').value='Hoàn thành';document.querySelector('#task-status').dispatchEvent(new Event('change',{bubbles:true}))`);
+    assert.equal(await evaluate(`document.querySelector('#task-status').value==='Chưa làm' && document.querySelector('#task-message').textContent.includes('Chưa thể')`),true);
+    await evaluate(`document.querySelectorAll('#task-detail [data-check]').forEach(n=>n.click());document.querySelector('#task-pr').value='PR-test-A01';document.querySelector('#task-pr').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('#task-status').value='Hoàn thành';document.querySelector('#task-status').dispatchEvent(new Event('change',{bubbles:true}))`);
+    assert.equal(await evaluate(`document.querySelector('#task-status').value==='Hoàn thành' && document.querySelector('#plan-metrics').textContent.includes('1/52 task hoàn thành')`),true);
+    await page('Page.reload',{ignoreCache:true});
+    await waitLive(evaluate,"document.querySelector('#task-dialog')?.open && document.querySelector('#task-status')?.value==='Hoàn thành'","team progress reload");
+    await evaluate(`document.querySelector('[data-close-task]').click()`);
+    await evaluate(`document.querySelector('[data-task="BE-B02"]').click();document.querySelectorAll('#task-detail [data-check]').forEach(n=>n.click());document.querySelector('#task-evidence').value='DB tests passed';document.querySelector('#task-evidence').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('#task-status').value='Hoàn thành';document.querySelector('#task-status').dispatchEvent(new Event('change',{bubbles:true}))`);
+    assert.equal(await evaluate(`document.querySelector('#task-status').value!=='Hoàn thành' && document.querySelector('#task-message').textContent.includes('phụ thuộc')`),true);
+    await evaluate(`document.querySelector('[data-close-task]').click()`);
+    await evaluate(`document.querySelector('[data-view="coverage"]').click();document.querySelector('[data-owner="B"]').click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('#plan-results tbody tr').length`),73);
+    await evaluate(`document.querySelector('[data-reset-filters]').click();{const f=document.querySelector('#plan-search');f.elements.query.value='API-001';f.requestSubmit();}`);
+    assert.equal(await evaluate(`document.querySelectorAll('#plan-results tbody tr').length===1 && document.querySelector('#plan-results').textContent.includes('/auth/register')`),true);
+    await evaluate(`document.querySelector('[data-view="tasks"]').click();{const f=document.querySelector('#plan-search');f.elements.query.value='ban giao dai dien';f.requestSubmit();}`);
+    assert.equal(await evaluate(`Boolean(document.querySelector('#plan-results [data-task="BE-C11"]'))`),true);
+    await evaluate(`{const f=document.querySelector('#plan-search');f.elements.query.value='"><img src=x onerror=alert(1)>';f.requestSubmit();}`);
+    assert.equal(await evaluate(`!document.querySelector('img[src="x"]') && document.querySelector('.empty').textContent.includes('Không tìm thấy')`),true);
+    await evaluate(`document.querySelector('[data-reset-filters]').click();document.querySelector('[data-view="ownership"]').click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('.module-card').length===16 && document.querySelector('#plan-results').textContent.includes('database/source/workflows.sql')`),true);
+    await evaluate(`document.querySelector('[data-view="handoff"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#plan-results').textContent.includes('IF-VIEWING') && document.querySelectorAll('.rule-card').length===14`),true);
+    // Import a matching snapshot and recover the previous local state without touching the demo data.
+    await evaluate(`{const p=window.TRODAY_WORK_PLAN;const payload={format:'troday-team-progress',version:1,sourceHash:p.sourceHashes['scripts/work-plan-blueprint.cjs'],progress:p.tasks.map(t=>({id:t.id,status:'Chưa làm',checks:p.checklist.map(()=>false),pr:'',evidence:'',notes:''}))};const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(payload)],'team-progress.json',{type:'application/json'}));const input=document.querySelector('#import-progress');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));}`);
+    await waitLive(evaluate,"!document.querySelector('#restore-progress').hidden && document.querySelector('#plan-metrics').textContent.includes('0/52 task hoàn thành')","progress import");
+    await evaluate(`document.querySelector('#restore-progress').click()`);
+    assert.equal(await evaluate(`document.querySelector('#plan-metrics').textContent.includes('1/52 task hoàn thành')`),true);
+    await evaluate(`document.querySelector('[data-view="roadmap"]').click();document.querySelector('[data-task="BE-C12"]').click()`);
+    for(const width of [320,390,768,1440]) {
+      await page('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<650});
+      assert.equal(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth && document.querySelector('#task-dialog').scrollWidth<=document.querySelector('#task-dialog').clientWidth`),true,`Team plan/dialog overflow at ${width}px`);
+    }
+    await evaluate(`document.querySelector('[data-close-task]').click()`);
+    const teamWorkbook=await evaluate(`(async()=>{const r=await fetch('docs/backend-team-checklist.xlsx');const bytes=new Uint8Array(await r.arrayBuffer());return {ok:r.ok,magic:Array.from(bytes.slice(0,4)).join(','),size:bytes.length};})()`);
+    assert.equal(teamWorkbook.ok,true);assert.equal(teamWorkbook.magic,'80,75,3,4');assert.ok(teamWorkbook.size>25000);
+    if(process.env.GUIDE_SCREENSHOTS) {
+      await evaluate(`localStorage.removeItem('troday-backend-work-plan-v1');localStorage.removeItem('troday-backend-work-plan-v1-backup');history.replaceState(null,'','work-plan.html')`);
+      await page('Page.reload',{ignoreCache:true});
+      await waitLive(evaluate,"document.readyState==='complete' && document.querySelectorAll('.task-card').length===52 && document.querySelector('#plan-metrics').textContent.includes('0/52 task hoàn thành')","clean planning screenshots");
+      await evaluate(`window.scrollTo(0,0)`);
+      const desktop=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'docs','work-plan-desktop.png'),Buffer.from(desktop.data,'base64'));
+      await page('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+      const mobile=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'docs','work-plan-mobile.png'),Buffer.from(mobile.data,'base64'));
+    }
+    await page('Page.navigate',{url:require('node:url').pathToFileURL(path.join(root,'work-plan.html')).href+'#BE-C12'});
+    await waitLive(evaluate,"document.readyState==='complete' && document.querySelector('#task-dialog')?.open && document.querySelector('#task-title')?.textContent.includes('Gia hạn')","file team plan");
     assert.deepEqual(errors, []);
+    console.log('Team plan passed: 52 tasks, 176 API ownership, blank FE/AI tabs, keyboard tabs, completion/dependency guards, progress reload/import/restore, Excel download, file:// and 320–1440px layouts.');
     console.log("Browser smoke passed: new house creation, required proof categories, IndexedDB uploads and reload, private previews, admin approval/revocation and mobile layouts; live message popups between two tabs, receiver isolation, direct chat opening, drafts, no replay and mobile dialog delivery; roommate tabs and profiles, contract renewal, rental workflows, listings, viewing flows, room detail and persistence; no runtime exceptions.");
     await call("Browser.close");
   } finally {
