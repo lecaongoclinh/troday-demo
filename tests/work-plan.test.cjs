@@ -61,6 +61,22 @@ test('File owners and integration providers are consistent; effort accounts for 
   for(const p of P.people)assert.equal(p.points,P.tasks.filter(t=>t.owner===p.id).reduce((n,t)=>n+t.points,0));
   assert.ok(Math.max(...P.people.map(p=>p.points))/Math.min(...P.people.map(p=>p.points))<1.1);
 });
+test('Java Spring Boot plan defines feature ownership and safe transaction boundaries without claiming implementation',()=>{
+  const a=P.architecture;
+  assert.equal(a.language,'Java 21 LTS');assert.equal(a.framework,'Spring Boot');assert.equal(a.buildTool,'Maven Wrapper');assert.equal(a.basePackage,'com.troday');
+  assert.match(a.status,/chưa có ứng dụng Java/);assert.match(a.versionPolicy,/BE-A01/);
+  assert.match(a.tree,/TrodayApplication\.java/);assert.match(a.featureTree,/@RestController/);
+  const shared=P.modules.find(m=>m.id==='platform');
+  for(const file of ['backend/pom.xml','backend/mvnw.cmd','backend/src/main/java/com/troday/TrodayApplication.java'])assert.ok(shared.paths.includes(file));
+  for(const m of P.modules)for(const file of m.paths){assert.doesNotMatch(file,/backend\/(src\/modules|tests\/)/);if(file.includes('/java/'))assert.ok(file.startsWith('backend/src/main/java/com/troday/')||file.startsWith('backend/src/test/java/com/troday/'));}
+  assert.match(JSON.stringify(tasks.get('BE-A02')),/Propagation\.NEVER/);assert.match(JSON.stringify(tasks.get('BE-C08')),/@Transactional/);
+  assert.match(a.conventions.find(x=>x.title==='Giao dịch do procedure quản lý').body,/không self-invocation/);
+  assert.ok(a.references.every(x=>x.url.startsWith('https://docs.spring.io/')));
+  assert.ok(P.sequencePolicy.compatibleBlueprintHashes.includes('07c6e1d0157545fa9b3588432b1f460f53bfcaee6168931c948b947b4a319902'));
+  const index=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  assert.match(index,/class="button api-guide-link"[^>]*>[\s\S]*?<\/a>\s*<a class="button work-plan-link" href="work-plan.html"/);
+});
+
 test('All workflows, decisions, jobs and risk scenarios remain traceable',()=>{
   assert.deepEqual(P.coverageFlows.map(f=>f.id),C.flows.map(f=>f.id));
   for(const f of P.coverageFlows)assert.ok(f.taskIds.length,f.id);
@@ -85,7 +101,7 @@ from pathlib import Path
 p=json.loads(Path('docs/work-plan.json').read_text(encoding='utf-8'));n={'m':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 with zipfile.ZipFile('docs/backend-team-checklist.xlsx') as z:
  assert z.testzip() is None
- w=E.fromstring(z.read('xl/workbook.xml')); assert len(w.find('m:sheets',n))==12
+ w=E.fromstring(z.read('xl/workbook.xml')); assert len(w.find('m:sheets',n))==13
  s=E.fromstring(z.read('xl/worksheets/sheet3.xml'));rows=s.find('m:sheetData',n)
  assert len(rows)==len(p['tasks'])+1
  assert [r[0].find('m:is/m:t',n).text for r in list(rows)[1:]]==[t['id'] for t in p['tasks']]
@@ -94,7 +110,11 @@ with zipfile.ZipFile('docs/backend-team-checklist.xlsx') as z:
  assert s.find('m:dataValidations',n) is not None and s.find('m:autoFilter',n) is not None
  assert len(s.findall('m:sheetData/m:row/m:c/m:f',n))==3*len(p['tasks'])
  assert len(E.fromstring(z.read('xl/worksheets/sheet4.xml')).find('m:sheetData',n))==177
- for i in [11,12]: assert len(E.fromstring(z.read('xl/worksheets/sheet%d.xml'%i)).find('m:sheetData',n))==0
+ architecture=E.fromstring(z.read('xl/worksheets/sheet11.xml'))
+ assert 'Cau_truc_BE'==list(w.find('m:sheets',n))[10].get('name')
+ assert 'TrodayApplication.java' in ''.join(architecture.itertext())
+ assert 'Propagation.NEVER' in ''.join(architecture.itertext())
+ for i in [12,13]: assert len(E.fromstring(z.read('xl/worksheets/sheet%d.xml'%i)).find('m:sheetData',n))==0
  assert b'work-plan.html#BE-A01' in z.read('xl/worksheets/_rels/sheet3.xml.rels')
 print('Workbook coverage and blank tabs verified')`;
   const result=spawnSync('python',['-c',script],{cwd:root,encoding:'utf8',windowsHide:true});

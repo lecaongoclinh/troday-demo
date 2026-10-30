@@ -7,9 +7,9 @@
   <meta name="description" content="Phân công Backend Trọday cho ba người theo module, task, phụ thuộc, bàn giao và checklist.">
   <title>Trọday · Phân công phát triển hệ thống</title>
   <link rel="stylesheet" href="api-guide.css?v=20261029">
-  <link rel="stylesheet" href="work-plan.css?v=20261029-sequential-v2">
-  <script defer src="work-plan-data.js?v=20261029-sequential-v2"></script>
-  <script defer src="work-plan.js?v=20261029-sequential-v2"></script>
+  <link rel="stylesheet" href="work-plan.css?v=20261030-spring-boot">
+  <script defer src="work-plan-data.js?v=20261030-spring-boot"></script>
+  <script defer src="work-plan.js?v=20261030-spring-boot"></script>
 </head>
 <body class="planning-page">
   <a class="skip" href="#plan-content">Đến kế hoạch</a>
@@ -35,6 +35,7 @@
         </div>
         <section id="panel-be" role="tabpanel" aria-labelledby="tab-be">
           <section class="intro"><div class="eyebrow">SEQUENTIAL PLAN <span>•</span> THỨ TỰ CHUNG 01–52</div><h1>Backend theo từng bước.<br><span>Xong một task, bàn giao bước tiếp.</span></h1><p>Một hàng đợi chung cho A, B và C. Mỗi lần chỉ thực hiện một task; người tiếp theo nhận code đã review, merge và kiểm thử. Người phụ trách module vẫn được giữ rõ để tránh sửa chéo file.</p><div class="intro-meta"><code>176 API · 52 bước</code><span>SP là độ lớn tương đối, không phải lịch làm cùng lúc</span></div></section>
+          <div class="stack-notice"><div><strong>Java 21 · Spring Boot · Maven · MySQL</strong><p>Stack đã chốt cho kế hoạch BE. Chưa có ứng dụng Java chạy thật; khởi tạo project ở bước #01.</p></div><button type="button" data-view="structure">Cấu trúc thư mục ↗</button></div>
           <section id="plan-metrics" class="metrics" aria-label="Tổng quan kế hoạch"></section>
           <section id="current-turn" aria-label="Task đang đến lượt"></section>
           <details class="owner-summary"><summary>Phạm vi của A, B và C <span>Xem trách nhiệm module và khối lượng; thực hiện theo một hàng đợi</span></summary><section id="team-cards" class="team-cards" aria-label="Phân công ba người"></section></details>

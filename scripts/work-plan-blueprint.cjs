@@ -1,5 +1,7 @@
 // Team plan for the existing API catalogue. Paths below are a proposed future
 // backend layout, not directories or backend features already implemented.
+const {MAIN:JAVA,TEST:JAVA_TEST,architecture}=require('./spring-boot-plan.cjs');
+const featurePaths=(packages,contracts=packages)=>[...packages.flatMap(p=>[`${JAVA}/${p}/**`,`${JAVA_TEST}/${p}/**`]),...contracts.map(p=>`backend/docs/contracts/${p}.json`)].join('; ');
 const people = [
   {id:'A',name:'Người A',role:'Nền tảng, tài khoản, tương tác & hóa đơn',color:'teal',summary:'Dựng khung dùng chung trước; sau đó phát triển xác thực, tệp, chat/thông báo và hóa đơn. Giữ vai trò tích hợp các tệp toàn dự án.',reviewer:'B'},
   {id:'B',name:'Người B',role:'Nhà/phòng, tin đăng, lịch xem & ở ghép',color:'blue',summary:'Sở hữu nguồn phòng cho thuê, công khai tin, dịch vụ và lịch xem. Sau luồng thuê ban đầu, hoàn thiện kết nối ở ghép và kiểm duyệt nội dung.',reviewer:'C'},
@@ -20,6 +22,7 @@ const sequenceByPhase = {
 const sequencePolicy = {
   maxActiveTasks:1,
   legacyBlueprintHashes:['03a29e465214408a5205f419f99e2ed8a4f9a18266685cb87e069c233ef99ed6'],
+  compatibleBlueprintHashes:['07c6e1d0157545fa9b3588432b1f460f53bfcaee6168931c948b947b4a319902'],
   handoffChecklist:[
     'Hoàn tất 7 bước, reviewer duyệt và PR của task hiện tại đã merge vào main.',
     'A tích hợp mọi SQL sinh ra/dependency dùng chung trong cùng lượt bàn giao; CI và db:check xanh.',
@@ -53,22 +56,22 @@ const phases = [
 ].map(([id,title,goal,gate],index)=>({id,title,goal,gate,index}));
 
 const modules = [
- ['platform','A','Khung backend & adapter chung','backend/src/core/**; backend/contracts/core.*; backend/tests/fixtures/A/**; backend/tests/contracts/A/**; backend/tests/e2e/platform-*/**; backend/bootstrap.*; backend/package*; backend/lockfile; .github/workflows/backend-*','ActorContext, envelope, DB/UoW, procedure runner, idempotency, event/audit ports; không chứa nghiệp vụ nhà/thuê.','Dựng router tự đăng ký manifest module; B/C không cùng sửa một routes.* hoặc DI container.'],
- ['identity','A','Tài khoản & danh tính','backend/src/modules/identity/**; backend/tests/identity/**; backend/contracts/identity.*','users, roles, profiles, auth_sessions, verification_tokens, identity verification.','C dùng TokenPort cho OCCUPANT_LINK, không tự sửa token repository của A.'],
- ['files','A','Kho tệp & quyền đọc','backend/src/modules/files/**; backend/tests/files/**; backend/contracts/files.*','Metadata, upload/complete/download, MIME/hash/retention, private authorization.','B/C truyền fileId và business context; không viết thêm một file service riêng.'],
- ['messaging','A','Hội thoại & thông báo','backend/src/modules/messaging/**; backend/src/modules/notifications/**; backend/tests/messaging/**; backend/contracts/messaging.*','Hội thoại, participant, message, notifications, SSE.','Chat gộp theo cặp ở read model; context ghi vẫn đúng conversation/post/room của v5.'],
- ['billing','A','Hóa đơn & thu tiền','backend/src/modules/billing/**; backend/tests/billing/**; backend/contracts/billing.*','invoices/invoice_items, snapshot người trả/giá; thu toàn bộ theo phạm vi hiện tại.','Nhận dữ liệu hợp đồng/cư trú qua cổng C, giá dịch vụ qua cổng B; không sửa bảng giá/hợp đồng.'],
- ['account-admin','A','Quản trị tài khoản & audit','backend/src/modules/account-admin/**; backend/src/modules/audit/**; backend/src/modules/admin-dashboard/**; backend/tests/account-admin/**','Khóa phiên/tài khoản, truy vết và tổng quan quản trị; các /admin khác nằm tại module nghiệp vụ của B/C.','Không gom mọi endpoint /admin vào một controller chung.'],
- ['properties','B','Nhà, quyền nhà & phòng','backend/src/modules/properties/**; backend/src/modules/house-rights/**; backend/tests/properties/**; backend/tests/fixtures/B/**; backend/tests/contracts/B/**; backend/tests/e2e/property-*/**; backend/contracts/properties.*','Nhà/phòng, quyền cho thuê, tải phòng, dashboard chủ trọ và các nguồn đọc công khai.','C chỉ gọi cổng đọc/SQL procedure dưới khóa; không đổi trạng thái phòng bằng setter từ controller.'],
- ['posts','B','Tin đăng & tìm kiếm','backend/src/modules/posts/**; backend/tests/posts/**; backend/contracts/posts.*','posts/post_images/post_amenities/favorites, quota 3 bài chờ và public view.','Mọi tham chiếu giữ postId; ảnh và bài phải lưu nguyên tử sau mở rộng D07.'],
- ['services','B','Dịch vụ & giá hiệu lực','backend/src/modules/services/**; backend/tests/services/**; backend/contracts/services.*','rental_services/house_services/room_services và báo giá hiện tại.','A sở hữu hóa đơn; đổi dịch vụ không sửa invoice_items cũ.'],
- ['viewings','B','Lịch xem & quyết định thuê','backend/src/modules/viewings/**; backend/tests/viewings/**; backend/tests/e2e/viewing-contract/**; backend/contracts/viewings.*','Proposal, schedule, attendance, rental decision.','C tạo hợp đồng bằng viewingId; cùng bản ghi lịch được dùng cho chat và màn hình lịch.'],
- ['roommates','B','Hồ sơ, tiêu chí & kết nối','backend/src/modules/roommates/**; backend/tests/roommates/**; backend/contracts/roommates.*','roommate_profiles/lifestyles/requests và matching theo chính sách đã chốt.','ACCEPTED chỉ tạo kết nối/chat, không tạo occupant_join_request hoặc consent thuê.'],
- ['content-moderation','B','Đánh giá & báo cáo','backend/src/modules/reviews/**; backend/src/modules/reports/**; backend/tests/content-moderation/**','reviews/reports, private evidence và quyết định nội dung.','Khóa user qua dịch vụ A; thay đổi quyền thuê qua C; không gọi trực tiếp controller khác.'],
- ['rentals','C','Hợp đồng & cư trú','backend/src/modules/rentals/**; backend/tests/rentals/**; backend/tests/fixtures/C/**; backend/tests/contracts/C/**; backend/tests/e2e/rental-*/**; backend/contracts/rentals.*','Contracts, revisions, room_tenants, representative history, join/change requests, templates và liên kết cư dân.','Một transaction owner cho toàn bộ vào/rời/đổi phòng; không chia controller và service của cùng luồng cho hai người.'],
- ['sql-property','B','Nguồn SQL nhà/tin/lịch','database/source/house-rights.sql; database/source/post-review-quota.sql; database/source/viewing-proposals.sql; backend/tests/sql-property/**','B sửa nguồn thuộc nhà, quota và lịch xem; gửi A tích hợp SQL sinh ra.','Không tự sửa workflows.sql hoặc bản schema/migration được build.'],
- ['sql-rental','C','Nguồn SQL giao dịch thuê','database/source/workflows.sql; database/source/contract-viewing-cleanup.sql; backend/tests/sql-rental/**','C giữ nguồn thuê và file workflows.sql hiện đang chứa nhiều trigger/procedure dùng chung.','A/B cần thay phần của file này thì gửi change request cho C kèm test, không đồng sửa file.'],
- ['integration','A','Tệp chung & SQL sinh ra','database/schema.sql; database/migrations/*; scripts/build-database.cjs; backend/tests/e2e/release/**','A cấp thứ tự migration, build/commit output SQL, khóa phiên bản dependency và CI.','B/C có thể chạy build trong thư mục tạm để test; A tái sinh output trên nhánh tích hợp từ toàn bộ nguồn mới nhất.']
+ ['platform','A','Spring Boot & thành phần dùng chung',`${JAVA}/shared/**; ${JAVA}/config/**; ${JAVA}/TrodayApplication.java; ${JAVA_TEST}/shared/**; ${JAVA_TEST}/config/**; ${JAVA_TEST}/support/fixtures/a/**; ${JAVA_TEST}/contract/a/**; ${JAVA_TEST}/e2e/platform/**; backend/src/test/resources/sql/a/**; backend/docs/contracts/core.json; backend/pom.xml; backend/mvnw; backend/mvnw.cmd; backend/.mvn/**; .github/workflows/backend.yml`,'ActorContext, ApiResponse, Spring Security/config, transaction/procedure gateway, idempotency và event/audit ports.','A giữ main class/config/POM. B/C thêm bean trong package chức năng, Spring component scan nhận tự động; không có manifest hoặc routes.* chung.'],
+ ['identity','A','Tài khoản & danh tính',featurePaths(['identity']),'users, roles, profiles, auth_sessions, verification_tokens, identity verification.','C dùng TokenPort cho OCCUPANT_LINK, không tự sửa token repository của A.'],
+ ['files','A','Kho tệp & quyền đọc',featurePaths(['files']),'Metadata, upload/complete/download, MIME/hash/retention, private authorization.','B/C truyền fileId và business context; không viết thêm một file service riêng.'],
+ ['messaging','A','Hội thoại & thông báo',featurePaths(['messaging','notifications']),'Hội thoại, participant, message, notifications; SSE dùng SseEmitter của Spring MVC.','Chat gộp theo cặp ở read model; context ghi vẫn đúng conversation/post/room của v5.'],
+ ['billing','A','Hóa đơn & thu tiền',featurePaths(['billing']),'invoices/invoice_items, snapshot người trả/giá; thu toàn bộ theo phạm vi hiện tại.','Nhận dữ liệu hợp đồng/cư trú qua cổng C, giá dịch vụ qua cổng B; không sửa bảng giá/hợp đồng.'],
+ ['account-admin','A','Quản trị tài khoản & audit',featurePaths(['accountadmin','audit','admindashboard']),'Khóa phiên/tài khoản, truy vết và tổng quan quản trị; các /admin khác nằm tại package nghiệp vụ B/C.','Không gom mọi endpoint /admin vào một controller chung.'],
+ ['properties','B','Nhà, quyền nhà & phòng',featurePaths(['properties','houserights'])+`; ${JAVA_TEST}/support/fixtures/b/**; ${JAVA_TEST}/contract/b/**; ${JAVA_TEST}/e2e/property/**; backend/src/test/resources/sql/b/**`,'Nhà/phòng, quyền cho thuê, tải phòng và nguồn đọc công khai.','C chỉ gọi Java port/SQL procedure dưới khóa; không đổi trạng thái phòng bằng setter từ controller.'],
+ ['posts','B','Tin đăng & tìm kiếm',featurePaths(['posts']),'posts/post_images/post_amenities/favorites, quota 3 bài chờ và public view.','Mọi tham chiếu giữ postId; ảnh và bài phải lưu nguyên tử sau mở rộng D07.'],
+ ['services','B','Dịch vụ & giá hiệu lực',featurePaths(['services']),'rental_services/house_services/room_services và báo giá hiện tại.','A sở hữu hóa đơn; đổi dịch vụ không sửa invoice_items cũ.'],
+ ['viewings','B','Lịch xem & quyết định thuê',featurePaths(['viewings'])+`; ${JAVA_TEST}/e2e/viewingcontract/**`,'Proposal, schedule, attendance, rental decision.','C tạo hợp đồng bằng viewingId; cùng bản ghi lịch được dùng cho chat và màn hình lịch.'],
+ ['roommates','B','Hồ sơ, tiêu chí & kết nối',featurePaths(['roommates']),'roommate_profiles/lifestyles/requests và matching theo chính sách đã chốt.','ACCEPTED chỉ tạo kết nối/chat, không tạo occupant_join_request hoặc consent thuê.'],
+ ['content-moderation','B','Đánh giá & báo cáo',featurePaths(['reviews','reports']),'reviews/reports, private evidence và quyết định nội dung.','Khóa user qua dịch vụ A; thay đổi quyền thuê qua C; không gọi trực tiếp controller khác.'],
+ ['rentals','C','Hợp đồng & cư trú',featurePaths(['rentals'])+`; ${JAVA_TEST}/support/fixtures/c/**; ${JAVA_TEST}/contract/c/**; ${JAVA_TEST}/e2e/rental/**; backend/src/test/resources/sql/c/**`,'Contracts, revisions, room_tenants, history, join/change requests, templates và liên kết cư dân; tách package con.','Một transaction owner cho vào/rời/đổi phòng. Service Java dùng Spring transaction; CALL tự commit dùng gateway riêng.'],
+ ['sql-property','B','Nguồn SQL nhà/tin/lịch',`database/source/house-rights.sql; database/source/post-review-quota.sql; database/source/viewing-proposals.sql; ${JAVA_TEST}/sqlproperty/**`,'B sửa nguồn nhà, quota và lịch xem; gửi A tích hợp SQL sinh ra.','Không tự sửa workflows.sql hoặc schema/migration được build.'],
+ ['sql-rental','C','Nguồn SQL giao dịch thuê',`database/source/workflows.sql; database/source/contract-viewing-cleanup.sql; ${JAVA_TEST}/sqlrental/**`,'C giữ nguồn thuê và workflows.sql chứa trigger/procedure dùng chung.','A/B cần thay file này thì gửi C change request và test, không đồng sửa file.'],
+ ['integration','A','POM, cấu hình & SQL sinh ra',`database/schema.sql; database/migrations/*; scripts/build-database.cjs; backend/src/main/resources/application*.yml; backend/src/test/resources/application-test.yml; ${JAVA_TEST}/e2e/release/**`,'A cấp thứ tự migration, build SQL, tích hợp cấu hình Spring, phiên bản dependency và CI.','Không tự tạo schema từ ORM; A tái sinh output SQL và duyệt thay đổi cấu hình chung trong lượt bàn giao.']
 ].map(([id,owner,title,paths,scope,boundary])=>({id,owner,title,paths:paths.split('; '),scope,boundary}));
 
 const tasks=[];
@@ -76,16 +79,16 @@ const ids=(...items)=>items.flatMap(x=>typeof x==='number'?[`API-${String(x).pad
 function T(owner,n,phase,title,points,apiIds,moduleIds,dependsOn,detail,deliverables,acceptance,options={}){
   tasks.push({id:`BE-${owner}${String(n).padStart(2,'0')}`,owner,phase,title,points,apiIds,modules:moduleIds,dependsOn,detail,deliverables,acceptance,priority:phase==='P6'?'P1':'P0',...options});
 }
-T('A',1,'P0','Khởi tạo backend, nhánh và CI theo module',3,[],['platform','integration'],[],
- 'Chọn framework/ngôn ngữ, cấu hình chạy MySQL local/test và bootstrap modular monolith. Cấu trúc là đề xuất; repo hiện chưa có backend.',
- ['Tạo backend/src/modules/<domain>, tests/fixtures theo module và manifest tự đăng ký.','Mỗi PR có branch be/<owner>/<task-id>-<slug>; main được bảo vệ bằng review và CI.','CI dựng SQL từ nguồn vào thư mục tạm cho feature PR; A giữ output SQL tích hợp khớp nguồn khi merge.'],
- ['Lệnh chạy và test được ghi trong README backend; không dùng DB thật để test.','B/C thêm module qua manifest riêng mà không sửa bootstrap, lockfile hay root routes.'],{handoff:['Lệnh chạy/test/CI; layout và manifest mẫu cho B/C.'],decisions:['D15']});
+T('A',1,'P0','Khởi tạo Java Spring Boot, Maven và CI',3,[],['platform','integration'],[],
+ 'Stack đã chốt Java 21 + Spring Boot + Maven + MySQL. Task này mới tạo ứng dụng thật; hiện repo chỉ có wireframe/SQL/tài liệu. Chốt patch version stable tương thích trong pom.xml.',
+ ['Tạo backend/pom.xml, Maven Wrapper, TrodayApplication trong com.troday, package chức năng và resources profiles; Spring component scan nhận bean.','Chọn starters Web MVC/Validation/Security/JDBC, MySQL driver và test tương thích; CI chạy Maven test/verify trên DB test riêng.','CI dựng SQL nguồn vào thư mục tạm, không bật ORM tự tạo/cập nhật schema; nhánh be/<owner>/<task-id>-<slug> và review bắt buộc.'],
+ ['Application context Spring Boot khởi tạo được; mvnw.cmd test/verify và lệnh chạy local được ghi trong README, không dùng DB thật để test.','B/C thêm controller/service/repository dưới com.troday mà không cùng sửa main class, pom.xml hoặc SecurityConfig.'],{handoff:['Maven Wrapper, profile cấu hình, lệnh chạy/test/CI và package mẫu cho B/C.'],decisions:['D15']});
 T('A',2,'P0','Chốt contract v1 và cổng dùng chung',5,[],['platform'],['BE-A01','BE-B01','BE-C01'],
  'Cùng B/C chốt ActorContext, lỗi/envelope, tiền/ID/date, TokenPort, FilePort, AuditPort, EventPort và cách thực thi transaction.',
- ['Công bố backend/contracts/core.* với fixture request/response/error và mock adapter.','Tách UnitOfWork của service với ProcedureRunner tự START/COMMIT; actor luôn lấy từ phiên.','Định nghĩa eventId/recipient/eventKey, idempotency scope và whitelist audit target; B/C có contract test dùng ngay.'],
+ ['Công bố backend/docs/contracts/core.json cùng Java record ActorContext/ApiResponse, DTO validation và error mapping trong shared/.','Service tự ghi dùng @Transactional/TransactionTemplate; StoredProcedureGateway là bean riêng dùng Propagation.NEVER khi CALL tự START/COMMIT; actor lấy từ SecurityContext.','Định nghĩa eventId/recipient/eventKey, idempotency scope, whitelist audit target; constructor injection và contract test JUnit sẵn cho B/C.'],
  ['Đã nhận bản phân tích B01/C01 và chốt contract v1 trước khi code các provider.','Contract test quy định rõ đầu vào/đầu ra; test double chỉ dùng cô lập unit test, provider phải chạy thật ở task cung cấp.'],{handoff:['IF-CORE','IF-TOKEN','IF-AUDIT','IF-EVENT'],decisions:['D01','D09','D14','D15']});
 T('A',3,'P1','Xác thực, phiên, profile và scope quyền',8,ids([1,5],[18,21]),['identity'],['BE-A02'],
- 'Xây middleware mặc định từ chối, đăng nhập/refresh/thu hồi phiên và thông tin tài khoản; các module khác chỉ nhận ActorContext đã xác thực.',
+ 'Dùng Spring SecurityFilterChain mặc định từ chối, đăng nhập/refresh/thu hồi phiên và thông tin tài khoản; các module khác chỉ nhận ActorContext đã xác thực.',
  ['Register users+tenants+profile nguyên tử; không nhận ADMIN/LANDLORD tùy ý từ client.','Refresh xoay token, session revoked/LOCKED bị chặn; profile và flags theo whitelist.','Cung cấp factory actor/phiên test cho B/C, tách policy role với quyền từng đối tượng.'],
  ['Thiếu token 401; sai scope/LOCKED không truy cập được tài nguyên module khác.','Mọi contact/ID/money/date validate theo đặc tả, không log secret.'],{decisions:['D01'],qa:['QA16'],handoff:['Middleware + fixture phiên hợp lệ/hết hạn/bị khóa cho B/C.']});
 T('A',4,'P1','Idempotency, event store và adapter audit nền',5,[],['platform','integration'],['BE-A02'],
@@ -102,7 +105,7 @@ T('A',6,'P1','Xác minh danh tính và cấp vai trò chủ trọ',5,ids([6,17])
  ['Hai lần nộp đồng thời không có hai PENDING; file của người khác bị chặn.','Chủ trọ mới được cấp vai trò chỉ công khai nhà sau B05 xác minh riêng.'],{decisions:['D05'],handoff:['Tài khoản TENANT/LANDLORD đã xét duyệt cho fixture tích hợp.']});
 T('A',7,'P1','OTP, reset mật khẩu và TokenPort',5,ids([22,26]),['identity'],['BE-A03','BE-A04'],
  'Hoàn tất token một lần và adapter generic để C dùng cho liên kết cư dân, cùng cơ chế rate limit/reset grant.',
- ['Hash/HMAC mã, hạn dùng, attempt, consumed/revoked; reset không lộ tài khoản tồn tại.','Reset grant chỉ đổi mật khẩu đúng user và thu hồi phiên; phone uniqueness kiểm tra lại dưới khóa.','TokenPort issue/consume hỗ trợ OCCUPANT_LINK và targetRoomTenantId trong transaction được C truyền vào.'],
+ ['Hash/HMAC mã, hạn dùng, attempt, consumed/revoked; reset không lộ tài khoản tồn tại.','Reset grant chỉ đổi mật khẩu đúng user và thu hồi phiên; phone uniqueness kiểm tra lại dưới khóa.','TokenPort issue/consume hỗ trợ OCCUPANT_LINK và targetRoomTenantId trong transaction Spring do service C mở, repository A tham gia cùng DataSource.'],
  ['OTP sai/hết hạn/dùng lại đều thất bại đúng mã; không log/response OTP thực.','C08 tiêu thụ token và gắn member trong cùng transaction, không gọi HTTP nội bộ.'],{decisions:['D01','D06'],handoff:['IF-TOKEN']});
 T('A',8,'P3','Chat hỏi phòng và cổng hội thoại cho lịch xem',8,ids([76,82]),['messaging'],['BE-A03','BE-A04','BE-A05','BE-B04','BE-B07'],
  'Dùng tin công khai B07 và các cổng đọc B04 đã hoàn tất để mở conversation, gửi/đọc tin và read-state. B nhận tin nhắn thật làm điều kiện hẹn xem ở lượt sau.',
@@ -129,7 +132,7 @@ T('A',13,'P5','Phát hành, thu đủ, hủy và thay hóa đơn',5,ids([149,152
  ['Issue DRAFT có dòng tiền → UNPAID; PAID có người ghi nhận/time; hủy chưa thu có lý do.','Replacement giữ cùng contract/kỳ và liên kết bản đã hủy; không sửa lines phát hành.','JOB04 chuyển UNPAID quá due_date VN sang OVERDUE, chạy lặp an toàn; giữ quyền người trả cũ sau bàn giao, không giả có issued_at riêng.'],
  ['Hai lần thu cùng khóa không tạo thêm thu tiền; PAID/CANCELLED không sửa.','Kỳ mới lấy đại diện hiện tại, kỳ cũ vẫn đúng payer.'],{decisions:['D12'],jobs:['JOB04'],qa:['QA10']});
 T('A',14,'P5','SSE có xác thực và nối lại sự kiện',5,ids(90),['messaging'],['BE-A04','BE-A09'],
- 'Triển khai kênh vận chuyển tách khỏi nghiệp vụ; B/C chỉ append/ghi sự kiện, không cùng sửa SSE controller.',
+ 'Dùng Spring MVC SseEmitter cho kênh có xác thực/reconnect; B/C chỉ append/ghi sự kiện, không cùng sửa SSE controller.',
  ['Auth phiên, Last-Event-ID, replay trong cửa sổ lưu, recipient scope và dedupe eventId.','Phát sau commit; reconnect không coi popup đã đóng là đã đọc.','Tải trọng tối thiểu rồi client fetch resource; kiểm tra session revoked khi stream còn mở.'],
  ['Mất kết nối/retry không mất nguồn dữ liệu gốc và không lộ sự kiện người khác.','Crash/delivery lặp vẫn cho client dedupe và đọc lại feed.'],{decisions:['D09'],jobs:['JOB06'],qa:['QA12']});
 T('A',15,'P6','Retention, kiểm tra audit và dashboard quản trị',3,ids(176),['platform','account-admin','integration'],['BE-A05','BE-A06','BE-A12','BE-A14','BE-B04','BE-B14','BE-C02'],
@@ -147,7 +150,7 @@ T('A',17,'P7','Tích hợp bản bàn giao Backend',3,[],['integration'],['BE-A1
 
 T('B',1,'P0','Chốt module nhà/tin/lịch và dữ liệu bàn giao',3,[],['properties','posts','services','viewings','roommates'],[],
  'B đọc rule/SQL và công bố DTO/port thuộc mình trước khi phát triển; không chọn cách code theo từng vai trò UI.',
- ['Phân biệt postId/roomId, quyền nhà, capacity load, quote service và trạng thái kết nối.','Tạo fixture trong backend/tests/fixtures/B/**; không sửa seed chung của A/C.','Gửi đề xuất IF-ROOM/IF-SERVICE/IF-CONNECTION để C01 phân tích thuê và A02 chốt contract v1 ở các lượt tiếp theo.'],
+ ['Phân biệt postId/roomId, quyền nhà, capacity load, quote service và trạng thái kết nối.','Tạo fixture trong backend/src/test/java/com/troday/support/fixtures/b/**; không sửa seed chung của A/C.','Gửi đề xuất IF-ROOM/IF-SERVICE/IF-CONNECTION để C01 phân tích thuê và A02 chốt contract v1 ở các lượt tiếp theo.'],
  ['Bản đề xuất DTO/fixture đã review và bàn giao cho A02; chưa cần backend của A02 được triển khai.','D02/D07/D08/D13 được ghi rõ người đề xuất/người chốt và route bị ảnh hưởng.'],{decisions:['D02','D07','D08','D13'],handoff:['IF-ROOM','IF-SERVICE','IF-CONNECTION']});
 T('B',2,'P2','Nhà/phòng CRUD và sức chứa',8,ids([29,32],[42,45]),['properties'],['BE-A02','BE-A03','BE-A06','BE-B01'],
  'Tạo/sửa nhà nháp, phòng, tình trạng và capacity bằng middleware auth và vai trò chủ trọ đã hoàn tất ở A03/A06; không giữ adapter chờ tích hợp.',
@@ -182,7 +185,7 @@ T('B',9,'P3','Tạo lịch trực tiếp, tham dự và ý định thuê',5,ids(
  ['Hẹn trực tiếp cần tin thuê đúng conversation/room; UTC và duration 30/60/90/120.','ATTENDED/NO_SHOW/CANCEL đúng vai trò/thời điểm; quyết định thuê theo chuyển trạng thái cho phép.','Công bố fixture viewing đủ điều kiện và không đủ điều kiện; C không viết một lịch riêng.'],
  ['Khoảng [start,end) không chồng nhau, liền kề được; không hẹn bằng ROOMMATE.','AGREED không giữ phòng; withdrawal bị chặn khi còn hợp đồng mở.'],{qa:['QA02','QA14'],handoff:['COMPLETED + AGREED viewingId cho C05.']});
 T('B',10,'P3','Bàn giao và kiểm tra lịch khi hợp đồng giữ phòng',3,[],['viewings'],['BE-B09','BE-C05'],
- 'B giữ test backend/tests/e2e/viewing-contract/**; C giữ procedure tạo hợp đồng và đóng hoạt động xem.',
+ 'B giữ test backend/src/test/java/com/troday/e2e/viewingcontract/**; C giữ procedure tạo hợp đồng và đóng hoạt động xem.',
  ['Gửi contract từ lịch bàn giao, kiểm tra lịch/proposal ở mọi post cùng room.','Phân biệt lịch chưa bắt đầu với đang diễn ra/đã hết; trả event tổng hợp cho A.','Hủy contract không khôi phục lịch cũ; lập bug đúng owner file/SQL thay vì sửa chéo.'],
  ['QA03/04 chạy với cả endpoint lịch và contract thật.','Timeline A11 và list lịch đều đọc cùng trạng thái.'],{qa:['QA03','QA04'],handoff:['G3: phòng RESERVED và lịch đã đóng đúng phạm vi.']});
 T('B',11,'P4','Hồ sơ ở ghép và tình trạng nhà ở',5,ids([62,64],66,67),['roommates'],['BE-B04','BE-C02','BE-C07'],
@@ -215,7 +218,7 @@ T('B',17,'P6','Dashboard chủ trọ bằng metric ports',3,ids(175),['propertie
  ['Không cộng nhầm dữ liệu chủ khác; amount decimal và status phù hợp.','Contract tests của metric ports phát hiện consumer dùng field cũ.']);
 T('B',18,'P6','Worker hết quyền nhà và bảo toàn dữ liệu cũ',2,[],['properties','sql-property'],['BE-B05'],
  'Đưa JOB03 vào lịch chạy mà A cung cấp; nguồn quyền hiệu lực vẫn được kiểm tra ngay khi truy vấn.',
- ['APPROVED valid_until<todayVN → EXPIRED theo chính sách, giữ proof/history.','Không xóa/ẩn vật lý từng post hoặc kết thúc contract để giả mất quyền.','Đăng ký worker qua manifest riêng, không sửa worker registry chung.'],
+ ['APPROVED valid_until<todayVN → EXPIRED theo chính sách, giữ proof/history.','Không xóa/ẩn vật lý từng post hoặc kết thúc contract để giả mất quyền.','Thêm bean @Scheduled trong package houserights; cấu hình lịch qua A, không sửa SchedulingConfig chung.'],
  ['Job chậm vẫn không công khai tin hết quyền; chạy lặp an toàn.','Luồng rời/kết thúc hợp đồng cũ tiếp tục dùng được.'],{jobs:['JOB03'],qa:['QA09']});
 T('B',19,'P7','Kiểm thử module nhà/tin/lịch và nội dung',5,[],['properties','posts','viewings','roommates','content-moderation'],['BE-B10','BE-B15','BE-B16','BE-B17','BE-B18'],
  'B giữ tests/e2e/property-* và viewing-contract; kiểm thử quota, quyền nhà, lịch, kết nối và privacy trước bàn giao.',
@@ -236,7 +239,7 @@ T('C',3,'P2','Mẫu hợp đồng và phiên bản mẫu',3,ids([165,167]),['ren
  ['Hai lần tạo cùng name không đụng version; hợp đồng cũ không đổi khi ngừng mẫu.','Không thêm templateController vào file admin chung.'],{decisions:['D14']});
 T('C',4,'P2','Bảo vệ expected revision và adapter procedure',5,[],['rentals','sql-rental'],['BE-C01','BE-C02','BE-A04'],
  'C sửa đúng file workflows.sql để đóng D10 trước route confirm; chuẩn bị adapter/test các giao dịch thuê bằng fixture, không chờ UI/hẹn xem thật.',
- ['Procedure confirm nhận expectedRevisionId và so dưới cùng khóa; stale 409 không xác nhận bản mới.','Mapper camelCase → SQL params/JSON snake_case; ProcedureRunner không bị bọc UoW ngoài.','Race/rollback fixture cho create/move-in/handover/transfer; đưa patch source cho A tái sinh SQL trước tích hợp.'],
+ ['Procedure confirm nhận expectedRevisionId và so dưới cùng khóa; stale 409 không xác nhận bản mới.','Mapper camelCase → SQL params/JSON snake_case; StoredProcedureGateway là bean riêng có @Transactional(propagation=Propagation.NEVER), không bị bọc transaction Spring ngoài.','Race/rollback fixture cho create/move-in/handover/transfer; đưa patch source cho A tái sinh SQL trước tích hợp.'],
  ['QA06 xác nhận A sau khi B đã gửi bị chặn; test không chỉ check trước CALL ở controller.','Các OUT ID và lỗi SIGNAL được ánh xạ ổn định, không lộ SQL ra HTTP.'],{decisions:['D10','D15'],qa:['QA06'],handoff:['Expected revision adapter và source SQL được A tích hợp.']});
 T('C',5,'P3','Gửi hợp đồng thuê mới và đóng lịch tương lai',8,ids(103,104),['rentals','sql-rental'],['BE-C03','BE-C04','BE-B09'],
  'Tạo hợp đồng và side effects thuê mới trong một transaction procedure; B giữ API lịch nhưng C giữ source contract-viewing-cleanup.sql.',
@@ -252,8 +255,8 @@ T('C',7,'P4','Vào ở từng người, hủy dự kiến và hủy trước ở
  ['Confirm contract không tự move-in; date tương lai/ngoài kỳ bị chặn.','Load phòng không đếm trùng, hủy không giả ngày vào/ra.'],{qa:['QA05'],handoff:['Contract ACTIVE + ACTIVE residents thực cho A10, B11 và C09.']});
 T('C',8,'P4','Liên kết cư dân với tài khoản bằng token',5,ids(27,28),['rentals'],['BE-C07','BE-A07'],
  'Dù route nằm nhóm sessions của danh mục API, C giữ endpoint liên quan member; A giữ TokenPort/verification_tokens repository.',
- ['Chủ mời member đúng contract chưa có tenant; OCCUPANT_LINK gắn target room_tenant.','Tiêu thụ token và gắn account trong UoW của C, gọi A token adapter bằng cùng connection.','Chốt D06 kênh/đối chiếu người nhận; không gắn tài khoản theo tên tự khai.'],
- ['User đang ACTIVE nơi khác không được gắn thêm ACTIVE; token dùng lại/hết hạn thất bại.','Rollback gắn member cũng rollback consume, không mất token sau lỗi.'],{decisions:['D06'],handoff:['Contract test TokenPort + UoW cho A review.']});
+ ['Chủ mời member đúng contract chưa có tenant; OCCUPANT_LINK gắn target room_tenant.','Service C dùng @Transactional/TransactionTemplate để tiêu thụ token và gắn account; token repository A tham gia cùng transaction/DataSource.','Chốt D06 kênh/đối chiếu người nhận; không gắn tài khoản theo tên tự khai.'],
+ ['User đang ACTIVE nơi khác không được gắn thêm ACTIVE; token dùng lại/hết hạn thất bại.','Rollback gắn member cũng rollback consume, không mất token sau lỗi.'],{decisions:['D06'],handoff:['Contract test TokenPort + Spring transaction cho A review.']});
 T('C',9,'P4','Yêu cầu thêm người và hai consent riêng',5,ids([117,120]),['rentals'],['BE-C07'],
  'C giữ nghiệp vụ thuê chung; kết nối B13 chỉ là ngữ cảnh tham khảo, không phải đồng thuận thuê.',
  ['Đại diện hiện tại tạo request, applicant khác requester, một yêu cầu mở.','Mỗi bên tự consent theo actor; đủ hai mới PENDING_LANDLORD, bản cũ sau handover không tái dùng.','Cancel đúng vai trò/trạng thái, snapshot representative/revision hợp lệ.'],
@@ -275,11 +278,11 @@ T('C',13,'P6','Nhập hợp đồng giấy có phân quyền riêng',8,ids(113),
  ['Chốt JSON members/state/date, chứng cứ đã ký, quyền import riêng và policy dữ liệu lịch sử.','Tạo contract/revision IMPORTED/member/history đúng FK và capacity, không giả tenant confirmation.','Không dùng source PAPER_IMPORT trên thuê mới để né quy trình quyền nhà/lịch xem.'],
  ['Không có quyền/tệp/identity mapping hợp lệ thì không nhập nửa chừng.','Không điền ngày nhận đại diện/ngày rời bằng suy đoán.'],{decisions:['D11'],priority:'P2'});
 T('C',14,'P6','Worker thuê, hết hold và đối soát cư trú',3,[],['rentals','sql-rental'],['BE-C12'],
- 'C triển khai jobs/ops thuộc thuê; A chỉ sở hữu cơ chế scheduler/manifest, không cùng sửa logic worker.',
+ 'C triển khai jobs/ops thuộc thuê; A chỉ sở hữu SchedulingConfig và cấu hình lịch Spring, không cùng sửa logic worker.',
  ['JOB01 expire proposal gọi thủ tục B sở hữu; thay thuật toán lịch thì gửi B.','JOB02 hold hết hạn; OPS02 báo ACTIVE trên contract đóng; OPS03 chốt quy trình hết hạn lease.','Không tự cho người ở LEFT hoặc đóng lease vì chỉ đến end_date; dữ liệu mâu thuẫn cần đối soát.'],
  ['Job lặp không tạo side effects mới; read/write vẫn recheck now khi worker trễ.','Hợp đồng cũ, lịch sử và nghĩa vụ hóa đơn được giữ.'],{jobs:['JOB01','JOB02','OPS02','OPS03']});
 T('C',15,'P7','Kiểm thử race/rollback toàn bộ giao dịch thuê',5,[],['rentals','sql-rental'],['BE-C13','BE-C14','BE-B10'],
- 'C giữ backend/tests/e2e/rental-* và SQL race suite, tập trung luồng tạo/chốt/ở/rời/chuyển.',
+ 'C giữ backend/src/test/java/com/troday/e2e/rental/** và SQL race suite, tập trung luồng tạo/chốt/ở/rời/chuyển.',
  ['QA03/05/06/07/08/09 chạy hai connection và fault injection trong transaction.','Kiểm tra lock order, OUT ID, FK ghép, snapshot và notification không ghi nửa chừng.','Đọc lại lịch sử/account scope sau handover, termination, transfer; lưu bằng chứng DB tạm.'],
  ['Một phòng một open contract; một account một ACTIVE; không vượt capacity.','Main SQL sinh ra và feature adapter cùng chữ ký procedure mới.'],{qa:['QA03','QA05','QA06','QA07','QA08','QA09']});
 T('C',16,'P7','E2E thuê xuyên ba module và bàn giao API',3,[],['rentals'],['BE-C15','BE-A16','BE-B19'],
@@ -288,8 +291,8 @@ T('C',16,'P7','E2E thuê xuyên ba module và bàn giao API',3,[],['rentals'],['
  ['Không còn stub tại production composition root; toàn bộ API được kế hoạch đánh dấu đạt có test thật.','D11/D02 và các điểm chưa chốt không bị tự đánh dấu hoàn thành vì có fixture.'],{handoff:['Báo cáo E2E liên module cho A17.']});
 
 const interfaces = [
- ['IF-CORE','A','BE-A02',['B','C'],'ActorContext; ResultEnvelope; DomainError; UnitOfWork; ProcedureRunner','actor.userId/roles/sessionId/requestId; ID string; decimal/date; UoW(connection) hoặc CALL tự transaction','Không tin actor trong body; CALL không chạy bên trong transaction app.'],
- ['IF-TOKEN','A','BE-A07',['C'],'TokenPort.issue/consume(purpose,target,actor,tx)','Purpose OCCUPANT_LINK; targetRoomTenantId; expiresAt; attempt/consumed/revoked','C mở UoW khi liên kết; adapter A dùng cùng tx, không gọi HTTP hoặc commit riêng.'],
+ ['IF-CORE','A','BE-A02',['B','C'],'ActorContext; ApiResponse<T>; DomainException; TransactionTemplate; StoredProcedureGateway','SecurityContext → actor.userId/roles/sessionId/requestId; ID string; BigDecimal/Instant/LocalDate','Service dùng transaction Spring; CALL tự commit qua bean Propagation.NEVER, không self-invocation. tx trong các port là ngữ cảnh cùng DataSource trên server, không truyền JDBC Connection qua HTTP.'],
+ ['IF-TOKEN','A','BE-A07',['C'],'TokenPort.issue/consume(purpose,target,actor,tx)','Purpose OCCUPANT_LINK; targetRoomTenantId; expiresAt; attempt/consumed/revoked','Service C mở transaction Spring khi liên kết; adapter A tham gia cùng tx/DataSource, không gọi HTTP hoặc commit riêng.'],
  ['IF-FILES','A','BE-A05',['B','C'],'FilePort.assertUsable/authorizeDownload(actor,fileId,purpose,context,tx?)','Metadata PRIVATE/ACTIVE, owner, MIME/size/hash/expiry; fileId, không có bucket URL cố định','Context resolver đăng ký theo module; proof đã nộp bất biến, không tạo import vòng.'],
  ['IF-ROOM','B','BE-B04',['A','C'],'PropertyReadPort.getRentalSnapshot/getMetrics(actor,roomId?,tx?)','house/room/post counts và rental snapshot; asOf, không PII; provider SQL thật hoàn tất tại B04','Khi giữ phòng/gia hạn/chuyển phải kiểm tra lại dưới khóa SQL; metrics không đợi dashboard B17.'],
  ['IF-SERVICE','B','BE-B03',['A'],'ServiceQuotePort.getEffective(roomId,tx)','name/unit/method/unitPrice từ active_room_services, null kế thừa/0 giữ 0','A chốt bản sao invoice dưới UoW; B đổi bảng giá không sửa invoice_items.'],
@@ -314,15 +317,15 @@ const gates = [
 
 const rules = [
  ['Chia theo module, không chia theo tầng','Một người làm controller/service/repository/DTO/test của module mình. Không giao A làm mọi controller, B mọi service, C mọi database; cách đó khiến mọi tính năng đều chờ người khác.'],
- ['Cùng hệ thống, ba vùng code','Các đường dẫn backend/** là bố cục đề xuất, chưa được tạo server thật. Chọn framework ở A01, giữ ranh giới module ngay cả khi tên file theo ngôn ngữ thay đổi. Mọi /admin/<nghiệp vụ> ở đúng module owner.'],
+ ['Java Spring Boot theo chức năng','Kế hoạch đã chốt Java 21 + Spring Boot + Maven + MySQL; backend/** là cấu trúc dự kiến, chưa có server Java thật. A01 tạo project và pin version stable tương thích. Mỗi package dưới com.troday có controller/dto/service/repository/domain/port/adapter theo nhu cầu; mọi /admin/<nghiệp vụ> ở đúng owner.'],
  ['Một hàng đợi, một task đang thực hiện','Làm theo số thứ tự toàn cục 01–52. Chỉ nhận task đầu tiên chưa hoàn thành; hai người còn lại review khi được yêu cầu, không mở một luồng code riêng.'],
  ['Hoàn tất và merge trước khi chuyển lượt','Task hiện tại phải đủ 7 bước, có PR/commit và bằng chứng test, đã merge main cùng SQL sinh ra nếu có. Người nhận cập nhật main từ commit bàn giao rồi mới tạo nhánh/task kế tiếp.'],
  ['Không sửa module người khác','Cần đổi interface/SQL/file của người khác: mở change request có ví dụ trước/sau và contract test. Owner sửa module của họ trong PR nhỏ; consumer chỉ cập nhật adapter ở vùng code của mình.'],
- ['Shared files có một người tích hợp','A giữ bootstrap, manifest loader, root dependency/lockfile, CI và output SQL. B/C thêm manifest riêng trong module; yêu cầu dependency mới qua A. Không có ba PR cùng sửa một routes.*, package file hoặc seed chung.'],
+ ['Shared files có một người tích hợp','A giữ TrodayApplication, config/shared, pom.xml/Maven Wrapper, application*.yml, CI và output SQL. B/C thêm bean trong package chức năng bằng constructor injection; Spring component scan nhận tự động. Dependency/cấu hình mới yêu cầu A tích hợp ngay trong lượt bàn giao.'],
  ['SQL nguồn và SQL sinh ra','B sửa house-rights/post-review-quota/viewing-proposals; C sửa workflows/contract-viewing-cleanup. A build/commit schema/migration sinh ra từ nguồn mới nhất trên nhánh tích hợp sau mỗi thay đổi SQL. Feature CI assemble vào thư mục tạm; main vẫn phải qua db:check.'],
  ['Migration có thứ tự do A cấp','Tên migration mới chứa task ID và số thứ tự đăng ký, mỗi task một file; không sửa migration đã áp dụng. Chỉ A cập nhật manifest/thứ tự chung và thực thi trên DB tạm. Không chạy migration chung trên DB cá nhân của người khác.'],
  ['Chủ sở hữu code khác chủ transaction','Các procedure thuê ghi nhiều bảng (room, contract, member, history, notification) trong một giao dịch là chủ đích. Không tách thành ba HTTP call giữa A/B/C. C giữ transaction thuê; A/B nhận read/event sau commit.'],
- ['Một DB test cho mỗi người và mỗi lần chạy','Dùng database test riêng theo task/build; fixture A/B/C tách thư mục và tạo ID từ DB, không hardcode ID demo. Không cùng viết một fixtures.sql/seed.ts lớn. CI dọn đúng instance do nó tạo.'],
+ ['Một DB test cho mỗi người và mỗi lần chạy','JUnit/MockMvc cho HTTP và unit; MySQL test độc lập/Testcontainers cho CHECK/FK/trigger/procedure/race, không thay H2 cho SQL v5. Fixture Java và SQL A/B/C tách thư mục; không hardcode ID demo hoặc cùng sửa một seed chung. CI dọn đúng instance do nó tạo.'],
  ['PR nhỏ, review chéo, merge tuần tự','Nhánh be/A|B|C/BE-xx-slug → PR theo task. Rebase nhánh riêng lên main trước mở/merge PR; không rebase/force-push main hoặc nhánh người khác. Reviewer mặc định A→B, B→C, C→A; SQL/shared contract cần owner liên quan cùng duyệt.'],
  ['Provider thật trước consumer','Port/query/procedure được bàn giao phải có implementation và test DB thật ở task cung cấp. Mock chỉ dùng cô lập unit test; không lấy provider rỗng hoặc một task tương lai làm điều kiện hoàn thành task hiện tại. Nếu thiếu đầu vào, dừng tại task hiện tại để xử lý.'],
  ['Phân công theo trách nhiệm, thực hiện theo số thứ tự','A/B/C vẫn giữ module của mình để tránh sửa chéo file. SP chỉ mô tả độ lớn tương đối, không dùng để xếp ba người làm cùng thời điểm. Các mốc P0–P7 là các đoạn liên tiếp của một hàng đợi.'],
@@ -333,4 +336,4 @@ const decisions = [
  ['D01','A','BE-A02','Người phụ trách sản phẩm + cả team'],['D02','B','BE-B15','Người phụ trách sản phẩm'],['D03','A','BE-A08','Người phụ trách sản phẩm + B'],['D04','A','BE-A15','Người phụ trách sản phẩm'],['D05','A','BE-A05','Người phụ trách sản phẩm + B/C'],['D06','C','BE-C08','Người phụ trách sản phẩm + A'],['D07','B','BE-B06','B đề xuất, A tích hợp SQL, C review giao dịch'],['D08','A','BE-A08','A đề xuất, B review ngữ cảnh'],['D09','A','BE-A04','Cả team chốt semantics transaction/delivery'],['D10','C','BE-C04','C đề xuất, A tích hợp SQL'],['D11','C','BE-C13','Người phụ trách sản phẩm + A/B'],['D12','A','BE-A10','Người phụ trách sản phẩm + C'],['D13','B','BE-B16','Người phụ trách sản phẩm + C'],['D14','A','BE-A04','A đề xuất, B/C chốt target trước khi consumer được viết'],['D15','A','BE-A02','Cả team chốt cơ chế version']
 ].map(([id,owner,taskId,approver])=>({id,owner,taskId,approver}));
 
-module.exports={people,phases,modules,tasks,interfaces,gates,rules,decisions,executionOrder:Object.values(sequenceByPhase).flat(),sequencePolicy,interfaceRequirements};
+module.exports={people,phases,modules,tasks,interfaces,gates,rules,decisions,architecture,executionOrder:Object.values(sequenceByPhase).flat(),sequencePolicy,interfaceRequirements};

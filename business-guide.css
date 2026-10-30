@@ -2,6 +2,14 @@
 .business-guide-tab { font-size: 11px; white-space: nowrap; }
 .business-guide-tab.active { background: var(--teal-soft); border-color: #8bbeb4; color: var(--teal); }
 .api-guide-link { white-space: nowrap; font-size: 11px; min-width: 0; }
+.work-plan-link { white-space: nowrap; font-size: 11px; min-width: 0; }
+@media (max-width: 1180px) {
+  .topbar-actions { gap: 7px; }
+  .work-plan-link { padding: 7px 8px; }
+  .work-plan-link > svg { display: none; }
+  .work-plan-link > span { font-size: 0; }
+  .work-plan-link > span::after { content: "Công việc"; font-size: 10px; }
+}
 @media (max-width: 900px) {
   .api-guide-link { padding: 7px 8px; }
   .api-guide-link > svg { display: none; }

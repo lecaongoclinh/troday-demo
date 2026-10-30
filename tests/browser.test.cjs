@@ -497,6 +497,7 @@ async function main() {
     for(const width of [320,390,768,1440]) {
       await page("Emulation.setDeviceMetricsOverride",{width,height:1000,deviceScaleFactor:1,mobile:width<650});
       assert.equal(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth && document.querySelector('#business-guide-tab').getBoundingClientRect().right<=window.innerWidth && document.querySelector('#topbar-role-switch').getBoundingClientRect().right<=document.querySelector('#business-guide-tab').getBoundingClientRect().left`),true,`Guide/header overflow at ${width}px`);
+      assert.equal(await evaluate(`document.querySelector('.api-guide-link').nextElementSibling===document.querySelector('.work-plan-link') && document.querySelector('.api-guide-link').getBoundingClientRect().right<=document.querySelector('.work-plan-link').getBoundingClientRect().left && document.querySelector('.work-plan-link').getBoundingClientRect().right<=window.innerWidth`),true,`Work-plan header link overflow at ${width}px`);
     }
     await evaluate(`document.querySelector('[data-action="business-flow"][data-id="house-proof"]').click()`);
     assert.equal(await evaluate(`document.querySelector('#business-flow-house-proof').open && document.querySelector('#business-flow-house-proof').textContent.includes('SUBLESSOR') && document.querySelector('#business-flow-house-proof').textContent.includes('5 MB') && document.activeElement===document.querySelector('#business-flow-house-proof > summary')`),true);
@@ -574,16 +575,35 @@ async function main() {
     await page('Page.navigate',{url:require('node:url').pathToFileURL(path.join(root,'api-guide.html')).href+'#API-001'});
     await waitLive(evaluate,"document.readyState==='complete' && Boolean(document.querySelector('#API-001')?.open)","file API reference");
     // The team plan covers all APIs, leaves FE/AI blank, and tracks progress independently.
-    await page('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/work-plan.html`});
+    await page('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/index.html`});
+    await waitLive(evaluate,"Boolean(window.__troday) && document.readyState==='complete'","main navigation to work plan");
+    for(const role of ['tenant','landlord','admin']){
+      await evaluate(`__troday.action('switch-role','${role}')`);
+      assert.equal(await evaluate(`document.querySelector('.api-guide-link').nextElementSibling===document.querySelector('.work-plan-link') && document.querySelector('.work-plan-link').getBoundingClientRect().width>0`),true);
+    }
+    await evaluate(`document.querySelector('.work-plan-link').click()`);
     await waitLive(evaluate,"Boolean(window.TRODAY_WORK_PLAN) && document.readyState==='complete' && document.querySelectorAll('.task-card').length===52","team plan load");
     assert.equal(await evaluate(`document.querySelector('#tab-be').getAttribute('aria-selected')==='true' && document.querySelectorAll('.person-card').length===3`),true);
     assert.equal(await evaluate(`document.querySelectorAll('.queue-task').length===52 && !document.querySelector('.lanes') && document.querySelectorAll('.queue-task.is-current').length===1 && document.querySelector('#current-turn [data-task]').dataset.task==='BE-A01'`),true);
+    await evaluate(`document.querySelector('.stack-notice [data-view="structure"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#plan-filters').hidden && document.querySelectorAll('.directory-tree').length===2 && ['Java 21','Spring Boot','pom.xml','TrodayApplication.java','com.troday','Propagation.NEVER','SseEmitter','@Transactional'].every(s=>document.querySelector('#plan-results').textContent.includes(s)) && !document.querySelector('#plan-results').textContent.includes('undefined') && document.querySelectorAll('.architecture-section .rule-card p').length===8`),true);
+    for(const width of [320,390,768,1440]){
+      await page('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<650});
+      assert.equal(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth && Array.from(document.querySelectorAll('.directory-tree')).every(n=>n.clientWidth<=window.innerWidth)`),true,`Spring directory tree overflow at ${width}px`);
+    }
+    if(process.env.GUIDE_SCREENSHOTS){
+      await evaluate(`document.querySelector('.directory-tree').closest('section').scrollIntoView({block:'start'})`);
+      const structure=await page('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'docs','work-plan-structure.png'),Buffer.from(structure.data,'base64'));
+    }
+    await page('Page.reload',{ignoreCache:true});
+    await waitLive(evaluate,"document.readyState==='complete' && document.querySelectorAll('.directory-tree').length===2","directory tree deep link");
+    await evaluate(`document.querySelector('[data-view="roadmap"]').click()`);
     await evaluate(`document.querySelector('#tab-fe').click()`);
     assert.equal(await evaluate(`document.querySelector('#panel-be').hidden && !document.querySelector('#panel-fe').hidden && document.querySelector('#panel-fe').childElementCount===0 && document.querySelector('#panel-fe').textContent===''`),true);
     await evaluate(`document.querySelector('#tab-ai').click();document.querySelector('#tab-ai').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))`);
     assert.equal(await evaluate(`document.activeElement===document.querySelector('#tab-fe') && document.querySelector('#panel-ai').childElementCount===0`),true);
     await evaluate(`document.querySelector('#tab-be').click();document.querySelector('[data-task="BE-A01"]').click()`);
-    assert.equal(await evaluate(`document.querySelector('#task-dialog').open && document.querySelectorAll('#task-detail [data-check]').length===7 && document.querySelector('#task-detail').textContent.includes('backend/src/core')`),true);
+    assert.equal(await evaluate(`document.querySelector('#task-dialog').open && document.querySelectorAll('#task-detail [data-check]').length===7 && document.querySelector('#task-detail').textContent.includes('backend/src/main/java/com/troday/shared')`),true);
     await evaluate(`document.querySelector('#task-status').value='Hoàn thành';document.querySelector('#task-status').dispatchEvent(new Event('change',{bubbles:true}))`);
     assert.equal(await evaluate(`document.querySelector('#task-status').value==='Chưa làm' && document.querySelector('#task-message').textContent.includes('Chưa thể')`),true);
     await evaluate(`document.querySelectorAll('#task-detail [data-check]').forEach(n=>n.click());document.querySelector('#task-pr').value='PR-test-A01';document.querySelector('#task-pr').dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('#task-status').value='Hoàn thành';document.querySelector('#task-status').dispatchEvent(new Event('change',{bubbles:true}))`);
@@ -622,6 +642,15 @@ async function main() {
     await evaluate(`{const p=window.TRODAY_WORK_PLAN;const payload={format:'troday-team-progress',version:2,sourceHash:p.sourceHashes['scripts/work-plan-blueprint.cjs'],progress:p.tasks.map(t=>({id:t.id,status:'Chưa làm',checks:p.checklist.map(()=>false),pr:'',evidence:'',notes:''}))};const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(payload)],'team-progress.json',{type:'application/json'}));const input=document.querySelector('#import-progress');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));}`);
     await waitLive(evaluate,"!document.querySelector('#restore-progress').hidden && document.querySelector('#plan-metrics').textContent.includes('0/52 task hoàn thành')","progress import");
     await evaluate(`document.querySelector('#restore-progress').click()`);
+    assert.equal(await evaluate(`document.querySelector('#plan-metrics').textContent.includes('4/52 task hoàn thành')`),true);
+    // The Spring layout update keeps the previous serial order and accepts its exported progress.
+    await evaluate(`{const p=window.TRODAY_WORK_PLAN;const payload={format:'troday-team-progress',version:2,sourceHash:p.sequencePolicy.compatibleBlueprintHashes[0],progress:p.tasks.map((t,i)=>({id:t.id,status:i===0?'Hoàn thành':'Chưa làm',checks:p.checklist.map(()=>i===0),pr:i===0?'PR-serial-before-spring':'',evidence:'',notes:''}))};const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(payload)],'compatible-serial.json',{type:'application/json'}));const input=document.querySelector('#import-progress');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));}`);
+    await waitLive(evaluate,"document.querySelector('#plan-metrics').textContent.includes('1/52 task hoàn thành')","compatible serial progress");
+    await evaluate(`document.querySelector('#current-turn [data-task]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#task-title').textContent===window.TRODAY_WORK_PLAN.tasks[1].title && document.querySelector('#current-turn [data-task]').dataset.task==='BE-B01'`),true);
+    await evaluate(`document.querySelector('[data-close-task]').click();document.querySelector('[data-task="BE-A01"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#task-pr').value==='PR-serial-before-spring' && document.querySelectorAll('#task-detail [data-check]:checked').length===7 && document.querySelector('#task-status').value==='Hoàn thành'`),true);
+    await evaluate(`document.querySelector('[data-close-task]').click();document.querySelector('#restore-progress').click()`);
     assert.equal(await evaluate(`document.querySelector('#plan-metrics').textContent.includes('4/52 task hoàn thành')`),true);
     // A v2 snapshot cannot claim a later task is complete before earlier tasks.
     await evaluate(`{const p=window.TRODAY_WORK_PLAN;const payload={format:'troday-team-progress',version:2,sourceHash:p.sourceHashes['scripts/work-plan-blueprint.cjs'],progress:p.tasks.map(t=>({id:t.id,status:t.id==='BE-A03'?'Hoàn thành':'Chưa làm',checks:p.checklist.map(()=>t.id==='BE-A03'),pr:t.id==='BE-A03'?'PR-future':'',evidence:'',notes:''}))};const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(payload)],'invalid-order.json',{type:'application/json'}));const input=document.querySelector('#import-progress');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));}`);

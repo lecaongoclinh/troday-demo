@@ -44,10 +44,11 @@ guide=[
  ['Tên người thực tế','Điền tên thành viên tương ứng A/B/C tại Tong_quan, cột Tên thực tế; giữ ký hiệu owner để liên kết task/API ổn định. Không đổi owner của một task lẻ rồi cùng sửa một module.'],
  ['API coverage','API_176 tra trạng thái tự động từ BE_Tasks bằng INDEX/MATCH; mỗi endpoint có đúng một task/owner. Không nhập trạng thái độc lập tại API_176.'],
  ['Tiến độ tổng','Tong_quan dùng COUNTIF và SUMPRODUCT(SP × tiến độ)/SUM(SP). Tỷ lệ task hoàn thành theo trạng thái là chỉ số khác; review cả cột cảnh báo. Excel tính lại công thức khi mở.'],
- ['File dùng chung','A tích hợp bootstrap/dependency/CI/output SQL trong chính lượt bàn giao cần nó; không có một task tương lai để chờ sửa provider. B/C sửa source SQL đã phân. backend/** là bố cục đề xuất, chưa phải backend đã có.'],
+ ['Java Spring Boot','Java 21 LTS + Spring Boot + Maven Wrapper + MySQL; Spring JDBC tích hợp SQL/procedure hiện có. BE-A01 tạo project thật. Sheet Cau_truc_BE mô tả stack, cây thư mục và quy ước.'],
+ ['File dùng chung','A tích hợp TrodayApplication/config/shared/pom.xml/Maven Wrapper/application*.yml/CI/output SQL ngay trong lượt bàn giao cần nó. B/C thêm bean trong package chức năng và sửa source SQL đã phân. backend/** là bố cục đề xuất, chưa phải backend đã có.'],
  ['Đồng bộ trang','Tiến độ trên trang chỉ lưu trong trình duyệt này; Excel không tự đồng bộ với trang hoặc máy khác. Team nên dùng một bản workbook chung hoặc công cụ task làm nguồn thật.'],
  ['FE / AI','Hai sheet cuối hoàn toàn trống, dành cho lập kế hoạch sau. Không tự phát sinh task FE/AI.'],
- ['Nguồn','Kế hoạch v2 tuần tự; giữ task ID của v1, đổi STT chung và thứ tự hàng. docs/api-catalog.json + scripts/work-plan-blueprint.cjs → JSON/JS/Excel. Kiểm tra: npm run plan:check; npm run test:work-plan.']
+ ['Nguồn','Kế hoạch v2 tuần tự; giữ thứ tự 52 task khi bổ sung Java Spring Boot. docs/api-catalog.json + scripts/work-plan-blueprint.cjs + scripts/spring-boot-plan.cjs → JSON/JS/Excel. Kiểm tra: npm run plan:check; npm run test:work-plan.']
 ]
 overview=[['Ngày kế hoạch','2026-10-29','',''],['Tổng task',len(tasks),'Một hàng đợi, làm theo STT chung',''],['Tổng API',len(P['assignments']),'',''],['Mốc tích hợp',len(P['phases']),'Các đoạn liên tiếp của hàng đợi',''],['SP dự kiến',P['counts']['points'],'Độ lớn tương đối, không phải ngày công',''],['Hoàn thành',F(f'COUNTIF({status_range},"Hoàn thành")'),'Đối chiếu cột cảnh báo để xác nhận hợp lệ',''],['Đang làm',F(f'COUNTIF({status_range},"Đang làm")'),'Tối đa 1 task đang thực hiện',''],['Chờ lượt / đầu vào',F(f'COUNTIF(BE_Tasks!Y2:Y{N},"Chờ phụ thuộc")',len(tasks)-1),'Task trước phải hoàn thành và merge hợp lệ',''],['Chờ review',F(f'COUNTIF({status_range},"Chờ review")'),'',''],['Bị chặn',F(f'COUNTIF({status_range},"Bị chặn")'),'Dừng hàng đợi để giải quyết',''],['Chưa làm',F(f'COUNTIF({status_range},"Chưa làm")',len(tasks)),'',''],['Tiến độ theo SP',F(f'SUMPRODUCT(BE_Tasks!G2:G{N},BE_Tasks!X2:X{N})/SUM(BE_Tasks!G2:G{N})'),'7 bước, có trọng số độ lớn',''],['Cảnh báo thứ tự / nghiệm thu',F(f'COUNTIF(BE_Tasks!Z2:Z{N},"?*")'),'Cần xử lý trước khi chuyển lượt',''],['Người / vai trò','SP','Số task','Tên thực tế']]
 for p in P['people']:overview.append([p['id']+' — '+p['role'],p['points'],p['taskCount'],''])
@@ -80,7 +81,16 @@ decisions.dropdown(f'G2:G{len(P["decisions"])+1}',['Chưa chốt','Đang trao đ
 workers=Sheet('Worker_OPS',['ID','Công việc','Owner','Task','Lịch đề xuất','Nghiệp vụ','Nghiệm thu','Trạng thái task'],[[j['id'],j['title'],j['owner'],j['taskId'],j['schedule'],j['logic'],j['acceptance'],F(lookup(j['taskId']),'Chưa làm')] for j in P['jobs']],{2:50,4:20,5:45,6:110,7:100,8:22})
 qa=Sheet('QA',['ID','Ca kiểm thử','Task chịu trách nhiệm','Owner liên quan','Kịch bản','Kết quả','Bằng chứng / lỗi'],[[q['id'],q['title'],', '.join(q['taskIds']),', '.join(q['owners']),q['scenario'],'Chưa chạy',''] for q in P['qa']],{2:50,3:50,5:125,7:70})
 qa.dropdown(f'F2:F{len(P["qa"])+1}',['Chưa chạy','Pass','Fail','Bị chặn'])
-sheets=[Sheet('Huong_dan',['Mục','Cách sử dụng'],guide,{1:35,2:150},filters=False),summary,task_sheet,api_sheet,ownership,phases,handoffs,decisions,workers,qa,Sheet('FE'),Sheet('AI')]
+a=P['architecture']
+architecture_rows=[['Trạng thái',a['status']],['Version',a['versionPolicy']],['Package gốc',a['basePackage']]]
+architecture_rows += [[x['title'],x['choice']+'\n'+x['detail']] for x in a['stack']]
+architecture_rows += [['Cây thư mục BE',line] for line in a['tree'].splitlines() if line]
+architecture_rows += [['Một module mẫu',line] for line in a['featureTree'].splitlines() if line]
+architecture_rows += [[x['title'],x['body']] for x in a['conventions']]
+architecture_rows += [[x['title'],x['command']+'\n'+x['detail']] for x in a['commands']]
+architecture_rows += [[x['title'],x['url']] for x in a['references']]
+architecture_sheet=Sheet('Cau_truc_BE',['Thành phần / quy ước','Java Spring Boot dự kiến'],architecture_rows,{1:45,2:160},filters=False)
+sheets=[Sheet('Huong_dan',['Mục','Cách sử dụng'],guide,{1:35,2:150},filters=False),summary,task_sheet,api_sheet,ownership,phases,handoffs,decisions,workers,qa,architecture_sheet,Sheet('FE'),Sheet('AI')]
 payload=workbook(sheets)
 if '--check' in sys.argv:
     assert TARGET.exists() and TARGET.read_bytes()==payload,'Workbook chưa đồng bộ; chạy npm run plan:build (tiến độ thực lưu trong bản sao).'
@@ -88,7 +98,7 @@ else:TARGET.write_bytes(payload)
 with zipfile.ZipFile(TARGET) as z:
     assert z.testzip() is None
     for name in z.namelist():ET.fromstring(z.read(name))
-    for i in (11,12):
+    for i in (12,13):
         doc=ET.fromstring(z.read(f'xl/worksheets/sheet{i}.xml'))
         assert len(doc.find(f'{{{NS}}}sheetData'))==0,'FE/AI must stay empty'
     doc=ET.fromstring(z.read('xl/worksheets/sheet3.xml'))
