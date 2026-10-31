@@ -1,0 +1,88 @@
+// Proposed files and method names. No Java implementation or completion claim.
+module.exports={
+  recommendation:'Làm nền tảng chung trước; sau đó chuẩn bị model, mapper và repository vừa đủ cho từng nhóm chức năng rồi viết service của nhóm đó. Đây là thứ tự chi tiết bên trong các task hiện có.',
+  repeatRule:'Bước 1–2 chuẩn bị nền tảng; bước 3–6 lặp lại cho từng nhóm chức năng theo hàng đợi. Các model/repository của toàn hệ thống không phải điều kiện để bắt đầu AuthService hay HouseService.',
+  steps:[
+    {order:1,title:'Chốt hợp đồng dữ liệu',owner:'A + B + C',outputs:'Thống nhất field/nullable/status từ SQL, ID JSON, tiền, thời gian, lỗi, phân trang và chữ ký hàm. Ghi consumer của từng model/query.',gate:'B01/C01 bàn giao phân tích; A02 chốt contract trước các consumer.'},
+    {order:2,title:'Hoàn tất nền tảng dùng chung',owner:'A',outputs:'ApiResponse/PageMeta, lỗi tập trung, ActorContext, Clock, cấu hình JDBC và quy ước transaction/procedure.',gate:'A01/A02 có code và test; model và query nghiệp vụ chưa cần hoàn tất toàn bộ.'},
+    {order:3,title:'Model/projection cho nhóm đang làm',owner:'Owner chức năng',outputs:'Chỉ tạo model được luồng hiện tại hoặc consumer đã xác định sử dụng; tách projection đọc khỏi response HTTP có dữ liệu riêng tư.',gate:'Có danh sách field và nơi sử dụng; không sinh model cho mọi bảng chỉ để đủ bộ.'},
+    {order:4,title:'RowMapper và repository/query',owner:'Owner chức năng',outputs:'mapRow, truy vấn cụ thể, lọc quyền, null/decimal/date mapping, ghi có điều kiện. Luồng SQL đã có procedure dùng gateway thay CRUD chồng lên procedure.',gate:'Truy vấn/ghi chạy trên MySQL test, xử lý trường hợp không có dữ liệu và lỗi ràng buộc.'},
+    {order:5,title:'Bàn giao hàm được nhiều luồng dùng',owner:'Provider A/B/C',outputs:'Cổng tệp/token/audit/event, snapshot phòng/cư trú, báo giá dịch vụ và bằng chứng lịch xem theo mốc cung cấp bên dưới.',gate:'Có implementation và test; interface hoặc mock riêng lẻ chưa phải bàn giao hoàn tất.'},
+    {order:6,title:'Service → controller → kiểm thử luồng',owner:'Owner chức năng',outputs:'Service điều phối quyền/trạng thái/transaction; controller nhận DTO và trả kết quả. Hoàn tất một luồng có thể kiểm thử rồi bổ sung nhóm tiếp theo.',gate:'Kiểm thử thành công, sai quyền, dữ liệu cũ, rollback và retry liên quan; ghi PR/test vào task hiện tại.'}
+  ],
+  components:[
+    {id:'COMMON-01',title:'Response, lỗi và phân trang',scope:'Toàn hệ thống',owner:'A',taskId:'BE-A02',
+      files:['dto/response/ApiResponse.java','dto/response/PageMeta.java','dto/request/PageQuery.java','exception/DomainException.java','exception/GlobalExceptionHandler.java'],
+      methods:['ApiResponse.success(data)','PageQuery.validate(allowedSortFields)','GlobalExceptionHandler.handleDomainException(...)'],
+      consumers:['BE-A03','BE-B02','BE-C02'],acceptance:'Contract JSON đúng kiểu; validate page/size/sort, thống nhất lỗi và requestId; không lộ SQL hoặc PII.'},
+    {id:'COMMON-02',title:'Actor, đồng hồ và ranh giới giao dịch',scope:'Toàn hệ thống',owner:'A',taskId:'BE-A02',
+      files:['security/ActorContext.java','config/ClockConfig.java','exception/ProcedureErrorTranslator.java','repository/procedure/StoredProcedureGateway.java'],
+      methods:['ActorContext.requireUserId()','Clock.instant()','ProcedureErrorTranslator.toDomainException(sqlException)','StoredProcedureGateway: kiểm tra Propagation.NEVER qua Spring proxy'],
+      consumers:['BE-A03','BE-B02','BE-C04'],acceptance:'Actor từ SecurityContext; Clock có thể cố định trong test. Gateway dùng chữ ký procedure tường minh, không cho client chọn SQL/procedure tùy ý.'},
+    {id:'COMMON-03',title:'Dữ liệu người dùng và phiên',scope:'Nhiều luồng danh tính',owner:'A',taskId:'BE-A03',
+      files:['model/User.java','model/AuthSession.java','repository/mapper/UserRowMapper.java','repository/UserRepository.java','repository/SessionRepository.java'],
+      methods:['UserRepository.findById(userId)','UserRepository.findByLogin(login)','SessionRepository.findActive(sessionId,now)'],
+      consumers:['BE-A03','BE-A06','BE-A07'],acceptance:'Chuẩn bị trong A03 trước AuthService. Thông tin xác thực không đi vào response chung; kiểm tra user/session bị khóa hoặc hết hạn.'},
+    {id:'COMMON-04',title:'Idempotency, audit và sự kiện',scope:'Các luồng có tác dụng ghi',owner:'A',taskId:'BE-A04',
+      files:['repository/IdempotencyRepository.java','service/IdempotencyService.java','service/AuditPort.java','service/EventPort.java'],
+      methods:['IdempotencyRepository.tryStart(scope,key,hash)','IdempotencyRepository.storeResult(...)','AuditPort.append(tx,...)','EventPort.append(tx,event)'],
+      consumers:['BE-A05','BE-B06','BE-C03'],acceptance:'Cùng key/payload không ghi lặp; khác payload bị từ chối. Audit/event dùng đúng transaction; procedure đã ghi thì không ghi lần hai. D09/D14 phải chốt.'},
+    {id:'COMMON-05',title:'Metadata tệp và quyền sử dụng',scope:'Xác minh, tin đăng, chứng cứ',owner:'A',taskId:'BE-A05',
+      files:['model/FileMetadata.java','repository/mapper/FileMetadataRowMapper.java','repository/FileRepository.java','service/FilePort.java','integration/FileStorageClient.java'],
+      methods:['FileRepository.findById(fileId)','FilePort.assertUsable(actor,fileId,purpose,context,tx)','FilePort.authorizeDownload(...)'],
+      consumers:['BE-A06','BE-B05','BE-B06','BE-C13'],acceptance:'Kiểm thử quyền đọc private, chủ sở hữu, mục đích, trạng thái tệp và retention; trả metadata cần thiết, không dùng URL bucket cố định.'},
+    {id:'COMMON-06',title:'Token dùng một lần',scope:'OTP/reset và liên kết cư dân',owner:'A',taskId:'BE-A07',
+      files:['repository/TokenRepository.java','service/TokenPort.java'],
+      methods:['TokenPort.issue(purpose,target,actor,tx)','TokenPort.consume(purpose,target,actor,tx)'],
+      consumers:['BE-A07','BE-C08'],acceptance:'Consume nguyên tử, đúng purpose/target, có hạn dùng; rollback luồng liên kết phải rollback consume. Không tự commit ngoài transaction consumer.'},
+    {id:'COMMON-07',title:'Nhà/phòng và mapper cơ bản',scope:'CRUD và nguồn đọc phòng',owner:'B',taskId:'BE-B02',
+      files:['model/House.java','model/Room.java','repository/mapper/HouseRowMapper.java','repository/mapper/RoomRowMapper.java','repository/HouseRepository.java','repository/RoomRepository.java'],
+      methods:['HouseRepository.findOwnedById(actor,houseId)','RoomRepository.findById(roomId)','HouseRepository.insert(...)'],
+      consumers:['BE-B02','BE-B04'],acceptance:'Làm model/mapper/repository trong B02 trước HouseService/RoomService; quyền sửa nhà và xử lý sức chứa đúng SQL hiện có.'},
+    {id:'COMMON-08',title:'Báo giá dịch vụ hiệu lực',scope:'Dịch vụ và hóa đơn',owner:'B',taskId:'BE-B03',
+      files:['model/ServiceQuote.java','repository/mapper/ServiceQuoteRowMapper.java','repository/ServiceQuoteRepository.java','service/ServiceQuotePort.java'],
+      methods:['ServiceQuoteRepository.findEffectiveByRoomId(roomId)','ServiceQuotePort.getEffective(roomId,tx)'],
+      consumers:['BE-B03','BE-A10'],acceptance:'Null kế thừa, override 0 giữ 0, tiền dùng BigDecimal; invoice giữ snapshot, không đọc lại giá mới thay giá đã chốt.'},
+    {id:'COMMON-09',title:'Snapshot phòng và kết nối',scope:'Chat, lịch xem và hợp đồng',owner:'B',taskId:'BE-B04',
+      files:['model/RoomSnapshot.java','repository/mapper/RoomSnapshotRowMapper.java','repository/PropertyReadRepository.java','repository/ConnectionReadRepository.java','service/PropertyReadPort.java','service/ConnectionReadPort.java'],
+      methods:['PropertyReadPort.getRentalSnapshot(actor,roomId,tx)','ConnectionReadPort.assertAccepted(actor,connectionId,tx)'],
+      consumers:['BE-A08','BE-C05'],acceptance:'Provider SQL thật, không có PII cư dân. Snapshot dùng đọc; giữ phòng/gia hạn/chuyển vẫn kiểm tra lại quyền và capacity dưới khóa.'},
+    {id:'COMMON-10',title:'Snapshot hợp đồng và cư trú',scope:'Hồ sơ ở ghép, hóa đơn, thuê',owner:'C',taskId:'BE-C02',
+      files:['model/ContractSnapshot.java','model/ActiveStay.java','repository/mapper/ContractSnapshotRowMapper.java','repository/ResidencyReadRepository.java','service/ResidencyReadPort.java'],
+      methods:['ResidencyReadPort.getContractSnapshot(actor,contractId,tx)','ResidencyReadPort.getActiveStay(actor,tx)','ResidencyReadPort.getMetrics(...)'],
+      consumers:['BE-C05','BE-B11','BE-A10'],acceptance:'Kiểm thử bằng MySQL fixture trước API tạo hợp đồng; phân biệt ACTIVE/PLANNED, payer và representative; chỉ trả projection được phép đọc.'},
+    {id:'COMMON-11',title:'Gateway giao dịch thuê và revision',scope:'Các luồng ghi thuê',owner:'C',taskId:'BE-C04',
+      files:['repository/procedure/RentalProcedureGateway.java'],
+      methods:['RentalProcedureGateway: CALL có IN/OUT và expectedRevision theo từng thủ tục','Dùng ProcedureErrorTranslator của A; C bàn giao mã SIGNAL và tình huống nghiệp vụ cần ánh xạ'],
+      consumers:['BE-C05','BE-C06','BE-C07'],acceptance:'C04 bàn giao nền gọi procedure và bảo vệ revision; từng hàm CALL được hoàn thiện ở task luồng tương ứng. Không bọc CALL tự commit trong transaction Spring; test lỗi/rollback/race tại task sử dụng.'},
+    {id:'COMMON-12',title:'Bằng chứng và timeline lịch xem',scope:'Chat và tạo hợp đồng',owner:'B',taskId:'BE-B08',
+      files:['model/ViewingEvidence.java','repository/ViewingReadRepository.java','service/ViewingReadPort.java'],
+      methods:['ViewingReadPort.getTimeline(actor,context,tx)','ViewingReadPort.getRentalEvidence(actor,context,tx)'],
+      consumers:['BE-A11','BE-C05'],acceptance:'Hoàn tất provider trong B08 trước C05; dữ liệu gốc của lịch, đúng tenant/landlord và trạng thái hiện tại, không sao chép trạng thái từ chat.'}
+  ],
+  serviceExamples:[
+    {taskId:'BE-A03',title:'Đăng nhập/phiên',service:'AuthService.login(...)',uses:['COMMON-01','COMMON-02','COMMON-03'],flow:'Validate → tìm User → kiểm tra password/trạng thái → tạo Session → trả DTO.'},
+    {taskId:'BE-A05',title:'Hoàn tất upload',service:'FileService.completeUpload(...)',uses:['COMMON-01','COMMON-02','COMMON-04','COMMON-05'],flow:'Kiểm tra actor/purpose → xác minh object/MIME/hash → cập nhật metadata → ghi audit/event → trả DTO.'},
+    {taskId:'BE-B02',title:'Tạo nhà/phòng',service:'HouseService.createHouse(...)',uses:['COMMON-01','COMMON-02','COMMON-04','COMMON-07'],flow:'Validate/quyền chủ trọ → ghi nhà/phòng theo transaction đã chốt → audit/event → trả DTO.'},
+    {taskId:'BE-C05',title:'Gửi hợp đồng thuê',service:'ContractService.submit(...)',uses:['COMMON-02','COMMON-04','COMMON-09','COMMON-10','COMMON-11','COMMON-12'],flow:'Kiểm tra actor/bằng chứng xem → đọc snapshot → CALL tạo hợp đồng và kiểm tra lại dưới khóa → đọc kết quả; không bọc procedure tự commit trong transaction Spring.'},
+    {taskId:'BE-A10',title:'Lập hóa đơn nháp',service:'InvoiceService.createDraft(...)',uses:['COMMON-01','COMMON-02','COMMON-04','COMMON-08','COMMON-10'],flow:'Đọc cư trú/người trả → lấy báo giá → tính tiền → lưu invoice/items và snapshot trong cùng transaction.'}
+  ],
+  readyChecklist:[
+    'Chữ ký hàm, đầu vào/đầu ra, field nullable và người sở hữu đã được chốt cho luồng đang viết.',
+    'Model/RowMapper/query mà luồng dùng có test phù hợp; repository không chỉ là interface hoặc mock.',
+    'Quyền theo actor/tài nguyên, trạng thái và thời điểm cần kiểm tra lại dưới khóa đã rõ.',
+    'Đã chọn một chủ transaction: service Spring hoặc procedure tự quản lý; audit/event/token tham gia đúng ranh giới.',
+    'Có ca thành công và các ca sai quyền, không tìm thấy, dữ liệu cũ, rollback/retry cần cho luồng.'
+  ],
+  avoid:[
+    'Không cần BaseRepository<T>/BaseService<T> hoặc CRUD cho mọi bảng trước. Spring JDBC đã xử lý kết nối/statement/exception; chỉ trích helper khi có nhu cầu thực tế.',
+    'Model trong cùng thư mục không đồng nghĩa cả nhóm được ghi mọi bảng. Owner giữ quy tắc ghi; các consumer dùng projection/cổng đọc đã bàn giao.',
+    'Không giao A viết toàn bộ model, B toàn bộ repository, C toàn bộ service. Mỗi owner hoàn thiện phần dữ liệu và luồng của chức năng mình; A giữ hạ tầng chung.',
+    'Các tên file/hàm ở đây là đề xuất cần chốt tại task, chưa phải API Java đã tồn tại. Các mục này không tạo thêm task, đổi STT hay tự đánh dấu tiến độ.'
+  ],
+  references:[
+    {title:'Spring JDBC: RowMapper có thể tái sử dụng',url:'https://docs.spring.io/spring-framework/docs/6.2.x/javadoc-api/org/springframework/jdbc/core/RowMapper.html'},
+    {title:'Spring: transaction tại service và cơ chế proxy',url:'https://docs.spring.io/spring-framework/reference/6.2/data-access/transaction/declarative/annotations.html'},
+    {title:'Martin Fowler: chi phí xây dựng trước nhu cầu (Yagni)',url:'https://martinfowler.com/bliki/Yagni.html'}
+  ]
+};

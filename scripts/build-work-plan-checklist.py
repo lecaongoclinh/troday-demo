@@ -35,22 +35,22 @@ task_sheet.conditionals=[f'<conditionalFormatting sqref="X2:X{N}"><cfRule type="
 task_sheet.validations.append(f'<dataValidation type="date" operator="between" allowBlank="1" showErrorMessage="1" sqref="AA2:AC{N}"><formula1>43831</formula1><formula2>73050</formula2></dataValidation>')
 
 guide=[
- ['Mục tiêu','52 task chạy TUẦN TỰ theo STT chung 01–52, mỗi lần một task; A/B/C giữ owner theo module. Bao phủ 176 API. FE/AI trống. Đây là kế hoạch, chưa có backend nào được triển khai.'],
+ ['Mục tiêu','52 task chạy TUẦN TỰ theo STT chung 01–52, mỗi lần một task; A/B/C phụ trách chức năng, thư mục Java theo tầng tại troday/BE. Bao phủ 176 API. FE/AI trống. Lớp nghiệp vụ được triển khai theo task.'],
  ['Tạo bản làm việc','Save As một bản sao trước khi cập nhật. npm run plan:build sẽ thay bản master sinh từ mã nguồn; không ghi tiến độ thực vào master rồi chạy build.'],
  ['Cách cập nhật','BE_Tasks là nguồn trạng thái chính trong workbook: P chọn trạng thái, Q:W đánh dấu 7 bước, AA:AC nhập ngày, AD:AF lưu PR/bằng chứng/lý do. Tăng chiều cao hàng khi cần đọc đủ nội dung dài.'],
  ['Hoàn thành','Chọn Hoàn thành sau khi 7 bước Xong, mọi task đầu vào và task bàn giao ngay trước đã hoàn thành hợp lệ, có PR/commit hoặc bằng chứng tại AD/AE. Cột Z cảnh báo làm ngoài thứ tự hoặc thiếu bằng chứng; không thay thế review/test thật.'],
  ['Mốc và SP','8 mốc là 8 đoạn liên tiếp của một hàng đợi; không có ba lane chạy cùng lúc. SP là độ lớn tương đối, không phải ngày công/deadline.'],
  ['Nhận lượt','Chỉ thực hiện task đầu tiên chưa hoàn thành hợp lệ. Người trước review/merge PR và bàn giao commit main/SQL/test; người sau cập nhật main, chạy kiểm tra rồi tạo nhánh mới. Bị chặn thì xử lý tại task hiện tại, không bắt đầu task phía sau.'],
- ['Tên người thực tế','Điền tên thành viên tương ứng A/B/C tại Tong_quan, cột Tên thực tế; giữ ký hiệu owner để liên kết task/API ổn định. Không đổi owner của một task lẻ rồi cùng sửa một module.'],
+ ['Tên người thực tế','Điền tên thành viên tương ứng A/B/C tại Tong_quan, cột Tên thực tế; giữ ký hiệu owner để liên kết task/API ổn định. Không đổi owner của một task lẻ rồi cùng sửa các lớp của một chức năng.'],
  ['API coverage','API_176 tra trạng thái tự động từ BE_Tasks bằng INDEX/MATCH; mỗi endpoint có đúng một task/owner. Không nhập trạng thái độc lập tại API_176.'],
  ['Tiến độ tổng','Tong_quan dùng COUNTIF và SUMPRODUCT(SP × tiến độ)/SUM(SP). Tỷ lệ task hoàn thành theo trạng thái là chỉ số khác; review cả cột cảnh báo. Excel tính lại công thức khi mở.'],
- ['Java Spring Boot','Java 21 LTS + Spring Boot + Maven Wrapper + MySQL; Spring JDBC tích hợp SQL/procedure hiện có. BE-A01 tạo project thật. Sheet Cau_truc_BE mô tả stack, cây thư mục và quy ước.'],
- ['File dùng chung','A tích hợp TrodayApplication/config/shared/pom.xml/Maven Wrapper/application*.yml/CI/output SQL ngay trong lượt bàn giao cần nó. B/C thêm bean trong package chức năng và sửa source SQL đã phân. backend/** là bố cục đề xuất, chưa phải backend đã có.'],
+ ['Java Spring Boot','Java 21 LTS + Spring Boot + Maven Wrapper + MySQL; Spring JDBC tích hợp SQL/procedure hiện có. Khung backend đã có tại troday/BE. Sheet Cau_truc_BE mô tả stack, cây thư mục và quy ước.'],
+ ['File dùng chung','A tích hợp main class, config/security/exception/util, DTO chung, POM/Wrapper, profile, CI và output SQL. Mỗi người giữ các lớp nghiệp vụ của mình trong controller/service/repository/model/dto. Fixture Java/SQL đặt tên theo chức năng trong thư mục dùng chung.'],
  ['Đồng bộ trang','Tiến độ trên trang chỉ lưu trong trình duyệt này; Excel không tự đồng bộ với trang hoặc máy khác. Team nên dùng một bản workbook chung hoặc công cụ task làm nguồn thật.'],
  ['FE / AI','Hai sheet cuối hoàn toàn trống, dành cho lập kế hoạch sau. Không tự phát sinh task FE/AI.'],
  ['Nguồn','Kế hoạch v2 tuần tự; giữ thứ tự 52 task khi bổ sung Java Spring Boot. docs/api-catalog.json + scripts/work-plan-blueprint.cjs + scripts/spring-boot-plan.cjs → JSON/JS/Excel. Kiểm tra: npm run plan:check; npm run test:work-plan.']
 ]
-overview=[['Ngày kế hoạch','2026-10-29','',''],['Tổng task',len(tasks),'Một hàng đợi, làm theo STT chung',''],['Tổng API',len(P['assignments']),'',''],['Mốc tích hợp',len(P['phases']),'Các đoạn liên tiếp của hàng đợi',''],['SP dự kiến',P['counts']['points'],'Độ lớn tương đối, không phải ngày công',''],['Hoàn thành',F(f'COUNTIF({status_range},"Hoàn thành")'),'Đối chiếu cột cảnh báo để xác nhận hợp lệ',''],['Đang làm',F(f'COUNTIF({status_range},"Đang làm")'),'Tối đa 1 task đang thực hiện',''],['Chờ lượt / đầu vào',F(f'COUNTIF(BE_Tasks!Y2:Y{N},"Chờ phụ thuộc")',len(tasks)-1),'Task trước phải hoàn thành và merge hợp lệ',''],['Chờ review',F(f'COUNTIF({status_range},"Chờ review")'),'',''],['Bị chặn',F(f'COUNTIF({status_range},"Bị chặn")'),'Dừng hàng đợi để giải quyết',''],['Chưa làm',F(f'COUNTIF({status_range},"Chưa làm")',len(tasks)),'',''],['Tiến độ theo SP',F(f'SUMPRODUCT(BE_Tasks!G2:G{N},BE_Tasks!X2:X{N})/SUM(BE_Tasks!G2:G{N})'),'7 bước, có trọng số độ lớn',''],['Cảnh báo thứ tự / nghiệm thu',F(f'COUNTIF(BE_Tasks!Z2:Z{N},"?*")'),'Cần xử lý trước khi chuyển lượt',''],['Người / vai trò','SP','Số task','Tên thực tế']]
+overview=[['Ngày cập nhật',P['date'],'',''],['Tổng task',len(tasks),'Một hàng đợi, làm theo STT chung',''],['Tổng API',len(P['assignments']),'',''],['Mốc tích hợp',len(P['phases']),'Các đoạn liên tiếp của hàng đợi',''],['SP dự kiến',P['counts']['points'],'Độ lớn tương đối, không phải ngày công',''],['Hoàn thành',F(f'COUNTIF({status_range},"Hoàn thành")'),'Đối chiếu cột cảnh báo để xác nhận hợp lệ',''],['Đang làm',F(f'COUNTIF({status_range},"Đang làm")'),'Tối đa 1 task đang thực hiện',''],['Chờ lượt / đầu vào',F(f'COUNTIF(BE_Tasks!Y2:Y{N},"Chờ phụ thuộc")',len(tasks)-1),'Task trước phải hoàn thành và merge hợp lệ',''],['Chờ review',F(f'COUNTIF({status_range},"Chờ review")'),'',''],['Bị chặn',F(f'COUNTIF({status_range},"Bị chặn")'),'Dừng hàng đợi để giải quyết',''],['Chưa làm',F(f'COUNTIF({status_range},"Chưa làm")',len(tasks)),'',''],['Tiến độ theo SP',F(f'SUMPRODUCT(BE_Tasks!G2:G{N},BE_Tasks!X2:X{N})/SUM(BE_Tasks!G2:G{N})'),'7 bước, có trọng số độ lớn',''],['Cảnh báo thứ tự / nghiệm thu',F(f'COUNTIF(BE_Tasks!Z2:Z{N},"?*")'),'Cần xử lý trước khi chuyển lượt',''],['Người / vai trò','SP','Số task','Tên thực tế']]
 for p in P['people']:overview.append([p['id']+' — '+p['role'],p['points'],p['taskCount'],''])
 overview.append(['Tiến độ từng người','SP đã xử lý','Tỷ lệ theo SP','Task hoàn thành'])
 for p in P['people']:
@@ -68,7 +68,7 @@ for r,a in enumerate(P['assignments'],2):
     api_sheet.styles[(r,5)]=6+ord(a['owner'])-65;api_sheet.styles[(r,10)]=3
     for c,ref,target in [(12,f'L{r}',f'../api-guide.html#{a["id"]}'),(13,f'M{r}',f'../work-plan.html#{a["taskId"]}')]:api_sheet.styles[(r,c)]=5;api_sheet.links.append((ref,target))
 
-ownership=Sheet('Owner_Files',['Module','Owner','Phạm vi file','Nghiệp vụ','Quy tắc bàn giao'],[[m['title'],m['owner'],'\n'.join(m['paths']),m['scope'],m['boundary']] for m in P['modules']],{1:40,2:12,3:110,4:95,5:95})
+ownership=Sheet('Owner_Files',['Chức năng','Owner','Phạm vi file','Nghiệp vụ','Quy tắc bàn giao'],[[m['title'],m['owner'],'\n'.join(m['paths']),m['scope'],m['boundary']] for m in P['modules']],{1:40,2:12,3:110,4:95,5:95})
 phase_rows=[]
 for phase in P['phases']:
     gate=next(g for g in P['gates'] if g['phase']==phase['id'])
@@ -85,11 +85,20 @@ a=P['architecture']
 architecture_rows=[['Trạng thái',a['status']],['Version',a['versionPolicy']],['Package gốc',a['basePackage']]]
 architecture_rows += [[x['title'],x['choice']+'\n'+x['detail']] for x in a['stack']]
 architecture_rows += [['Cây thư mục BE',line] for line in a['tree'].splitlines() if line]
-architecture_rows += [['Một module mẫu',line] for line in a['featureTree'].splitlines() if line]
+architecture_rows += [['Ví dụ lớp theo tầng',line] for line in a['featureTree'].splitlines() if line]
+prep=a['preparation']
+architecture_rows += [['Đề xuất phần dùng chung',prep['recommendation']],['Phạm vi chuẩn bị',prep['repeatRule']]]
+architecture_rows += [[f"Bước {s['order']:02d}: {s['title']}",f"Phụ trách: {s['owner']}\n{s['outputs']}\nĐiều kiện: {s['gate']}"] for s in prep['steps']]
+for c in prep['components']:
+    architecture_rows.append([c['id']+' — '+c['title'],f"Phạm vi: {c['scope']}\nProvider: {c['owner']} / {c['taskId']}\nFile dưới BE/src/main/java/com/troday/:\n"+'\n'.join(c['files'])+'\nHàm minh họa:\n'+'\n'.join(c['methods'])+'\nConsumer: '+', '.join(c['consumers'])+'\nNghiệm thu: '+c['acceptance']])
+architecture_rows += [[s['taskId']+' — '+s['service'],'Đầu vào: '+', '.join(s['uses'])+'\n'+s['flow']] for s in prep['serviceExamples']]
+architecture_rows += [['Điều kiện bắt đầu service',text] for text in prep['readyChecklist']]
+architecture_rows += [['Giới hạn cách chia',text] for text in prep['avoid']]
+architecture_rows += [[r['title'],r['url']] for r in prep['references']]
 architecture_rows += [[x['title'],x['body']] for x in a['conventions']]
 architecture_rows += [[x['title'],x['command']+'\n'+x['detail']] for x in a['commands']]
 architecture_rows += [[x['title'],x['url']] for x in a['references']]
-architecture_sheet=Sheet('Cau_truc_BE',['Thành phần / quy ước','Java Spring Boot dự kiến'],architecture_rows,{1:45,2:160},filters=False)
+architecture_sheet=Sheet('Cau_truc_BE',['Thành phần / quy ước','Java Spring Boot theo tầng'],architecture_rows,{1:45,2:160},filters=False)
 sheets=[Sheet('Huong_dan',['Mục','Cách sử dụng'],guide,{1:35,2:150},filters=False),summary,task_sheet,api_sheet,ownership,phases,handoffs,decisions,workers,qa,architecture_sheet,Sheet('FE'),Sheet('AI')]
 payload=workbook(sheets)
 if '--check' in sys.argv:

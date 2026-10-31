@@ -61,14 +61,14 @@ test('File owners and integration providers are consistent; effort accounts for 
   for(const p of P.people)assert.equal(p.points,P.tasks.filter(t=>t.owner===p.id).reduce((n,t)=>n+t.points,0));
   assert.ok(Math.max(...P.people.map(p=>p.points))/Math.min(...P.people.map(p=>p.points))<1.1);
 });
-test('Java Spring Boot plan defines feature ownership and safe transaction boundaries without claiming implementation',()=>{
+test('Java Spring Boot plan defines layered packages, class ownership and transaction boundaries',()=>{
   const a=P.architecture;
   assert.equal(a.language,'Java 21 LTS');assert.equal(a.framework,'Spring Boot');assert.equal(a.buildTool,'Maven Wrapper');assert.equal(a.basePackage,'com.troday');
-  assert.match(a.status,/chưa có ứng dụng Java/);assert.match(a.versionPolicy,/BE-A01/);
+  assert.match(a.status,/troday\/BE/);assert.match(a.versionPolicy,/BE\/pom\.xml/);
   assert.match(a.tree,/TrodayApplication\.java/);assert.match(a.featureTree,/@RestController/);
   const shared=P.modules.find(m=>m.id==='platform');
-  for(const file of ['backend/pom.xml','backend/mvnw.cmd','backend/src/main/java/com/troday/TrodayApplication.java'])assert.ok(shared.paths.includes(file));
-  for(const m of P.modules)for(const file of m.paths){assert.doesNotMatch(file,/backend\/(src\/modules|tests\/)/);if(file.includes('/java/'))assert.ok(file.startsWith('backend/src/main/java/com/troday/')||file.startsWith('backend/src/test/java/com/troday/'));}
+  for(const file of ['BE/pom.xml','BE/mvnw.cmd','BE/src/main/java/com/troday/TrodayApplication.java'])assert.ok(shared.paths.includes(file));
+  for(const m of P.modules)for(const file of m.paths){assert.doesNotMatch(file,/(?:backend\/|\/com\/troday\/(?:shared|properties|rentals|identity)\/)/);if(file.includes('/java/'))assert.ok(file.startsWith('BE/src/main/java/com/troday/')||file.startsWith('BE/src/test/java/com/troday/'));}
   assert.match(JSON.stringify(tasks.get('BE-A02')),/Propagation\.NEVER/);assert.match(JSON.stringify(tasks.get('BE-C08')),/@Transactional/);
   assert.match(a.conventions.find(x=>x.title==='Giao dịch do procedure quản lý').body,/không self-invocation/);
   assert.ok(a.references.every(x=>x.url.startsWith('https://docs.spring.io/')));

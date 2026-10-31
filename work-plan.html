@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="Phân công Backend Trọday cho ba người theo module, task, phụ thuộc, bàn giao và checklist.">
+  <meta name="description" content="Phân công Backend Trọday theo chức năng, cấu trúc thư mục theo tầng, task, bàn giao và checklist.">
   <title>Trọday · Phân công phát triển hệ thống</title>
   <link rel="stylesheet" href="api-guide.css?v=20261029">
   <link rel="stylesheet" href="work-plan.css?v=20261030-spring-boot">
-  <script defer src="work-plan-data.js?v=20261030-spring-boot"></script>
-  <script defer src="work-plan.js?v=20261030-spring-boot"></script>
+  <script defer src="work-plan-data.js?v=20261031-shared-preparation"></script>
+  <script defer src="work-plan.js?v=20261031-shared-preparation"></script>
 </head>
 <body class="planning-page">
   <a class="skip" href="#plan-content">Đến kế hoạch</a>
@@ -23,7 +23,7 @@
         <nav id="people-nav" class="group-nav" aria-label="Lọc người phụ trách"></nav>
         <div class="rail-card"><span class="status-dot"></span> Một hàng đợi · Một task<p>Làm xong, review và merge.<br>Bàn giao rồi mới chuyển lượt.</p></div>
       </div>
-      <div class="rail-foot"><a href="api-guide.html">← Đặc tả 176 API</a><a href="index.html?view=business-guide">Logic nghiệp vụ ↗</a><small>Kế hoạch đề xuất · 29/10/2026</small></div>
+      <div class="rail-foot"><a href="api-guide.html">← Đặc tả 176 API</a><a href="index.html?view=business-guide">Logic nghiệp vụ ↗</a><small>Cập nhật cấu trúc · 31/10/2026</small></div>
     </aside>
     <div class="workspace">
       <header class="topbar"><div><a href="index.html">Trọday</a><span>/</span><strong>Phân công công việc</strong></div><div class="top-actions"><a class="button" href="api-guide.html">Đặc tả API ↗</a><a class="button primary" data-be-only href="docs/backend-team-checklist.xlsx" download>Tải Excel mẫu <span aria-hidden="true">↓</span></a></div></header>
@@ -34,12 +34,12 @@
           <button type="button" id="tab-ai" role="tab" aria-selected="false" aria-controls="panel-ai" tabindex="-1" data-tab="ai"><span>AI</span> AI</button>
         </div>
         <section id="panel-be" role="tabpanel" aria-labelledby="tab-be">
-          <section class="intro"><div class="eyebrow">SEQUENTIAL PLAN <span>•</span> THỨ TỰ CHUNG 01–52</div><h1>Backend theo từng bước.<br><span>Xong một task, bàn giao bước tiếp.</span></h1><p>Một hàng đợi chung cho A, B và C. Mỗi lần chỉ thực hiện một task; người tiếp theo nhận code đã review, merge và kiểm thử. Người phụ trách module vẫn được giữ rõ để tránh sửa chéo file.</p><div class="intro-meta"><code>176 API · 52 bước</code><span>SP là độ lớn tương đối, không phải lịch làm cùng lúc</span></div></section>
-          <div class="stack-notice"><div><strong>Java 21 · Spring Boot · Maven · MySQL</strong><p>Stack đã chốt cho kế hoạch BE. Chưa có ứng dụng Java chạy thật; khởi tạo project ở bước #01.</p></div><button type="button" data-view="structure">Cấu trúc thư mục ↗</button></div>
+          <section class="intro"><div class="eyebrow">SEQUENTIAL PLAN <span>•</span> THỨ TỰ CHUNG 01–52</div><h1>Backend theo từng bước.<br><span>Xong một task, bàn giao bước tiếp.</span></h1><p>Một hàng đợi chung cho A, B và C. Mỗi lần chỉ thực hiện một task; người tiếp theo nhận code đã review, merge và kiểm thử. Mỗi người phụ trách các lớp của chức năng mình trong các tầng dùng chung.</p><div class="intro-meta"><code>176 API · 52 bước</code><span>SP là độ lớn tương đối, không phải lịch làm cùng lúc</span></div></section>
+          <div class="stack-notice"><div><strong>Java 21 · Spring Boot · Maven · MySQL</strong><p>Backend tại troday/BE, tổ chức theo tầng controller, service, repository, model, dto và các thư mục hỗ trợ.</p></div><button type="button" data-view="structure">Cấu trúc thư mục ↗</button></div>
           <section id="plan-metrics" class="metrics" aria-label="Tổng quan kế hoạch"></section>
           <section id="current-turn" aria-label="Task đang đến lượt"></section>
-          <details class="owner-summary"><summary>Phạm vi của A, B và C <span>Xem trách nhiệm module và khối lượng; thực hiện theo một hàng đợi</span></summary><section id="team-cards" class="team-cards" aria-label="Phân công ba người"></section></details>
-          <div class="scope-note"><strong>Quy tắc nhận lượt</strong><span>Chỉ bắt đầu bước đầu tiên chưa hoàn thành. Task trước phải đủ checklist, có bằng chứng và đã merge; provider thật được bàn giao trước consumer. Nếu bị chặn, giải quyết ngay tại bước đó. Các đường dẫn <code>backend/**</code> là cấu trúc đề xuất.</span></div>
+          <details class="owner-summary"><summary>Phạm vi của A, B và C <span>Xem trách nhiệm chức năng và khối lượng; thực hiện theo một hàng đợi</span></summary><section id="team-cards" class="team-cards" aria-label="Phân công ba người"></section></details>
+          <div class="scope-note"><strong>Quy tắc nhận lượt</strong><span>Chỉ bắt đầu bước đầu tiên chưa hoàn thành. Task trước phải đủ checklist, có bằng chứng và đã merge; provider thật được bàn giao trước consumer. Nếu bị chặn, giải quyết ngay tại bước đó. Đường dẫn <code>BE/**</code> tính từ root repository Trọday; các lớp nghiệp vụ sẽ được thêm theo task.</span></div>
           <div class="tracking-bar"><div><strong id="tracking-state">Tiến độ trên trình duyệt này</strong><small>Excel là bản mẫu riêng; không tự đồng bộ với trang hoặc máy khác.</small></div><div class="tracking-actions"><button type="button" id="export-progress">Xuất tiến độ JSON</button><label class="button import-button" for="import-progress">Nhập tiến độ JSON<input id="import-progress" type="file" accept="application/json,.json"></label><button type="button" id="restore-progress" hidden>Khôi phục lần trước</button></div></div>
           <div id="plan-filters"></div>
           <div id="plan-results" aria-live="polite"></div>

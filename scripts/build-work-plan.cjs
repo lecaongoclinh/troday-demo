@@ -108,14 +108,54 @@ function depth(id){if(depths.has(id))return depths.get(id);const t=byTask.get(id
 for(const task of tasks)depth(task.id);
 let tail=tasks.reduce((best,t)=>depth(t.id)>depth(best)?t.id:best,tasks[0].id);
 while(tail){chains.unshift(tail);const t=byTask.get(tail);tail=t.blockers.length?t.blockers.reduce((best,id)=>depth(id)>depth(best)?id:best,t.blockers[0]):null;}
-const checklist=['Thiết kế / contract','Code / SQL','Validate / phân quyền','Test module / DB','Test tích hợp','Tài liệu / bàn giao','Review / merge'];
+const checklist=['Thiết kế / contract','Code / SQL','Validate / phân quyền','Test chức năng / DB','Test tích hợp','Tài liệu / bàn giao','Review / merge'];
 const decisions=api.decisions.map(d=>({...d,...plan.decisions.find(x=>x.id===d.id),originalStatus:d.status}));
 const coverageFlows=api.flows.map(f=>({id:f.id,title:f.title,taskIds:[...new Set(assignments.filter(e=>e.flowIds.includes(f.id)).map(e=>e.taskId).concat(jobs.filter(j=>j.flow===f.id).map(j=>j.taskId)))],apiCount:f.endpointIds.length}));
 for(const f of coverageFlows)if(!f.taskIds.length)throw Error('Unmapped flow '+f.id);
-const data={version:'2.0-sequential',mode:'sequential',date:'2026-10-29',backendLayout:'Java 21 · Spring Boot · Maven · MySQL; modular monolith theo package chức năng. Đây là kế hoạch, chưa có ứng dụng Java thật.',architecture:plan.architecture,assumptions:['Một hàng đợi chung 01–52, tối đa một task đang thực hiện. A/B/C giữ owner theo module và nhận bàn giao khi đến lượt.','SP là độ lớn tương đối, không phải số ngày hay lịch làm việc ba người; chưa đặt deadline.','Đường dẫn backend/** là cấu trúc dự kiến. Trang này lập kế hoạch/checklist, không triển khai backend hoặc sửa CSDL.','Task trước phải review/merge và bàn giao provider thật, commit main, SQL/test trước khi mở task tiếp theo. Giữ task ID để đối chiếu tiến độ cũ.'],sourceHashes:{'docs/api-catalog.json':crypto.createHash('sha256').update(fs.readFileSync(cataloguePath)).digest('hex'),'scripts/work-plan-blueprint.cjs':crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'work-plan-blueprint.cjs'))).digest('hex'),'scripts/spring-boot-plan.cjs':crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'spring-boot-plan.cjs'))).digest('hex')},executionOrder,sequencePolicy:plan.sequencePolicy,people,phases,modules,tasks,interfaces,gates,rules:plan.rules,decisions,jobs,qa,assignments,coverageFlows,groups:api.groups,checklist,statuses:['Chưa làm','Đang làm','Chờ review','Bị chặn','Hoàn thành'],dependencyChain:chains,counts:{tasks:tasks.length,apis:assignments.length,flows:coverageFlows.length,points:tasks.reduce((n,t)=>n+t.points,0),phases:phases.length}};
+const data={version:'2.0-sequential',mode:'sequential',date:'2026-10-31',backendLayout:'Java 21 · Spring Boot · Maven · MySQL; package theo tầng tại troday/BE. Phân công theo chức năng và tên lớp trong các tầng dùng chung.',architecture:plan.architecture,assumptions:['Một hàng đợi chung 01–52, tối đa một task đang thực hiện. A/B/C phụ trách chức năng và các lớp tương ứng trong từng tầng, nhận bàn giao khi đến lượt.','SP là độ lớn tương đối, không phải số ngày hay lịch làm việc ba người; chưa đặt deadline.','Đường dẫn BE/** tính từ root repository troday; tên lớp nghiệp vụ là phạm vi công việc dự kiến. Nguồn SQL/công cụ database hiện ở wireframe, A tích hợp vào troday/database theo task.','Task trước phải review/merge và bàn giao provider thật, commit main, SQL/test trước khi mở task tiếp theo. Giữ task ID để đối chiếu tiến độ cũ.'],sourceHashes:{'docs/api-catalog.json':crypto.createHash('sha256').update(fs.readFileSync(cataloguePath)).digest('hex'),'scripts/work-plan-blueprint.cjs':crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'work-plan-blueprint.cjs'))).digest('hex'),'scripts/spring-boot-plan.cjs':crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'spring-boot-plan.cjs'))).digest('hex')},executionOrder,sequencePolicy:plan.sequencePolicy,people,phases,modules,tasks,interfaces,gates,rules:plan.rules,decisions,jobs,qa,assignments,coverageFlows,groups:api.groups,checklist,statuses:['Chưa làm','Đang làm','Chờ review','Bị chặn','Hoàn thành'],dependencyChain:chains,counts:{tasks:tasks.length,apis:assignments.length,flows:coverageFlows.length,points:tasks.reduce((n,t)=>n+t.points,0),phases:phases.length}};
+data.sourceHashes['scripts/shared-preparation-plan.cjs']=crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'shared-preparation-plan.cjs'))).digest('hex');
+const prep=data.architecture.preparation;
+const componentById=new Map(prep.components.map(c=>[c.id,c]));
+if(componentById.size!==prep.components.length)throw Error('Duplicate shared preparation ID');
+for(const c of prep.components){
+  const provider=byTask.get(c.taskId);
+  if(provider?.owner!==c.owner||!c.files.length||!c.methods.length)throw Error('Invalid shared provider '+c.id);
+  for(const id of c.consumers)if(!byTask.has(id)||byTask.get(id).order<provider.order)throw Error('Shared provider must precede consumer '+c.id+' '+id);
+}
+for(const example of prep.serviceExamples){
+  const task=byTask.get(example.taskId);
+  if(!task)throw Error('Unknown service example task '+example.taskId);
+  for(const id of example.uses){const c=componentById.get(id);if(!c||byTask.get(c.taskId).order>task.order)throw Error('Service example requires a future provider '+example.taskId+' '+id);}
+}
+const preparationDoc=[
+  '# Chuẩn bị phần dùng chung trước luồng nghiệp vụ',
+  '',
+  '> Tài liệu sinh từ `scripts/shared-preparation-plan.cjs`; cập nhật nguồn rồi chạy `npm run plan:build`.',
+  '',prep.recommendation,'',prep.repeatRule,'',
+  '## Thứ tự thực hiện','',
+  '| Bước | Phụ trách | Đầu ra | Điều kiện chuyển bước |',
+  '| --- | --- | --- | --- |',
+  ...prep.steps.map(s=>`| ${s.order}. ${s.title} | ${s.owner} | ${s.outputs} | ${s.gate} |`),'',
+  '## File và hàm đề xuất','',
+  'Các đường dẫn tính từ `BE/src/main/java/com/troday/`. Tên file/hàm là minh họa cần chốt tại task, chưa phải implementation đã có. Các mục dưới đây theo mốc cung cấp trong hàng đợi hiện tại.','',
+  ...prep.components.flatMap(c=>[
+    `### ${c.id} — ${c.title}`,'',
+    `Phạm vi: ${c.scope}. Provider: **${c.owner} / ${c.taskId}**. Consumer: ${c.consumers.map(id=>'`'+id+'`').join(', ')}.`,
+    '',...c.files.map(f=>'- `'+f+'`'),'',
+    'Hàm đề xuất: '+c.methods.map(m=>'`'+m+'`').join('; ')+'.','',
+    'Điều kiện bàn giao: '+c.acceptance,''
+  ]),
+  '## Thứ tự ví dụ khi bắt đầu service','',
+  '| Task | Service | Đầu vào | Luồng |','| --- | --- | --- | --- |',
+  ...prep.serviceExamples.map(s=>`| ${s.taskId} | \`${s.service}\` | ${s.uses.join(', ')} | ${s.flow} |`),'',
+  'Provider và service cùng task: hoàn tất model/query trước service trong task đó. Danh sách này là ví dụ các luồng, không thay toàn bộ thứ tự 52 task.','',
+  '## Điều kiện bắt đầu service','',...prep.readyChecklist.map(s=>'- '+s),'',
+  '## Giới hạn của cách chia','',...prep.avoid.map(s=>'- '+s),'',
+  '## Tài liệu đối chiếu','',...prep.references.map(r=>`- [${r.title}](${r.url})`),''
+].join('\n');
 const json=JSON.stringify(data,null,2)+'\n';
 const browser='// Generated by npm run plan:build. Edit scripts/work-plan-blueprint.cjs.\nwindow.TRODAY_WORK_PLAN = '+JSON.stringify(data).replace(/</g,'\\u003c')+';\n';
-const outputs=[['docs/work-plan.json',json],['work-plan-data.js',browser]];
+const outputs=[['docs/work-plan.json',json],['work-plan-data.js',browser],['docs/shared-preparation.md',preparationDoc]];
 const check=process.argv.includes('--check');
 for(const[file,body]of outputs){const target=path.join(root,file);if(check){if(!fs.existsSync(target)||fs.readFileSync(target,'utf8')!==body)throw Error(file+' chưa đồng bộ; chạy npm run plan:build');}else fs.writeFileSync(target,body);}
 const xlsx=spawnSync('python',[path.join(__dirname,'build-work-plan-checklist.py'),...(check?['--check']:[])],{cwd:root,encoding:'utf8',windowsHide:true});
